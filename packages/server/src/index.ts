@@ -4,14 +4,25 @@ import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
 import 'dotenv/config'
 
+import { initDb } from './services/db.js'
+import { initDocumentTable } from './services/documentStore.js'
+import { initDocCollection } from './services/documentVector.js'
+import { documentRoutes } from './routes/documents.js'
+import { chatRoutes } from './routes/chat.js'
+
 const app = Fastify({
   logger: { transport: { target: 'pino-pretty', options: { colorize: true } } },
 })
 
-await app.register(cors, {
-  origin: ['http://localhost:5173', 'http://localhost:4173'],
-})
+await app.register(cors, { origin: ['http://localhost:5173', 'http://localhost:4173'] })
 await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } })
+
+const db = initDb()
+initDocumentTable(db)
+await initDocCollection()
+
+await app.register(documentRoutes, { prefix: '/api' })
+await app.register(chatRoutes, { prefix: '/api' })
 
 app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 
