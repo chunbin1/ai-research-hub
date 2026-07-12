@@ -9,22 +9,30 @@ import styles from './ReaderPage.module.css'
 export default function ReaderPage() {
   const { id = '' } = useParams()
   const [markdown, setMarkdown] = useState('')
-  const [title, setTitle] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
     api.getDocument(id)
-      .then(({ document, markdown }) => { setMarkdown(markdown); setTitle(document.filename) })
+      .then(({ document: doc, markdown }) => {
+        setMarkdown(markdown)
+        document.title = `${doc.filename} — 研报站`
+      })
       .catch(e => setError(String(e.message)))
   }, [id])
 
   const toc = extractToc(markdown)
 
-  // 溯源回链:滚动到章节标题并临时高亮
+  // 溯源回链:滚动到章节标题并临时高亮。
+  // 注:显式滚动 #report-content 容器,而非 el.scrollIntoView()——后者对
+  // 嵌套滚动容器 + smooth 存在浏览器兼容问题,常常不生效。
   function jump(slug: string) {
     const el = document.getElementById(slug)
-    if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const container = document.getElementById('report-content')
+    if (!el || !container) return
+    const top = container.scrollTop + (el.getBoundingClientRect().top - container.getBoundingClientRect().top) - 16
+    // 用 'auto' 而非 'smooth':部分环境(reduced-motion / 自动化浏览器)会静默忽略
+    // smooth 滚动导致完全不跳转;瞬时跳转 + flash 高亮反而更稳、反馈更即时。
+    container.scrollTo({ top, behavior: 'auto' })
     el.classList.remove('flash')
     void el.offsetWidth // 强制回流,便于重复点击重新触发动画
     el.classList.add('flash')
@@ -52,7 +60,6 @@ export default function ReaderPage() {
         </nav>
       </aside>
       <main className={styles.content} id="report-content">
-        <h1 className={styles.docTitle}>{title}</h1>
         <ReportMarkdown markdown={markdown} />
       </main>
       <aside className={styles.chat}>
