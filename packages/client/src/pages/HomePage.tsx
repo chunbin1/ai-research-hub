@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { api } from '../api'
 import type { Document } from '../types'
 import styles from './HomePage.module.css'
@@ -33,10 +33,13 @@ export default function HomePage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <h1>研报站</h1>
-        <label className={styles.upload}>
-          {uploading ? '上传中…' : '+ 上传研报 (.md)'}
-          <input ref={fileRef} type="file" accept=".md,.markdown,.txt" onChange={onFile} hidden />
-        </label>
+        <div className={styles.headerRight}>
+          <Link to="/traces" className={styles.traceLink}>🔍 trace</Link>
+          <label className={styles.upload}>
+            {uploading ? '上传中…' : '+ 上传研报 (.md)'}
+            <input ref={fileRef} type="file" accept=".md,.markdown,.txt" onChange={onFile} hidden />
+          </label>
+        </div>
       </header>
       {error && <div className={styles.error}>{error}</div>}
       <div className={styles.grid}>
