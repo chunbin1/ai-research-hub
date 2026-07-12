@@ -20,7 +20,7 @@ export function TracesPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <Link to="/" className={styles.back}>← 返回对话</Link>
+        <Link to="/" className={styles.back}>← 返回首页</Link>
         <h1 className={styles.title}>🔍 Traces</h1>
         <div className={styles.controls}>
           <select
