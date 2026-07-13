@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { api } from '../api'
+import { useAuth } from '../hooks/useAuth'
 import type { Document } from '../types'
 import styles from './HomePage.module.css'
 
@@ -10,6 +11,8 @@ export default function HomePage() {
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
+  const { user, login, logout } = useAuth()
+  const isAdmin = user?.isAdmin === true
 
   const refresh = () => api.listDocuments().then(setDocs).catch(e => setError(String(e.message)))
   useEffect(() => { refresh() }, [])
@@ -34,11 +37,23 @@ export default function HomePage() {
       <header className={styles.header}>
         <h1>研报站</h1>
         <div className={styles.headerRight}>
-          <Link to="/traces" className={styles.traceLink}>🔍 trace</Link>
-          <label className={styles.upload}>
-            {uploading ? '上传中…' : '+ 上传研报 (.md)'}
-            <input ref={fileRef} type="file" accept=".md,.markdown,.txt" onChange={onFile} hidden />
-          </label>
+          {isAdmin && <Link to="/traces" className={styles.traceLink}>🔍 trace</Link>}
+          {isAdmin && (
+            <label className={styles.upload}>
+              {uploading ? '上传中…' : '+ 上传研报 (.md)'}
+              <input ref={fileRef} type="file" accept=".md,.markdown,.txt" onChange={onFile} hidden />
+            </label>
+          )}
+          {user ? (
+            <span className={styles.userBox}>
+              {user.avatarUrl && <img className={styles.avatar} src={user.avatarUrl} alt="" />}
+              <span className={styles.uname}>{user.username}</span>
+              {!user.unlimited && <span className={styles.quota}>剩余 {user.remaining}</span>}
+              <button className={styles.logout} onClick={() => void logout()}>登出</button>
+            </span>
+          ) : (
+            <button className={styles.loginBtn} onClick={login}>GitHub 登录</button>
+          )}
         </div>
       </header>
       {error && <div className={styles.error}>{error}</div>}
@@ -50,10 +65,10 @@ export default function HomePage() {
               <span>{new Date(d.created_at).toLocaleDateString('zh-CN')}</span>
               <span>{d.chunk_count} 段</span>
             </div>
-            <button className={styles.del} onClick={e => onDelete(e, d.id)}>删除</button>
+            {isAdmin && <button className={styles.del} onClick={e => onDelete(e, d.id)}>删除</button>}
           </article>
         ))}
-        {docs.length === 0 && <p className={styles.empty}>还没有报告,点右上角上传一篇 markdown 研报。</p>}
+        {docs.length === 0 && <p className={styles.empty}>还没有报告。</p>}
       </div>
     </div>
   )
