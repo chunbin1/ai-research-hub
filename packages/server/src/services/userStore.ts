@@ -101,6 +101,23 @@ export function incrementMessageCount(id: string): void {
   db().prepare('UPDATE users SET message_count = message_count + 1 WHERE id = ?').run(id)
 }
 
+/**
+ * Atomically check-and-increment message_count in one UPDATE, avoiding the
+ * TOCTOU race of a separate read-then-write. Unlimited users always succeed
+ * (and are still counted — harmless since their cap is never enforced).
+ * Returns false (and leaves the counter untouched) once at/over MESSAGE_LIMIT.
+ */
+export function tryReserveMessage(id: string): boolean {
+  return db()
+    .prepare('UPDATE users SET message_count = message_count + 1 WHERE id = ? AND (unlimited = 1 OR message_count < ?)')
+    .run(id, MESSAGE_LIMIT).changes > 0
+}
+
+/** Undo a reservation (e.g. generation failed after tryReserveMessage succeeded). */
+export function refundMessage(id: string): void {
+  db().prepare('UPDATE users SET message_count = MAX(0, message_count - 1) WHERE id = ?').run(id)
+}
+
 /** Whether this user is still allowed to send a message. */
 export function canSend(user: User): boolean {
   return user.unlimited === 1 || user.message_count < MESSAGE_LIMIT

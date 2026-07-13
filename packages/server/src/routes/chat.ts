@@ -5,8 +5,8 @@ import { searchChunks, isDocVectorAvailable } from '../services/documentVector.j
 import { getDocument } from '../services/documentStore.js'
 import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } from '../services/tracing.js'
 import { requireUser } from './auth.js'
-import { canSend, incrementMessageCount, remaining, MESSAGE_LIMIT } from '../services/userStore.js'
-import { getGlobalCount, incrementGlobalCount, GLOBAL_LIMIT } from '../services/usageStore.js'
+import { tryReserveMessage, refundMessage, MESSAGE_LIMIT } from '../services/userStore.js'
+import { tryReserveGlobal, refundGlobal, GLOBAL_LIMIT } from '../services/usageStore.js'
 import { appendMessage, getMessages } from '../services/chatStore.js'
 import type { LLMMessage, DocumentChunk } from '../types.js'
 
@@ -56,10 +56,11 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
     const user = requireUser(request, reply)
     if (!user) return
     if (user.is_admin !== 1) {
-      if (!canSend(user)) {
-        return reply.status(403).send({ error: 'message_limit_reached', scope: 'user', remaining: remaining(user), limit: MESSAGE_LIMIT })
+      if (!tryReserveMessage(user.id)) {
+        return reply.status(403).send({ error: 'message_limit_reached', scope: 'user', limit: MESSAGE_LIMIT })
       }
-      if (getGlobalCount() >= GLOBAL_LIMIT) {
+      if (!tryReserveGlobal()) {
+        refundMessage(user.id)
         return reply.status(403).send({ error: 'message_limit_reached', scope: 'global', limit: GLOBAL_LIMIT })
       }
     }
@@ -122,10 +123,10 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
           spanMeta('outputTokens', estimateTokens(out))
           spanOutput(out)
           appendMessage(user.id, docId, { role: 'assistant', content: out, sources })
-          if (user.is_admin !== 1) { incrementMessageCount(user.id); incrementGlobalCount() }
           send({ done: true })
         } catch (err) {
           app.log.error(err)
+          if (user.is_admin !== 1) { refundMessage(user.id); refundGlobal() }
           send({ error: err instanceof Error ? err.message : 'Unknown error' })
           throw err   // 让 withSpan 记为 error 状态
         } finally {

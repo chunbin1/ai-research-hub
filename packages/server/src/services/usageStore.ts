@@ -33,3 +33,17 @@ export function incrementGlobalCount(): void {
 export function globalRemaining(): number {
   return Math.max(0, GLOBAL_LIMIT - getGlobalCount())
 }
+
+/**
+ * Atomically check-and-increment the global counter in one UPDATE, avoiding
+ * the TOCTOU race of a separate read-then-write. Returns false (and leaves
+ * the counter untouched) once at/over GLOBAL_LIMIT.
+ */
+export function tryReserveGlobal(): boolean {
+  return db().prepare('UPDATE usage SET total_count = total_count + 1 WHERE id = 1 AND total_count < ?').run(GLOBAL_LIMIT).changes > 0
+}
+
+/** Undo a reservation (e.g. generation failed after tryReserveGlobal succeeded). */
+export function refundGlobal(): void {
+  db().prepare('UPDATE usage SET total_count = MAX(0, total_count - 1) WHERE id = 1').run()
+}

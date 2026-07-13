@@ -11,7 +11,7 @@ import {
 
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID ?? ''
 const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? ''
-// Base public URL of the app, e.g. https://docmind.cbsama.uk (no trailing slash).
+// Base public URL of the app, e.g. https://your-domain.example (no trailing slash).
 const APP_URL = (process.env.APP_URL ?? 'http://localhost:5173').replace(/\/$/, '')
 const CALLBACK_URL = `${APP_URL}/api/auth/github/callback`
 const IS_HTTPS = APP_URL.startsWith('https://')
@@ -128,7 +128,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         const userRes = await fetch('https://api.github.com/user', {
           headers: {
             Authorization: `Bearer ${accessToken}`,
-            'User-Agent': 'docmind',
+            'User-Agent': 'ai-research-hub',
             Accept: 'application/vnd.github+json',
           },
         })
