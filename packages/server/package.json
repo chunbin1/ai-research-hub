@@ -9,6 +9,7 @@
     "test": "tsx --test src/services/*.test.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^10.0.2",
     "@fastify/multipart": "^9.0.3",
     "@anthropic-ai/sdk": "^0.39.0",
