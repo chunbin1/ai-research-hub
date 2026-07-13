@@ -6,3 +6,4 @@ data/
 packages/*/.env
 dist/
 .superpowers/
+packages/server/.env.prod
