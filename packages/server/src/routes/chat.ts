@@ -7,6 +7,7 @@ import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } f
 import { requireUser } from './auth.js'
 import { canSend, incrementMessageCount, remaining, MESSAGE_LIMIT } from '../services/userStore.js'
 import { getGlobalCount, incrementGlobalCount, GLOBAL_LIMIT } from '../services/usageStore.js'
+import { appendMessage, getMessages } from '../services/chatStore.js'
 import type { LLMMessage, DocumentChunk } from '../types.js'
 
 const SYSTEM_BASE = `你是投研报告阅读助手。只依据"文档参考"中的内容回答用户关于当前这篇研报的问题。
@@ -32,6 +33,19 @@ function estimateTokens(text: string): number {
 
 export const chatRoutes: FastifyPluginAsync = async (app) => {
   app.get('/chat/health', async () => ({ status: 'ok', provider: PROVIDER }))
+
+  app.get<{ Querystring: { docId?: string } }>('/chat/messages', async (request, reply) => {
+    const user = requireUser(request, reply)
+    if (!user) return
+    const docId = request.query.docId
+    if (!docId) return reply.status(400).send({ error: 'docId is required' })
+    const messages = getMessages(user.id, docId).map(r => ({
+      role: r.role,
+      content: r.content,
+      sources: r.sources_json ? JSON.parse(r.sources_json) : undefined,
+    }))
+    return { messages }
+  })
 
   app.post<{ Body: StreamBody }>('/chat/stream', async (request, reply) => {
     const { docId, message } = request.body ?? ({} as StreamBody)
@@ -77,6 +91,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
         .filter(c => (seen.has(c.section_slug) ? false : (seen.add(c.section_slug), true)))
         .map(c => ({ section_title: c.section_title, section_slug: c.section_slug, chunk_index: c.chunk_index }))
       send({ sources })
+      appendMessage(user.id, docId, { role: 'user', content: message })
 
       // 2) 组装 prompt
       const system = await withSpan('prompt_assembly', async () => {
@@ -106,6 +121,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
           }
           spanMeta('outputTokens', estimateTokens(out))
           spanOutput(out)
+          appendMessage(user.id, docId, { role: 'assistant', content: out, sources })
           if (user.is_admin !== 1) { incrementMessageCount(user.id); incrementGlobalCount() }
           send({ done: true })
         } catch (err) {
