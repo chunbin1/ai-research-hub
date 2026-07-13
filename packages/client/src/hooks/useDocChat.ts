@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { ChatMessage, Source } from '../types'
 
 export function useDocChat(docId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    import('../api').then(({ api }) => api.getMessages(docId)).then(m => { if (alive && m.length) setMessages(m) })
+    return () => { alive = false }
+  }, [docId])
 
   function updateLast(fn: (m: ChatMessage) => ChatMessage) {
     setMessages(prev => {
