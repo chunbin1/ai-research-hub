@@ -126,13 +126,15 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
           send({ done: true })
         } catch (err) {
           app.log.error(err)
-          if (user.is_admin !== 1) { refundMessage(user.id); refundGlobal() }
           send({ error: err instanceof Error ? err.message : 'Unknown error' })
           throw err   // 让 withSpan 记为 error 状态
         } finally {
           try { reply.raw.end() } catch { /* already ended */ }
         }
       })
-    }).catch(() => { /* 错误已通过 SSE 告知 + 记入 trace */ })
+    }).catch(() => {
+      // 生成链路任一步失败(检索/落库/组装/生成):退还本次预留的配额,失败不计数
+      if (user.is_admin !== 1) { refundMessage(user.id); refundGlobal() }
+    })
   })
 }
