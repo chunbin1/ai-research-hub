@@ -11,6 +11,7 @@ import { initDocumentTable } from './services/documentStore.js'
 import { initDocCollection } from './services/documentVector.js'
 import { initTraceTables } from './services/traceStore.js'
 import { initUserTables } from './services/userStore.js'
+import { initUsageTable } from './services/usageStore.js'
 import { documentRoutes } from './routes/documents.js'
 import { chatRoutes } from './routes/chat.js'
 import { traceRoutes } from './routes/traces.js'
@@ -31,6 +32,7 @@ const db = initDb()
 initDocumentTable(db)
 initTraceTables(db)
 initUserTables(db)
+initUsageTable(db)
 await initDocCollection()
 
 await app.register(authRoutes, { prefix: '/api' })
