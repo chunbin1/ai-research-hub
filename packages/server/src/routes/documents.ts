@@ -6,6 +6,7 @@ import {
   saveRawMarkdown, readRawMarkdown, deleteRawMarkdown,
 } from '../services/documentStore.js'
 import { upsertChunks, deleteByDocId, isDocVectorAvailable } from '../services/documentVector.js'
+import { requireAdmin } from './auth.js'
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
   app.get('/documents', async () => ({ documents: getAllDocuments() }))
@@ -18,6 +19,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.post('/documents', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
     const data = await request.file()
     if (!data) return reply.status(400).send({ error: '未上传文件' })
     if (!/\.(md|markdown|txt)$/i.test(data.filename)) {
@@ -44,6 +46,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.delete<{ Params: { id: string } }>('/documents/:id', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
     const doc = getDocument(request.params.id)
     if (!doc) return reply.status(404).send({ error: 'not_found' })
     await deleteByDocId(doc.id)
