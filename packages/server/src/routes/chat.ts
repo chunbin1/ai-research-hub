@@ -4,6 +4,10 @@ import { streamChat, PROVIDER } from '../llm.js'
 import { searchChunks, isDocVectorAvailable } from '../services/documentVector.js'
 import { getDocument } from '../services/documentStore.js'
 import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } from '../services/tracing.js'
+import { requireUser } from './auth.js'
+import { tryReserveMessage, refundMessage, MESSAGE_LIMIT } from '../services/userStore.js'
+import { tryReserveGlobal, refundGlobal, GLOBAL_LIMIT } from '../services/usageStore.js'
+import { appendMessage, getMessages } from '../services/chatStore.js'
 import type { LLMMessage, DocumentChunk } from '../types.js'
 
 const SYSTEM_BASE = `你是投研报告阅读助手。只依据"文档参考"中的内容回答用户关于当前这篇研报的问题。
@@ -30,11 +34,36 @@ function estimateTokens(text: string): number {
 export const chatRoutes: FastifyPluginAsync = async (app) => {
   app.get('/chat/health', async () => ({ status: 'ok', provider: PROVIDER }))
 
+  app.get<{ Querystring: { docId?: string } }>('/chat/messages', async (request, reply) => {
+    const user = requireUser(request, reply)
+    if (!user) return
+    const docId = request.query.docId
+    if (!docId) return reply.status(400).send({ error: 'docId is required' })
+    const messages = getMessages(user.id, docId).map(r => ({
+      role: r.role,
+      content: r.content,
+      sources: r.sources_json ? JSON.parse(r.sources_json) : undefined,
+    }))
+    return { messages }
+  })
+
   app.post<{ Body: StreamBody }>('/chat/stream', async (request, reply) => {
     const { docId, message } = request.body ?? ({} as StreamBody)
     if (!docId) return reply.status(400).send({ error: 'docId is required' })
     if (!message?.trim()) return reply.status(400).send({ error: 'message is required' })
     if (!getDocument(docId)) return reply.status(404).send({ error: 'document not found' })
+
+    const user = requireUser(request, reply)
+    if (!user) return
+    if (user.is_admin !== 1) {
+      if (!tryReserveMessage(user.id)) {
+        return reply.status(403).send({ error: 'message_limit_reached', scope: 'user', limit: MESSAGE_LIMIT })
+      }
+      if (!tryReserveGlobal()) {
+        refundMessage(user.id)
+        return reply.status(403).send({ error: 'message_limit_reached', scope: 'global', limit: GLOBAL_LIMIT })
+      }
+    }
 
     await runInTrace({ route: '/chat/stream', userId: null }, async () => {
       // 1) 检索
@@ -63,6 +92,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
         .filter(c => (seen.has(c.section_slug) ? false : (seen.add(c.section_slug), true)))
         .map(c => ({ section_title: c.section_title, section_slug: c.section_slug, chunk_index: c.chunk_index }))
       send({ sources })
+      appendMessage(user.id, docId, { role: 'user', content: message })
 
       // 2) 组装 prompt
       const system = await withSpan('prompt_assembly', async () => {
@@ -92,6 +122,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
           }
           spanMeta('outputTokens', estimateTokens(out))
           spanOutput(out)
+          appendMessage(user.id, docId, { role: 'assistant', content: out, sources })
           send({ done: true })
         } catch (err) {
           app.log.error(err)
@@ -101,6 +132,9 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
           try { reply.raw.end() } catch { /* already ended */ }
         }
       })
-    }).catch(() => { /* 错误已通过 SSE 告知 + 记入 trace */ })
+    }).catch(() => {
+      // 生成链路任一步失败(检索/落库/组装/生成):退还本次预留的配额,失败不计数
+      if (user.is_admin !== 1) { refundMessage(user.id); refundGlobal() }
+    })
   })
 }

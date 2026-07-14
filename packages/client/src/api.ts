@@ -22,4 +22,9 @@ export const api = {
     const r = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
     if (!r.ok) throw new Error('删除失败')
   },
+  async getMessages(docId: string): Promise<import('./types').ChatMessage[]> {
+    const r = await fetch(`/api/chat/messages?docId=${encodeURIComponent(docId)}`)
+    if (!r.ok) return []
+    return (await r.json()).messages
+  },
 }
