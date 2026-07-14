@@ -1,0 +1,12 @@
+.page { max-width: 860px; margin: 0 auto; padding: 28px 24px; }
+.back { color: #555; text-decoration: none; font-size: 14px; }
+.h1 { font-size: 22px; margin: 12px 0 6px; }
+.summary { color: #666; margin-bottom: 20px; }
+.card { border: 1px solid #ececec; border-radius: 12px; padding: 16px; margin-bottom: 14px; background: #fff; }
+.q { font-weight: 600; margin-bottom: 8px; }
+.scores { display: flex; gap: 12px; font-size: 13px; margin-bottom: 10px; }
+.ok { color: #1a7f37; } .bad { color: #b00020; }
+.row { font-size: 14px; margin: 6px 0; line-height: 1.6; }
+.row b { color: #555; margin-right: 4px; }
+.reason { font-size: 12px; color: #888; margin-top: 8px; border-top: 1px dashed #eee; padding-top: 8px; }
+.empty { color: #999; }

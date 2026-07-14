@@ -38,6 +38,7 @@ export default function HomePage() {
         <h1>研报站</h1>
         <div className={styles.headerRight}>
           {isAdmin && <Link to="/traces" className={styles.traceLink}>🔍 trace</Link>}
+          {isAdmin && <Link to="/eval" className={styles.traceLink}>📊 评估</Link>}
           {isAdmin && (
             <label className={styles.upload}>
               {uploading ? '上传中…' : '+ 上传研报 (.md)'}

@@ -53,3 +53,37 @@ export interface WaterfallRow {
   leftPct: number
   widthPct: number
 }
+
+export type EvalStatus = 'none' | 'running' | 'done' | 'failed'
+
+export interface EvalReportRow {
+  doc_id: string
+  filename: string
+  status: EvalStatus
+  question_count: number
+  avg_recall: number | null
+  avg_precision: number | null
+  avg_faithfulness: number | null
+  avg_relevancy: number | null
+  finished_at: string | null
+}
+
+export interface EvalStats {
+  docsEvaluated: number
+  avgRecall: number
+  avgPrecision: number
+  avgFaithfulness: number
+  avgRelevancy: number
+}
+
+export interface EvalResultRow {
+  question: string
+  expected: string
+  retrieved_sections: string
+  answer: string
+  recall: number
+  precision: number
+  faithfulness: number
+  relevancy: number
+  reasoning: string
+}
