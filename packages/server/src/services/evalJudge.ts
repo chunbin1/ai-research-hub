@@ -164,18 +164,8 @@ export function scoreContextRecall(
   if (expectedAnswer && retrievedContents && retrievedContents.length > 0) {
     const want = normalizeForMatch(expectedAnswer)
     // 太短的答案（如单字）做包含匹配噪音大，要求至少 4 个有效字符
-    if (want.length >= 4) {
-      // 检查全量答案是否作为子串出现
-      if (retrievedContents.some(c => normalizeForMatch(c).includes(want))) {
-        return 1
-      }
-      // 或检查答案中任何 4+ 字符的子串是否出现（用于处理答案分散的情况）
-      for (let i = 0; i <= want.length - 4; i++) {
-        const substr = want.substring(i, i + 4)
-        if (retrievedContents.some(c => normalizeForMatch(c).includes(substr))) {
-          return 1
-        }
-      }
+    if (want.length >= 4 && retrievedContents.some(c => normalizeForMatch(c).includes(want))) {
+      return 1
     }
   }
   return 0
