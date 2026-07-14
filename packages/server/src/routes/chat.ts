@@ -8,13 +8,8 @@ import { requireUser } from './auth.js'
 import { tryReserveMessage, refundMessage, MESSAGE_LIMIT } from '../services/userStore.js'
 import { tryReserveGlobal, refundGlobal, GLOBAL_LIMIT } from '../services/usageStore.js'
 import { appendMessage, getMessages } from '../services/chatStore.js'
+import { buildSystemPrompt } from '../services/ragPrompt.js'
 import type { LLMMessage, DocumentChunk } from '../types.js'
-
-const SYSTEM_BASE = `你是投研报告阅读助手。只依据"文档参考"中的内容回答用户关于当前这篇研报的问题。
-规则:
-- 严格基于文档参考,不要编造数字或结论;文档中没有的,明确说"报告中未提及"。
-- 回答用中文,简洁、分点。
-- 在引用具体结论时,用【来源:§章节名】标注它出自哪一节(章节名取文档参考中给出的)。`
 
 interface StreamBody {
   docId: string
@@ -96,10 +91,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
 
       // 2) 组装 prompt
       const system = await withSpan('prompt_assembly', async () => {
-        const docSection = chunks.length
-          ? chunks.map(c => `[§${c.section_title || '引言'}] ${c.content}`).join('\n\n')
-          : '(未检索到相关段落)'
-        const finalSystem = `${SYSTEM_BASE}\n\n--- 文档参考 ---\n${docSection}`
+        const finalSystem = buildSystemPrompt(chunks)
         spanMeta('chunkCount', chunks.length)
         spanMeta('finalTokens', estimateTokens(finalSystem))
         return finalSystem
