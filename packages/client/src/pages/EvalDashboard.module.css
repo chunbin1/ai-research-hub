@@ -1,0 +1,21 @@
+.page { max-width: 1100px; margin: 0 auto; padding: 28px 24px; }
+.header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.header h1 { font-size: 22px; margin: 0; }
+.back { color: #555; text-decoration: none; font-size: 14px; }
+.back:hover { color: #000; }
+.stats { display: flex; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+.stat { background: #fff; border: 1px solid #ececec; border-radius: 12px; padding: 16px 22px; min-width: 120px; }
+.v { font-size: 24px; font-weight: 600; }
+.l { color: #888; font-size: 13px; margin-top: 4px; }
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th, .table td { border-bottom: 1px solid #eee; padding: 10px 12px; text-align: left; }
+.table th { color: #666; font-weight: 600; }
+.name { cursor: pointer; color: #1a1a1a; }
+.name:hover { color: #c9a227; }
+.runBtn { border: 1px solid #1a1a1a; background: #1a1a1a; color: #fff; border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.runBtn:disabled { opacity: .5; cursor: default; }
+.s_running { color: #c9821b; }
+.s_done { color: #1a7f37; }
+.s_failed { color: #b00020; }
+.s_none { color: #999; }
+.empty { text-align: center; color: #999; padding: 40px 0; }
