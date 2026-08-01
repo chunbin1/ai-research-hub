@@ -6,10 +6,14 @@ import ReportMarkdown from '../components/ReportMarkdown'
 import ChatPanel from '../components/ChatPanel'
 import styles from './ReaderPage.module.css'
 
+const CHAT_OPEN_KEY = 'reader.chatOpen'
+
 export default function ReaderPage() {
   const { id = '' } = useParams()
   const [markdown, setMarkdown] = useState('')
   const [error, setError] = useState('')
+  // 默认展开;收起状态记在 localStorage,换报告/刷新后保持
+  const [chatOpen, setChatOpen] = useState(() => localStorage.getItem(CHAT_OPEN_KEY) !== '0')
 
   useEffect(() => {
     api.getDocument(id)
@@ -39,6 +43,13 @@ export default function ReaderPage() {
     window.setTimeout(() => el.classList.remove('flash'), 1600)
   }
 
+  function toggleChat() {
+    setChatOpen(open => {
+      localStorage.setItem(CHAT_OPEN_KEY, open ? '0' : '1')
+      return !open
+    })
+  }
+
   if (error) {
     return (
       <div className={styles.errorPage}>
@@ -49,7 +60,7 @@ export default function ReaderPage() {
   }
 
   return (
-    <div className={styles.layout}>
+    <div className={`${styles.layout} ${chatOpen ? '' : styles.collapsed}`}>
       <aside className={styles.toc}>
         <Link to="/" className={styles.back}>← 全部报告</Link>
         <nav>
@@ -62,7 +73,16 @@ export default function ReaderPage() {
       <main className={styles.content} id="report-content">
         <ReportMarkdown markdown={markdown} />
       </main>
-      <aside className={styles.chat}>
+      <button
+        className={styles.chatToggle}
+        onClick={toggleChat}
+        aria-expanded={chatOpen}
+        aria-controls="chat-panel"
+        title={chatOpen ? '收起问答栏' : '展开问答栏'}
+      >
+        {chatOpen ? '›' : '‹'}
+      </button>
+      <aside className={styles.chat} id="chat-panel" inert={!chatOpen}>
         <ChatPanel docId={id} onCite={jump} />
       </aside>
     </div>
