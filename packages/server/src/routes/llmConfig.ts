@@ -144,11 +144,19 @@ export const llmConfigRoutes: FastifyPluginAsync = async (app) => {
         models: [body.model.trim()], apiKey: body.apiKey, source: 'user',
       }
     } else {
-      // 没给 key —— key 用库里存的那份,但 providerId/model/baseURL 以请求体
+      // 没给 key —— key 用库里存的那份,但 providerId/model 以请求体
       // (表单当前值)为准:用户点「测试连接」时最常见的操作是改了模型名还没保存,
       // 测的必须是屏幕上正在显示的值,而不是上一次保存的值。
       // 也不走 resolveLLMConfig 的 enabled 门槛 —— 配置只是被开关关掉时,
       // 测试连接应该照样可用,让用户能在重新打开开关前先验证。
+      //
+      // baseURL 是例外,不能一并放开:如果请求体能把 providerId 改成 custom
+      // 并塞一个任意 baseURL,库里存的 key(哪怕是智谱这类预置 provider 的)
+      // 就会被发到攻击者指定的公网主机 —— 明文 key 本来只在服务端内存里
+      // 短暂存在,从不回显给前端,这一下等于给 XSS 开了个取 key 的后门。
+      // 所以自定义端点只在库里存的本来就是 custom provider 时才认请求体的
+      // baseURL;否则必须显式带一把新 key,走上面 if (body.apiKey) 分支 ——
+      // 那是调用方自己的 key,爱指哪儿指哪儿。
       let stored
       try {
         stored = getStoredApiKey(user)
@@ -164,11 +172,21 @@ export const llmConfigRoutes: FastifyPluginAsync = async (app) => {
       const providerId = body.providerId?.trim() || row.provider
       const preset = getPreset(providerId)
       if (!preset) return reply.status(400).send({ ok: false, reason: '未知的 provider' })
+
+      if (preset.custom && row.provider !== 'custom') {
+        return reply.status(400).send({
+          ok: false,
+          reason: '切换到自定义 provider 前需要先填写并保存该端点对应的 API key',
+        })
+      }
+
       const model = body.model?.trim() || row.model
 
       let baseURL = preset.baseURL ?? undefined
       if (preset.custom) {
-        const raw = body.baseURL?.trim() || (row.provider === preset.id ? row.base_url ?? undefined : undefined)
+        // 走到这里已确保 row.provider === 'custom',请求体里的 baseURL
+        // 只是在改「用户自己这份 custom 配置」指向的端点,不是换成别人的。
+        const raw = body.baseURL?.trim() || row.base_url || undefined
         if (!raw) return reply.status(400).send({ ok: false, reason: '自定义 provider 必须填写 baseURL' })
         try {
           await assertPublicBaseURL(raw)

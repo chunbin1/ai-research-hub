@@ -11,11 +11,25 @@ vi.mock('../api', () => ({
 afterEach(() => { vi.unstubAllGlobals() })
 
 function stubFetchNotOk(status: number, body: unknown) {
+  // 真实的 Fastify 400 是带 body 的:配一个真的 ReadableStream(单个 chunk 装
+  // 编码后的 JSON),不然 mock 直接缺了 res.body,`if (!res.ok)` 判断前挂掉的
+  // 反而是 `if (!res.body) throw new Error('无响应流')`——测出来的是「没有响应
+  // 流」这个 mock 自身的缺陷,不是真正要防的 bug(旧代码会把这段 JSON 当 SSE
+  // 分片去读,split('\n\n') 只有一段、被 parts.pop() 吃掉,循环一次都不跑,
+  // 用户看到的是一个永远停在「…」的空气泡)。
+  const encoded = new TextEncoder().encode(JSON.stringify(body))
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoded)
+      controller.close()
+    },
+  })
   vi.stubGlobal('fetch', vi.fn(async () => ({
     ok: false,
     status,
+    body: stream,
     json: async () => body,
-  } as Response)))
+  } as unknown as Response)))
 }
 
 test('400 llm_config_invalid:预流式错误要显示 message,并带「模型设置」提示', async () => {
