@@ -149,7 +149,7 @@ export default function ReaderPage() {
         aria-expanded={chatOpen}
         aria-controls="chat-panel"
         title={chatOpen ? '收起问答栏' : '展开问答栏'}
-        className={`relative z-40 flex min-h-11 w-full flex-none cursor-pointer items-center justify-center border-t border-[#eee] bg-white text-sm text-[#555] pb-[env(safe-area-inset-bottom)] md:absolute md:top-1/2 md:z-5 md:h-15 md:w-[18px] md:-translate-y-1/2 md:rounded-l-lg md:border md:border-r-0 md:border-[#eee] md:bg-white md:p-0 md:text-[13px] md:leading-[1] md:text-[#999] md:transition-[right,color,background] md:duration-[240ms] md:ease-[ease] md:hover:bg-[#f3f3f0] md:hover:text-black motion-reduce:md:transition-none ${
+        className={`relative z-40 flex h-[calc(2.75rem+env(safe-area-inset-bottom))] w-full flex-none cursor-pointer items-center justify-center border-t border-[#eee] bg-white text-sm text-[#555] pb-[env(safe-area-inset-bottom)] md:absolute md:top-1/2 md:z-5 md:h-15 md:w-[18px] md:-translate-y-1/2 md:rounded-l-lg md:border md:border-r-0 md:border-[#eee] md:bg-white md:p-0 md:text-[13px] md:leading-[1] md:text-[#999] md:transition-[right,color,background] md:duration-[240ms] md:ease-[ease] md:hover:bg-[#f3f3f0] md:hover:text-black motion-reduce:md:transition-none ${
           chatOpen ? 'md:right-[360px]' : 'md:right-0'
         }`}
       >
