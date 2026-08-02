@@ -35,7 +35,7 @@ export default function HomePage() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-5 md:px-6 md:py-8">
       <header className="mb-7 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="m-0 text-2xl tracking-[2px]">研报站</h1>
+        <h1 className="m-0 text-[24px] tracking-[2px]">研报站</h1>
         <div className="flex flex-wrap items-center gap-3.5">
           {isAdmin && (
             <Link to="/traces" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
@@ -85,14 +85,14 @@ export default function HomePage() {
       <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
         {loading && Array.from({ length: 6 }, (_, i) => (
           <div key={i} className="rounded-xl border border-[#ececec] bg-white p-5" aria-hidden>
-            <div className="mb-4 h-[17px] w-4/5 animate-pulse rounded-md bg-[#eee] motion-reduce:animate-none" />
-            <div className="h-[13px] w-[45%] animate-pulse rounded-md bg-[#eee] motion-reduce:animate-none" />
+            <div className="mb-4 h-[17px] w-4/5 animate-skeleton rounded-md bg-[#eee] motion-reduce:animate-none" />
+            <div className="h-[13px] w-[45%] animate-skeleton rounded-md bg-[#eee] motion-reduce:animate-none" />
           </div>
         ))}
         {!loading && docs.map(d => (
           <article
             key={d.id}
-            className="group relative cursor-pointer rounded-xl border border-[#ececec] bg-white p-5 transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(0,0,0,.08)] motion-reduce:transition-none"
+            className="group relative cursor-pointer rounded-xl border border-[#ececec] bg-white p-5 transition-[box-shadow,transform] duration-150 ease-[ease] hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(0,0,0,.08)] motion-reduce:transition-none"
             onClick={() => navigate(`/reports/${d.id}`)}
           >
             <h2 className="mb-3 text-[17px] leading-[1.4]">{d.filename}</h2>

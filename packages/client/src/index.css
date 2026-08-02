@@ -8,6 +8,9 @@
   --color-gold-wash: #faf8f0;   /* chip / 额度底 */
   --color-gold-edge: #e7d9a8;   /* 额度 pill 描边 */
   --color-danger: #b00020;      /* 错误文字 / 删除按钮 */
+  /* 精确复刻迁移前的 @keyframes pulse:1.4s/ease-in-out/opacity 1→.45;
+     Tailwind 内置 animate-pulse 是 2s/cubic-bezier(0.4,0,0.6,1)/opacity 1→.5,时长、缓动、透明度谷值都不同 */
+  --animate-skeleton: skeleton 1.4s ease-in-out infinite;
 }
 
 @layer base {
@@ -61,4 +64,9 @@
 @keyframes flash {
   0% { background: #fff2b8; }
   100% { background: transparent; }
+}
+
+@keyframes skeleton {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
 }
