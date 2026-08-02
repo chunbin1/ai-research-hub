@@ -156,6 +156,8 @@ async function* streamOpenAICompatible(
 
 export async function* streamChat(opts: StreamChatOptions): AsyncGenerator<string> {
   const { config } = opts
+  // streamChat 是 async generator,下面这行日志要到调用方首次迭代(next())时才运行。
+  // 但调用方(routes/chat.ts)会立即用 for await 驱动,所以实际时机没变。
   logLlmRequest(opts.tag ?? 'chat', {
     model: config.models[0],
     system: opts.system,
