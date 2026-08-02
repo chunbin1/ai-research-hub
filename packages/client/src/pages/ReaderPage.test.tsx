@@ -41,6 +41,8 @@ function chatExpanded(): string | null {
   return chatToggle().getAttribute('aria-expanded')
 }
 
+const originalScrollTo = Element.prototype.scrollTo
+
 beforeEach(() => {
   localStorage.clear()
   // happy-dom 没实现元素级 scrollTo,补一个 spy
@@ -50,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   document.body.style.overflow = ''
+  Element.prototype.scrollTo = originalScrollTo
 })
 
 describe('ReaderPage — 问答栏初始状态', () => {
@@ -88,6 +91,9 @@ describe('ReaderPage — 点来源 chip 的溯源回链', () => {
 
     await waitFor(() => expect(chatExpanded()).toBe('false'))
     expect(Element.prototype.scrollTo).toHaveBeenCalled()
+
+    const sheet = document.querySelector('#chat-panel')
+    expect(sheet?.className).toContain('translate-y-full')
   })
 
   it('移动端:收面板不写 localStorage', async () => {
