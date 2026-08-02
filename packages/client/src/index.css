@@ -1,3 +1,90 @@
-:root { color-scheme: light; }
-* { box-sizing: border-box; }
-body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: #1a1a1a; background: #fafaf8; }
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #fafaf8;       /* body 底 */
+  --color-surface: #fbfbf9;     /* 侧栏 / 问答栏 / 移动顶栏 */
+  --color-gold: #c9a227;        /* 引用条、来源 chip 描边 */
+  --color-gold-ink: #8a6d1b;    /* chip / 额度文字 */
+  --color-gold-wash: #faf8f0;   /* chip / 额度底 */
+  --color-gold-edge: #e7d9a8;   /* 额度 pill 描边 */
+  --color-danger: #b00020;      /* 错误文字 / 删除按钮 */
+  /* 精确复刻迁移前的 @keyframes pulse:1.4s/ease-in-out/opacity 1→.45;
+     Tailwind 内置 animate-pulse 是 2s/cubic-bezier(0.4,0,0.6,1)/opacity 1→.5,时长、缓动、透明度谷值都不同 */
+  --animate-skeleton: skeleton 1.4s ease-in-out infinite;
+}
+
+@layer base {
+  :root { color-scheme: light; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #1a1a1a;
+    background: var(--color-paper);
+    /* preflight 把 html 的行高设成 1.5(迁移前是 UA 默认的 normal,在这套字体栈下渲染成
+       24px/16px)。凡是没有显式设置行高的元素都靠这条继承,所以在这里补回 normal;
+       真正需要特定行高的地方(.report-body / 气泡 leading-[…])都已经显式写了,不受影响。 */
+    line-height: normal;
+  }
+}
+
+@layer components {
+  /* 报告正文:react-markdown 输出原生标签,挂不上 utility class,只能用后代选择器。
+     这里大部分取值是从被删掉的 ReaderPage.module.css 原样搬过来的;
+     只有标题字号字重、列表项目符号、链接颜色,以及下面这些外边距,是专门用来抵消
+     Tailwind preflight 重置(font-weight: inherit / margin: 0 / list-style: none 等)的——
+     这几项对应的是「迁移前浏览器默认值」,不是模块 CSS 里写的数字。 */
+  .report-body { line-height: 1.75; }
+  .report-body h1 { font-size: 26px; font-weight: 700; margin: 0 0 20px; line-height: 1.35; }
+  .report-body h2 { font-size: 24px; font-weight: 700; margin-top: 32px; margin-bottom: 19.92px;
+                    border-bottom: 1px solid #eee; padding-bottom: 6px; }
+  .report-body h3 { font-size: 18.72px; font-weight: 700; margin-top: 24px; margin-bottom: 18.72px; }
+  .report-body h4 { font-size: 16px; font-weight: 700; margin: 21.28px 0; }
+  .report-body h5 { font-size: 13.28px; font-weight: 700; margin: 22.18px 0; }
+  .report-body h6 { font-size: 10.72px; font-weight: 700; margin: 24.98px 0; }
+  .report-body p { margin: 12px 0; }
+  .report-body a { color: #0969da; text-decoration: underline; }
+  .report-body ul { list-style: disc; padding-left: 22px; margin: 16px 0; }
+  .report-body ol { list-style: decimal; padding-left: 22px; margin: 16px 0; }
+  .report-body li { margin: 4px 0; }
+  .report-body code:not(pre code) { font-size: 13.33px; }
+  .report-body table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px;
+                       display: block; overflow-x: auto; }
+  .report-body th, .report-body td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; }
+  .report-body th { background: #f5f5f2; }
+  .report-body blockquote { border-left: 3px solid var(--color-gold); margin: 16px 0; padding: 4px 16px;
+                            color: #555; background: var(--color-gold-wash); }
+  .report-body pre { background: #f6f6f4; padding: 14px; border-radius: 8px; overflow-x: auto;
+                     font-size: 13px; line-height: 1.5; }
+  .report-body pre code { white-space: pre; font-family: "SF Mono", Menlo, Consolas, monospace; }
+  .report-body hr { border: none; border-top: 1px solid #eee; margin: 28px 0; }
+  .report-body :target { background: #fff6d6; transition: background 1.2s; }
+  .report-body .flash { animation: flash 1.6s ease; }
+
+  /* 问答气泡里的 assistant markdown,同样是原生标签 */
+  .chat-md p { margin: 6px 0; }
+  .chat-md a { color: #0969da; text-decoration: underline; }
+  .chat-md ul { list-style: disc; padding-left: 20px; margin: 6px 0; }
+  .chat-md ol { list-style: decimal; padding-left: 20px; margin: 6px 0; }
+  .chat-md li { margin: 2px 0; }
+  .chat-md strong { font-weight: 600; }
+  .chat-md code { background: #f0f0ed; border-radius: 4px; padding: 1px 4px; font-size: 13px; }
+  .chat-md h1 { font-size: 18px; font-weight: 600; margin: 8px 0; }
+  .chat-md h2 { font-size: 16px; font-weight: 600; margin: 8px 0; }
+  .chat-md h3 { font-size: 15px; font-weight: 600; margin: 8px 0; }
+  .chat-md h4, .chat-md h5, .chat-md h6 { font-size: 14px; font-weight: 600; margin: 8px 0; }
+  .chat-md blockquote { border-left: 3px solid var(--color-gold); margin: 8px 0; padding: 2px 10px; color: #555; }
+  .chat-md hr { border: none; border-top: 1px solid #eee; margin: 10px 0; }
+  .chat-md table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px;
+                   display: block; overflow-x: auto; }
+  .chat-md th, .chat-md td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+  .chat-md th { background: #f5f5f2; }
+}
+
+@keyframes flash {
+  0% { background: #fff2b8; }
+  100% { background: transparent; }
+}
+
+@keyframes skeleton {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
