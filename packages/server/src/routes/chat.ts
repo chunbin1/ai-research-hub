@@ -2,7 +2,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { streamChat, serverLLMConfig, describeLLMError } from '../llm.js'
 import { resolveLLMConfig, LLMConfigDecryptError } from '../services/llmConfigStore.js'
-import { assertPublicBaseURL, BaseURLRejectedError } from '../services/providerPresets.js'
+import { assertPublicBaseURL, getPreset, BaseURLRejectedError } from '../services/providerPresets.js'
 import { searchChunks, isDocVectorAvailable } from '../services/documentVector.js'
 import { getDocument } from '../services/documentStore.js'
 import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } from '../services/tracing.js'
@@ -64,8 +64,11 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       throw err
     }
 
-    // 每次调用前复检 baseURL —— 防 DNS rebinding(保存时解析到公网、调用时解析到内网)
-    if (config.source === 'user' && config.baseURL) {
+    // 每次调用前复检 baseURL —— 防 DNS rebinding(保存时解析到公网、调用时解析到内网)。
+    // 只对用户自填的 custom baseURL 复检:预置 provider 的端点是本仓库源码里的
+    // 编译期常量,攻击者没有可 rebind 的对象,复检只会白付一次 DNS 并把偶发的
+    // 解析抖动误报成「用户的 baseURL 有问题」。
+    if (config.source === 'user' && config.baseURL && getPreset(config.providerId)?.custom) {
       try {
         await assertPublicBaseURL(config.baseURL)
       } catch (err) {

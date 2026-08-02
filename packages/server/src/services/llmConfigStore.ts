@@ -122,6 +122,26 @@ export function upsertConfig(userId: string, input: ConfigInput): void {
 }
 
 /**
+ * 「测试连接」专用:只解密库里存的 key,不管 enabled 开关,也不决定
+ * providerId / model / baseURL —— 那几项测试连接要用请求体里的表单当前值
+ * (用户很可能刚改了模型名还没点保存),不是库里的旧值,交给调用方决定。
+ * 没配置过时返回 null,由调用方报「尚未配置自己的模型」。
+ */
+export function getStoredApiKey(user: User): { row: UserLLMConfigRow; apiKey: string } | null {
+  const row = getConfig(user.id)
+  if (!row) return null
+  try {
+    const apiKey = decryptSecret(row.key_cipher, user.id)
+    return { row, apiKey }
+  } catch (err) {
+    if (err instanceof SecretDecryptError || err instanceof SecretBoxUnavailableError) {
+      throw new LLMConfigDecryptError()
+    }
+    throw err
+  }
+}
+
+/**
  * 决定这次请求用谁的 key。调用方靠返回值的 `source` 判断要不要计限次 ——
  * 所以这个函数必须在限次预留**之前**调用。
  */

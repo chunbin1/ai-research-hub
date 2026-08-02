@@ -40,6 +40,7 @@ cp packages/server/.env.prod.example packages/server/.env.prod
 - `APP_URL` = `https://your-domain.example`(无尾斜杠)
 - `COOKIE_SECRET` = `openssl rand -hex 32` 生成
 - `AUTH_DISABLED` 保持 `false`(生产严禁开启——开了任何人都是无限管理员)
+- `LLM_KEY_SECRET` = `openssl rand -hex 32` 生成(留空则「自带模型」功能关闭,站点其余部分正常运行)
 
 ### 3. 服务器 + 域名 + Cloudflare
 - 一台可 SSH 的 Linux 服务器(VPS),已配好 SSH 免密 key(`ssh-copy-id user@IP`)。

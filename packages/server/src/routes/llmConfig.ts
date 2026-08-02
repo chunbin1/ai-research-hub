@@ -9,6 +9,7 @@ import {
   upsertConfig,
   deleteConfig,
   resolveLLMConfig,
+  getStoredApiKey,
   LLMConfigInputError,
   LLMConfigDecryptError,
   type ConfigInput,
@@ -143,24 +144,42 @@ export const llmConfigRoutes: FastifyPluginAsync = async (app) => {
         models: [body.model.trim()], apiKey: body.apiKey, source: 'user',
       }
     } else {
-      // 没给 key —— 试已保存的那份
+      // 没给 key —— key 用库里存的那份,但 providerId/model/baseURL 以请求体
+      // (表单当前值)为准:用户点「测试连接」时最常见的操作是改了模型名还没保存,
+      // 测的必须是屏幕上正在显示的值,而不是上一次保存的值。
+      // 也不走 resolveLLMConfig 的 enabled 门槛 —— 配置只是被开关关掉时,
+      // 测试连接应该照样可用,让用户能在重新打开开关前先验证。
+      let stored
       try {
-        config = resolveLLMConfig(user)
+        stored = getStoredApiKey(user)
       } catch (err) {
         if (err instanceof LLMConfigDecryptError) return reply.status(400).send({ ok: false, reason: err.message })
         throw err
       }
-      if (config.source === 'server') {
+      if (!stored) {
         return reply.status(400).send({ ok: false, reason: '尚未配置自己的模型' })
       }
-      if (config.baseURL) {
+      const { row, apiKey } = stored
+
+      const providerId = body.providerId?.trim() || row.provider
+      const preset = getPreset(providerId)
+      if (!preset) return reply.status(400).send({ ok: false, reason: '未知的 provider' })
+      const model = body.model?.trim() || row.model
+
+      let baseURL = preset.baseURL ?? undefined
+      if (preset.custom) {
+        const raw = body.baseURL?.trim() || (row.provider === preset.id ? row.base_url ?? undefined : undefined)
+        if (!raw) return reply.status(400).send({ ok: false, reason: '自定义 provider 必须填写 baseURL' })
         try {
-          await assertPublicBaseURL(config.baseURL)
+          await assertPublicBaseURL(raw)
         } catch (err) {
           if (err instanceof BaseURLRejectedError) return reply.status(400).send({ ok: false, reason: err.message })
           throw err
         }
+        baseURL = raw
       }
+
+      config = { kind: preset.kind, providerId: preset.id, baseURL, models: [model], apiKey, source: 'user' }
     }
 
     try {
