@@ -13,6 +13,7 @@ import { initTraceTables } from './services/traceStore.js'
 import { initUserTables } from './services/userStore.js'
 import { initUsageTable } from './services/usageStore.js'
 import { initChatTable } from './services/chatStore.js'
+import { initLLMConfigTable } from './services/llmConfigStore.js'
 import { initEvalTables, markStaleRunsFailed } from './services/evalStore.js'
 import { documentRoutes } from './routes/documents.js'
 import { chatRoutes } from './routes/chat.js'
@@ -37,6 +38,7 @@ initTraceTables(db)
 initUserTables(db)
 initUsageTable(db)
 initChatTable(db)
+initLLMConfigTable(db)
 initEvalTables(db)
 markStaleRunsFailed()
 await initDocCollection()
