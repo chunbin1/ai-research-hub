@@ -26,7 +26,7 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
       <div className="flex flex-none items-center justify-between border-b border-[#eee] p-4 font-semibold">
         问这篇报告
         {user && !user.unlimited && (
-          <span className="rounded-full border border-gold-edge bg-gold-wash px-2 py-0.5 text-xs text-gold-ink">
+          <span className="rounded-full border border-gold-edge bg-gold-wash px-2 py-0.5 text-[12px] text-gold-ink">
             剩余 {user.remaining}
           </span>
         )}
@@ -53,7 +53,7 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
                 {m.sources.map((s, j) => (
                   <button
                     key={j}
-                    className="cursor-pointer rounded-full border border-gold bg-gold-wash px-2.5 py-[3px] text-xs text-gold-ink hover:bg-[#f3ead0]"
+                    className="cursor-pointer rounded-full border border-gold bg-gold-wash px-2.5 py-[3px] text-[12px] text-gold-ink hover:bg-[#f3ead0]"
                     onClick={() => onCite(s.section_slug)}
                   >
                     来源 §{s.section_title || '引言'}
