@@ -21,7 +21,7 @@ export default function EvalDashboard() {
     <div className="mx-auto max-w-[1100px] px-4 py-5 md:px-6 md:py-7">
       <header className="mb-5 flex flex-wrap items-center gap-4">
         <Link to="/" className="text-[14px] text-[#555] hover:text-black">← 全部报告</Link>
-        <h1 className="m-0 text-[22px]">📊 检索质量评估</h1>
+        <h1 className="m-0 text-[22px] font-bold">📊 检索质量评估</h1>
       </header>
 
       <div className="mb-6 flex flex-wrap gap-3.5">

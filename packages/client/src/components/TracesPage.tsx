@@ -43,7 +43,7 @@ export function TracesPage() {
       {error && (
         <div className="mb-4 flex items-center gap-3 rounded bg-[#fee2e2] px-4 py-3 text-[#dc2626]">
           {error}
-          <button className="rounded border border-[#dc2626] bg-white px-2.5 py-1 text-[#dc2626] cursor-pointer" onClick={load}>重试</button>
+          <button className="rounded border border-[#dc2626] bg-white px-2.5 py-1 text-[13.33px] text-[#dc2626] cursor-pointer" onClick={load}>重试</button>
         </div>
       )}
 

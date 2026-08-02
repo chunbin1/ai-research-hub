@@ -79,7 +79,7 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
           />
           <button
             type="submit"
-            className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-[9px] text-white disabled:cursor-default disabled:opacity-50"
+            className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-[9px] text-[13.33px] text-white disabled:cursor-default disabled:opacity-50"
             disabled={streaming || !!outOfQuota || !input.trim()}
           >
             发送
@@ -89,7 +89,7 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
         <div className="flex flex-none flex-col items-center gap-2.5 border-t border-[#eee] px-4 py-5 text-[14px] text-[#666]">
           <span>登录后即可就本篇报告提问</span>
           <button
-            className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-[9px] text-white"
+            className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-[9px] text-[13.33px] text-white"
             onClick={login}
           >
             GitHub 登录

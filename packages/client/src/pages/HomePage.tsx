@@ -35,7 +35,7 @@ export default function HomePage() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-5 md:px-6 md:py-8">
       <header className="mb-7 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="m-0 text-[24px] tracking-[2px]">研报站</h1>
+        <h1 className="m-0 text-[24px] font-bold tracking-[2px]">研报站</h1>
         <div className="flex flex-wrap items-center gap-3.5">
           {isAdmin && (
             <Link to="/traces" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
@@ -95,7 +95,7 @@ export default function HomePage() {
             className="group relative cursor-pointer rounded-xl border border-[#ececec] bg-white p-5 transition-[box-shadow,transform] duration-150 ease-[ease] hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(0,0,0,.08)] motion-reduce:transition-none"
             onClick={() => navigate(`/reports/${d.id}`)}
           >
-            <h2 className="mb-3 text-[17px] leading-[1.4]">{d.filename}</h2>
+            <h2 className="mb-3 text-[17px] font-bold leading-[1.4]">{d.filename}</h2>
             <div className="flex gap-3 text-[13px] text-[#888]">
               <span>{new Date(d.created_at).toLocaleDateString('zh-CN')}</span>
               <span>{d.chunk_count} 段</span>

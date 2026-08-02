@@ -96,7 +96,12 @@ export default function ReaderPage() {
           aria-label="打开目录"
           aria-expanded={tocOpen}
           aria-controls="toc-drawer"
-          onClick={() => setTocOpen(true)}
+          onClick={() => {
+            setTocOpen(true)
+            // 抽屉和问答面板都是 z-30,叠在一起时下层够不着遮罩、也点不动——
+            // 打开抽屉的同时收起问答面板(仅移动端;不写 localStorage,与 jump() 一致)。
+            if (isMobile) setChatOpen(false)
+          }}
           className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-lg text-[#555]"
         >
           ☰
@@ -115,6 +120,7 @@ export default function ReaderPage() {
 
       <aside
         id="toc-drawer"
+        inert={isMobile && !tocOpen}
         className={`fixed inset-y-0 left-0 z-30 w-70 overflow-y-auto border-r border-[#eee] bg-surface px-3 py-5 transition-transform duration-[240ms] motion-reduce:transition-none md:static md:z-auto md:w-[240px] md:translate-x-0 md:transition-none ${
           tocOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
