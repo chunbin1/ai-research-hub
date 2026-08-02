@@ -48,7 +48,7 @@ export default function EvalDashboard() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse whitespace-nowrap text-[14px]">
+        <table className="w-full border-collapse whitespace-nowrap md:whitespace-normal text-[14px]">
           <thead>
             <tr>
               <th className={`${thtd} text-[#666] font-semibold`}>报告</th>
