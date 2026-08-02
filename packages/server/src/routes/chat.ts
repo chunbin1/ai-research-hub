@@ -1,6 +1,6 @@
 // packages/server/src/routes/chat.ts
 import type { FastifyPluginAsync } from 'fastify'
-import { streamChat, PROVIDER } from '../llm.js'
+import { streamChat, serverLLMConfig } from '../llm.js'
 import { searchChunks, isDocVectorAvailable } from '../services/documentVector.js'
 import { getDocument } from '../services/documentStore.js'
 import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } from '../services/tracing.js'
@@ -27,7 +27,7 @@ function estimateTokens(text: string): number {
 }
 
 export const chatRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/chat/health', async () => ({ status: 'ok', provider: PROVIDER }))
+  app.get('/chat/health', async () => ({ status: 'ok', provider: serverLLMConfig().providerId }))
 
   app.get<{ Querystring: { docId?: string } }>('/chat/messages', async (request, reply) => {
     const user = requireUser(request, reply)
@@ -101,12 +101,13 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
 
       // 3) 生成
       await withSpan('llm_generation', async () => {
-        spanMeta('provider', PROVIDER)
+        const config = serverLLMConfig()
+        spanMeta('provider', config.providerId)
         const t0 = performance.now()
         let firstAt = 0
         let out = ''
         try {
-          const stream = streamChat({ messages, system, tag: 'chat/stream' })
+          const stream = streamChat({ messages, system, tag: 'chat/stream', config })
           for await (const text of stream) {
             if (!firstAt) { firstAt = performance.now(); spanMeta('ttfbMs', Math.round(firstAt - t0)) }
             out += text
