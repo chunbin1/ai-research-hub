@@ -39,6 +39,18 @@ export default function SettingsPage() {
     if (ok) setApiKey('')
   }
 
+  // 开关只切换 enabled,提交已保存的配置值,不带 apiKey(省略即保留原密文),
+  // 也不动本地表单里可能还没保存的编辑内容
+  async function onToggleEnabled(enabled: boolean) {
+    if (!data?.config) return
+    await save({
+      providerId: data.config.providerId,
+      baseURL: data.config.baseURL ?? undefined,
+      model: data.config.model,
+      enabled,
+    })
+  }
+
   return (
     <div className="mx-auto max-w-[720px] px-4 py-5 md:px-6 md:py-8">
       <header className="mb-7 flex items-center justify-between gap-3">
@@ -72,7 +84,8 @@ export default function SettingsPage() {
           <input
             type="checkbox"
             checked={data.config.enabled}
-            onChange={e => void onSave(e.target.checked)}
+            disabled={saving}
+            onChange={e => void onToggleEnabled(e.target.checked)}
           />
           使用我自己的模型
           <span className="text-[13px] text-[#999]">
