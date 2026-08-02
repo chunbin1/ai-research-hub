@@ -21,7 +21,9 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
     void send(text).then(() => window.dispatchEvent(new Event('auth:refresh')))
   }
 
-  const outOfQuota = user && !user.unlimited && (user.remaining ?? 0) <= 0
+  // BYOK 用户消耗的是自己的 key,不占公共额度,不能被公共计数器挡住输入框,
+  // 所以只有当前仍在用公共 key(effective.source === 'server')时才检查额度。
+  const outOfQuota = user && !user.unlimited && effective?.source === 'server' && (user.remaining ?? 0) <= 0
 
   return (
     // h-full:高度由父级 aside 决定(移动 70dvh / 桌面撑满 grid 行)
