@@ -219,3 +219,38 @@ test('deleteConfig 后回落到站长默认', () => {
   assert.equal(getConfig('usr_1'), null)
   assert.equal(resolveLLMConfig(USER).source, 'server')
 })
+
+test('whitespace-only apiKey 更新时按省略处理,保留原密文', () => {
+  freshDb()
+  upsertConfig('usr_1', { providerId: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-user-123456' })
+  const before = getConfig('usr_1')!
+  // 只改模型,apiKey 传一串空白 —— 前端不会主动这么传,但请求体不受前端控制。
+  // 空白不该被当成「填了新 key」,必须和完全不传一样保留原密文。
+  upsertConfig('usr_1', { providerId: 'deepseek', model: 'deepseek-reasoner', apiKey: '   ' })
+  const after = getConfig('usr_1')!
+  assert.equal(after.key_cipher, before.key_cipher)
+  assert.equal(after.key_hint, before.key_hint)
+  assert.equal(resolveLLMConfig(USER).apiKey, 'sk-user-123456')
+})
+
+test('whitespace-only apiKey 首次创建时按省略处理,报「首次配置必须填写 API key」', () => {
+  freshDb()
+  assert.throws(
+    () => upsertConfig('usr_1', { providerId: 'deepseek', model: 'deepseek-chat', apiKey: '   ' }),
+    (err: unknown) => err instanceof LLMConfigInputError && err.message === '首次配置必须填写 API key',
+  )
+  assert.equal(getConfig('usr_1'), null)
+})
+
+test('whitespace-only apiKey 配合换 provider 仍然被换服务商的门槛拦下,不会绕过', () => {
+  freshDb()
+  upsertConfig('usr_1', { providerId: 'zhipu', model: 'glm-4-flash', apiKey: 'sk-zhipu-super-secret-000111' })
+  const before = getConfig('usr_1')!
+  assert.throws(
+    () => upsertConfig('usr_1', { providerId: 'deepseek', model: 'deepseek-chat', apiKey: '   ' }),
+    LLMConfigInputError,
+  )
+  const after = getConfig('usr_1')!
+  assert.equal(after.provider, 'zhipu')
+  assert.equal(after.key_cipher, before.key_cipher)
+})

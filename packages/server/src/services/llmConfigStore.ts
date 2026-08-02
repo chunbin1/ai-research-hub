@@ -79,6 +79,12 @@ export function upsertConfig(userId: string, input: ConfigInput): void {
   const model = input.model?.trim()
   if (!model) throw new LLMConfigInputError('模型名不能为空')
 
+  // 和其余字段一样要 trim;空白字符串是「视觉上像填了、实际等于没填」的
+  // 输入 —— 不 trim 的话它是 truthy,会被当成真的 key 加密存库,悄悄把用户
+  // 原来能用的 key 冲掉。trim 之后当作「省略了 apiKey」处理,走下面各处
+  // 「保留原密文」的分支。
+  const apiKey = input.apiKey?.trim() || undefined
+
   // 只有 custom 认 baseURL;其余一律存 NULL,运行时查预置表。
   // 这样用户改不了预置 provider 的端点,少一个 SSRF 面。
   let baseUrl: string | null = null
@@ -89,7 +95,7 @@ export function upsertConfig(userId: string, input: ConfigInput): void {
   }
 
   const existing = getConfig(userId)
-  if (!input.apiKey && !existing) throw new LLMConfigInputError('首次配置必须填写 API key')
+  if (!apiKey && !existing) throw new LLMConfigInputError('首次配置必须填写 API key')
 
   // 省略 apiKey 时会保留原密文。如果同时允许换 provider 或换 custom 端点,
   // 就等于把用户为「原服务商」填的 key 未经确认地发去一个新地方 —— PUT 这条
@@ -98,7 +104,7 @@ export function upsertConfig(userId: string, input: ConfigInput): void {
   // 所以只允许「模型改了、服务商和端点都没变」时省略 apiKey;
   // 这也是 enabled-only 开关切换(provider/baseURL/model 原样回传)依赖的路径,
   // 必须保留。
-  if (!input.apiKey && existing) {
+  if (!apiKey && existing) {
     const providerChanged = preset.id !== existing.provider
     const endpointChanged = baseUrl !== existing.base_url
     if (providerChanged || endpointChanged) {
@@ -107,8 +113,8 @@ export function upsertConfig(userId: string, input: ConfigInput): void {
   }
 
   const now = new Date().toISOString()
-  const cipher = input.apiKey ? encryptSecret(input.apiKey, userId) : existing!.key_cipher
-  const hint = input.apiKey ? keyHint(input.apiKey) : existing!.key_hint
+  const cipher = apiKey ? encryptSecret(apiKey, userId) : existing!.key_cipher
+  const hint = apiKey ? keyHint(apiKey) : existing!.key_hint
   const enabled = input.enabled ?? (existing ? existing.enabled === 1 : true)
 
   db().prepare(`

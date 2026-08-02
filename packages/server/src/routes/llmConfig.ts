@@ -78,6 +78,15 @@ export const llmConfigRoutes: FastifyPluginAsync = async (app) => {
     const body = request.body ?? {}
     if (!body.providerId) return reply.status(400).send({ error: 'invalid_input', message: '缺少 providerId' })
     if (!body.model) return reply.status(400).send({ error: 'invalid_input', message: '缺少 model' })
+    // apiKey/baseURL 若给了非字符串(比如 {"apiKey":123}),后面 encryptSecret /
+    // .trim() 会直接抛 Node 原生 TypeError —— 不是 LLMConfigInputError,
+    // 不会被下面的 catch 接住,原始报错会一路透给客户端。这里提前挡掉。
+    if (body.apiKey !== undefined && typeof body.apiKey !== 'string') {
+      return reply.status(400).send({ error: 'invalid_input', message: 'apiKey 必须是字符串' })
+    }
+    if (body.baseURL !== undefined && body.baseURL !== null && typeof body.baseURL !== 'string') {
+      return reply.status(400).send({ error: 'invalid_input', message: 'baseURL 必须是字符串' })
+    }
 
     const preset = getPreset(body.providerId)
     if (!preset) return reply.status(400).send({ error: 'invalid_input', message: `未知的 provider:${body.providerId}` })
@@ -150,12 +159,14 @@ export const llmConfigRoutes: FastifyPluginAsync = async (app) => {
       // 也不走 resolveLLMConfig 的 enabled 门槛 —— 配置只是被开关关掉时,
       // 测试连接应该照样可用,让用户能在重新打开开关前先验证。
       //
-      // baseURL 是例外,不能一并放开:如果请求体能把 providerId 改成 custom
-      // 并塞一个任意 baseURL,库里存的 key(哪怕是智谱这类预置 provider 的)
-      // 就会被发到攻击者指定的公网主机 —— 明文 key 本来只在服务端内存里
-      // 短暂存在,从不回显给前端,这一下等于给 XSS 开了个取 key 的后门。
-      // 所以自定义端点只在库里存的本来就是 custom provider 时才认请求体的
-      // baseURL;否则必须显式带一把新 key,走上面 if (body.apiKey) 分支 ——
+      // baseURL 是例外,不能一并放开:威胁模型是 XSS / 会话被盗 —— 这种情况下
+      // 「请求体」不等于「用户本人在编辑自己的表单」。如果这里认请求体里的
+      // baseURL,一个不带 apiKey、不带 providerId(默认落到 row.provider)的
+      // POST 就能把库里存的明文 key 发到攻击者指定的任意可解析公网主机 ——
+      // 明文 key 本来只在服务端内存里短暂存在,从不回显给前端,这一下等于
+      // 给 XSS 开了个取 key 的后门。所以不管库里存的是不是 custom provider,
+      // 省略 apiKey 时 baseURL 一律只认库里存的那份,忽略请求体;
+      // 要测一个新端点,必须显式带上 key,走上面 if (body.apiKey) 分支 ——
       // 那是调用方自己的 key,爱指哪儿指哪儿。
       let stored
       try {
@@ -184,9 +195,9 @@ export const llmConfigRoutes: FastifyPluginAsync = async (app) => {
 
       let baseURL = preset.baseURL ?? undefined
       if (preset.custom) {
-        // 走到这里已确保 row.provider === 'custom',请求体里的 baseURL
-        // 只是在改「用户自己这份 custom 配置」指向的端点,不是换成别人的。
-        const raw = body.baseURL?.trim() || row.base_url || undefined
+        // 不带 apiKey 时,baseURL 只信库里存的那份,请求体里的 baseURL 一律
+        // 忽略 —— 见上面的注释。
+        const raw = row.base_url || undefined
         if (!raw) return reply.status(400).send({ ok: false, reason: '自定义 provider 必须填写 baseURL' })
         try {
           await assertPublicBaseURL(raw)
