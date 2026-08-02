@@ -20,6 +20,7 @@ import { chatRoutes } from './routes/chat.js'
 import { traceRoutes } from './routes/traces.js'
 import { authRoutes } from './routes/auth.js'
 import { evalRoutes } from './routes/eval.js'
+import { llmConfigRoutes } from './routes/llmConfig.js'
 
 const app = Fastify({
   logger: { transport: { target: 'pino-pretty', options: { colorize: true } } },
@@ -48,6 +49,7 @@ await app.register(documentRoutes, { prefix: '/api' })
 await app.register(chatRoutes, { prefix: '/api' })
 await app.register(traceRoutes, { prefix: '/api' })
 await app.register(evalRoutes, { prefix: '/api' })
+await app.register(llmConfigRoutes, { prefix: '/api' })
 
 app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 
