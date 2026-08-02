@@ -44,10 +44,15 @@ export function useDocChat(docId: string) {
           const line = part.replace(/^data: /, '').trim()
           if (!line) continue
           const evt = JSON.parse(line) as
-            | { sources: Source[] } | { text: string } | { done: true } | { error: string }
+            | { sources: Source[] } | { text: string } | { done: true } | { error: string; code?: string }
           if ('sources' in evt) updateLast(m => ({ ...m, sources: evt.sources }))
           else if ('text' in evt) updateLast(m => ({ ...m, content: m.content + evt.text }))
-          else if ('error' in evt) updateLast(m => ({ ...m, content: m.content + `\n\n[出错] ${evt.error}` }))
+          else if ('error' in evt) {
+            const hint = evt.code === 'user_llm_failed'
+              ? '\n\n你自己的模型调用失败了,去「模型设置」检查 key 和模型名。'
+              : ''
+            updateLast(m => ({ ...m, content: `${m.content}\n\n[出错] ${evt.error}${hint}` }))
+          }
         }
       }
     } catch (err) {

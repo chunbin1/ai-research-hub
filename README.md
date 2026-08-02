@@ -13,7 +13,7 @@
 
 ```bash
 pnpm install
-cp packages/server/.env.example packages/server/.env   # 填入 ZHIPU_API_KEY
+cp packages/server/.env.example packages/server/.env   # 填入 ZHIPU_API_KEY;LLM_KEY_SECRET 可选,给 BYOK 用
 docker compose -f docker-compose.dev.yml up chroma -d   # 启动 ChromaDB(端口 8000)
 pnpm dev:server   # http://localhost:3001
 pnpm dev:client   # http://localhost:5173
@@ -29,6 +29,7 @@ pnpm dev:client   # http://localhost:5173
 - [x] 单篇 RAG 流式问答(SSE),严格基于当前报告作答
 - [x] 溯源回链:答案标注来源章节,点击跳回原文并高亮
 - [x] Trace 可观测:每次问答一棵 span 树(检索距离 / prompt / 各阶段耗时 / degraded·error),`/traces` 可视化 waterfall
+- [x] 用户自带模型(BYOK):设置页填自己的 API key + 选模型,自带 key 的提问豁免次数限制
 - [ ] 全库问答 / 上线部署(后续)
 
 ## Trace / 可观测
@@ -37,6 +38,18 @@ pnpm dev:client   # http://localhost:5173
 
 - `TRACING=off` — 整体关闭 trace(不落库)
 - `TRACE_CONTENT=off` — 只记结构与 metadata,不记 prompt / 检索正文(投研内容敏感时用)
+
+## 用户自带模型(BYOK)
+
+登录用户可在 `/settings` 填入自己的 API key 并指定模型,之后他的提问走自己的账号,
+豁免每人次数上限与全站总量上限。预置智谱 / OpenAI / Anthropic / DeepSeek / Moonshot,
+另有「自定义(OpenAI 兼容)」可填任意 https 端点(内网地址会被拒绝)。
+
+- key 用 AES-256-GCM 加密后存 SQLite,AAD 绑定 user_id;页面只回显脱敏片段
+- 需要设置 `LLM_KEY_SECRET`(`openssl rand -hex 32`);不设则该功能关闭,站点其余部分正常
+- **检索用的向量化始终走站长的 key** —— 文档索引和查询必须在同一向量空间,这点不可配置
+- 用户 key 失效时直接报错,不会静默回落到站长的 key
+- 换 `LLM_KEY_SECRET` 会让所有已存配置失效,处理步骤见 `docs/DEPLOY.md`
 
 ## 检索调参
 
