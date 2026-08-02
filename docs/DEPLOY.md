@@ -75,3 +75,21 @@ docker --context ai-research-hub compose -f docker-compose.prod.yml exec server 
 ## 密钥怎么到服务器
 `deploy.sh` 用本地 docker CLI 通过 SSH 操作远程 daemon;compose 读本地 `.env.prod` 把值作为
 环境变量注入远程容器。`.env.prod` 文件本身不离开你的机器、不进镜像、不进 git。
+
+## 更换 LLM_KEY_SECRET
+
+用户自带的 API key 用这把主密钥加密存在 `user_llm_configs` 表里。**本项目不做
+密钥轮转迁移** —— 换主密钥后所有旧密文都解不开。
+
+换密钥的完整步骤:
+
+1. 生成新密钥:`openssl rand -hex 32`
+2. 改服务器上的 `.env` 里的 `LLM_KEY_SECRET`
+3. 清空已有配置(否则用户会一直看到「配置已失效」):
+   ```sql
+   DELETE FROM user_llm_configs;
+   ```
+4. 重启服务,并通知用户重新填写自己的 key
+
+反过来,如果只是丢了密钥而库里还有数据,同样执行第 3 步即可 —— 那些密文已经
+永久不可恢复。
