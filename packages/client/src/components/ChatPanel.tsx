@@ -41,7 +41,7 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
             key={i}
             className={
               m.role === 'user'
-                ? 'max-w-[85%] self-end rounded-[12px_12px_2px_12px] bg-[#1a1a1a] px-3 py-2 text-sm text-white'
+                ? 'max-w-[85%] self-end rounded-[12px_12px_2px_12px] bg-[#1a1a1a] px-3 py-2 text-[14px] text-white'
                 : 'chat-md max-w-full self-start text-sm leading-[1.7]'
             }
           >
@@ -71,7 +71,7 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
           onSubmit={submit}
         >
           <input
-            className="flex-1 rounded-lg border border-[#ddd] px-3 py-2.5 text-sm"
+            className="flex-1 rounded-lg border border-[#ddd] px-3 py-[9px] text-[14px]"
             value={input}
             onChange={e => setInput(e.target.value)}
             placeholder={outOfQuota ? '次数已用完' : streaming ? '生成中…' : '输入问题,回车发送'}
@@ -79,17 +79,17 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
           />
           <button
             type="submit"
-            className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-2.5 text-white disabled:cursor-default disabled:opacity-50"
+            className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-[9px] text-white disabled:cursor-default disabled:opacity-50"
             disabled={streaming || !!outOfQuota || !input.trim()}
           >
             发送
           </button>
         </form>
       ) : (
-        <div className="flex flex-none flex-col items-center gap-2.5 border-t border-[#eee] px-4 py-5 text-sm text-[#666]">
+        <div className="flex flex-none flex-col items-center gap-2.5 border-t border-[#eee] px-4 py-5 text-[14px] text-[#666]">
           <span>登录后即可就本篇报告提问</span>
           <button
-            className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-2.5 text-white"
+            className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-[9px] text-white"
             onClick={login}
           >
             GitHub 登录
