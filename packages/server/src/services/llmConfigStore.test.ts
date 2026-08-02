@@ -162,6 +162,56 @@ test('LLM_KEY_SECRET 被移除导致 SecretBoxUnavailableError 时也抛 LLMConf
   }
 })
 
+test('更换 provider 时省略 apiKey 报 LLMConfigInputError,且不改动库里的密文', () => {
+  freshDb()
+  upsertConfig('usr_1', { providerId: 'zhipu', model: 'glm-4-flash', apiKey: 'sk-zhipu-super-secret-000111' })
+  const before = getConfig('usr_1')!
+  assert.throws(
+    () => upsertConfig('usr_1', { providerId: 'custom', baseURL: 'https://attacker.example.com/v1', model: 'glm-4-flash' }),
+    LLMConfigInputError,
+  )
+  const after = getConfig('usr_1')!
+  assert.equal(after.provider, 'zhipu')
+  assert.equal(after.key_cipher, before.key_cipher)
+})
+
+test('custom provider 更换 baseURL 时省略 apiKey 报 LLMConfigInputError', () => {
+  freshDb()
+  upsertConfig('usr_1', {
+    providerId: 'custom', baseURL: 'https://llm.example.com/v1',
+    model: 'my-model', apiKey: 'sk-user-123456',
+  })
+  assert.throws(
+    () => upsertConfig('usr_1', { providerId: 'custom', baseURL: 'https://attacker.example.com/v1', model: 'my-model' }),
+    LLMConfigInputError,
+  )
+  assert.equal(getConfig('usr_1')?.base_url, 'https://llm.example.com/v1')
+})
+
+test('只改模型、provider 和端点都不变时,省略 apiKey 仍然放行(设计承诺的场景)', () => {
+  freshDb()
+  upsertConfig('usr_1', {
+    providerId: 'custom', baseURL: 'https://llm.example.com/v1',
+    model: 'my-model', apiKey: 'sk-user-123456',
+  })
+  upsertConfig('usr_1', { providerId: 'custom', baseURL: 'https://llm.example.com/v1', model: 'my-model-v2' })
+  const cfg = resolveLLMConfig(USER)
+  assert.equal(cfg.apiKey, 'sk-user-123456')
+  assert.deepEqual(cfg.models, ['my-model-v2'])
+})
+
+test('仅切换 enabled(设置页开关)、provider/baseURL/model 原样回传,省略 apiKey 仍然放行', () => {
+  freshDb()
+  upsertConfig('usr_1', { providerId: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-user-123456' })
+  // 复刻 SettingsPage.onToggleEnabled 的调用形态:非 custom provider 时
+  // baseURL 传 `data.config.baseURL ?? undefined`,即 undefined 而非 null ——
+  // 库里存的却是 null,若比较不做同一套归一化处理容易在这里误判「端点变了」。
+  upsertConfig('usr_1', { providerId: 'deepseek', baseURL: undefined, model: 'deepseek-chat', enabled: false })
+  const row = getConfig('usr_1')!
+  assert.equal(row.enabled, 0)
+  assert.equal(row.provider, 'deepseek')
+})
+
 test('deleteConfig 后回落到站长默认', () => {
   freshDb()
   upsertConfig('usr_1', { providerId: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-user-123456' })

@@ -91,6 +91,21 @@ export function upsertConfig(userId: string, input: ConfigInput): void {
   const existing = getConfig(userId)
   if (!input.apiKey && !existing) throw new LLMConfigInputError('首次配置必须填写 API key')
 
+  // 省略 apiKey 时会保留原密文。如果同时允许换 provider 或换 custom 端点,
+  // 就等于把用户为「原服务商」填的 key 未经确认地发去一个新地方 —— PUT 这条
+  // 路径本身没有测试连接那种「用请求体新值探测」的语义,一旦落库,
+  // resolveLLMConfig 之后每次问答都会用旧 key 打新端点。
+  // 所以只允许「模型改了、服务商和端点都没变」时省略 apiKey;
+  // 这也是 enabled-only 开关切换(provider/baseURL/model 原样回传)依赖的路径,
+  // 必须保留。
+  if (!input.apiKey && existing) {
+    const providerChanged = preset.id !== existing.provider
+    const endpointChanged = baseUrl !== existing.base_url
+    if (providerChanged || endpointChanged) {
+      throw new LLMConfigInputError('更换服务商或端点时必须重新填写 API key')
+    }
+  }
+
   const now = new Date().toISOString()
   const cipher = input.apiKey ? encryptSecret(input.apiKey, userId) : existing!.key_cipher
   const hint = input.apiKey ? keyHint(input.apiKey) : existing!.key_hint

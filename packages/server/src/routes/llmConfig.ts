@@ -173,7 +173,7 @@ export const llmConfigRoutes: FastifyPluginAsync = async (app) => {
       const preset = getPreset(providerId)
       if (!preset) return reply.status(400).send({ ok: false, reason: '未知的 provider' })
 
-      if (preset.custom && row.provider !== 'custom') {
+      if (preset.custom && getPreset(row.provider)?.custom !== true) {
         return reply.status(400).send({
           ok: false,
           reason: '切换到自定义 provider 前需要先填写并保存该端点对应的 API key',

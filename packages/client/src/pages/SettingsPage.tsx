@@ -26,7 +26,14 @@ export default function SettingsPage() {
 
   const preset = data?.presets.find(p => p.id === providerId) ?? null
   const hasSavedKey = Boolean(data?.config)
-  const canSubmit = Boolean(providerId && model.trim() && (apiKey.trim() || hasSavedKey))
+  // 换了服务商,或者(自定义 provider 时)换了端点,服务端现在要求必须重填
+  // API key —— 省略 apiKey 只保留原密文,继续免填等于把老 key 发去新地方。
+  const providerChanged = hasSavedKey && providerId !== data!.config!.providerId
+  const endpointChanged = hasSavedKey && Boolean(preset?.custom) && baseURL.trim() !== (data!.config!.baseURL ?? '')
+  const requiresKeyForChange = providerChanged || endpointChanged
+  const canSubmit = Boolean(
+    providerId && model.trim() && (apiKey.trim() || (hasSavedKey && !requiresKeyForChange)),
+  )
 
   async function onSave(enabled?: boolean) {
     const ok = await save({
@@ -140,6 +147,9 @@ export default function SettingsPage() {
             placeholder={data?.config ? `已保存 ${data.config.keyHint},留空则不修改` : '填入你的 API key'}
             autoComplete="off"
           />
+          {requiresKeyForChange && !apiKey.trim() && (
+            <span className="text-[12px] text-danger">更换服务商或端点后,必须重新填写 API key。</span>
+          )}
         </label>
       </div>
 
