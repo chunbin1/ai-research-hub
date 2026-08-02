@@ -3,7 +3,6 @@ import { useNavigate, Link } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import type { Document } from '../types'
-import styles from './HomePage.module.css'
 
 export default function HomePage() {
   const [docs, setDocs] = useState<Document[]>([])
@@ -34,49 +33,87 @@ export default function HomePage() {
   }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <h1>研报站</h1>
-        <div className={styles.headerRight}>
-          {isAdmin && <Link to="/traces" className={styles.traceLink}>🔍 trace</Link>}
-          {isAdmin && <Link to="/eval" className={styles.traceLink}>📊 评估</Link>}
+    <div className="mx-auto max-w-[1100px] px-4 py-5 md:px-6 md:py-8">
+      <header className="mb-7 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="m-0 text-2xl tracking-[2px]">研报站</h1>
+        <div className="flex flex-wrap items-center gap-3.5">
           {isAdmin && (
-            <label className={styles.upload}>
+            <Link to="/traces" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
+              🔍 trace
+            </Link>
+          )}
+          {isAdmin && (
+            <Link to="/eval" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
+              📊 评估
+            </Link>
+          )}
+          {isAdmin && (
+            <label className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-[9px] text-[14px] text-white">
               {uploading ? '上传中…' : '+ 上传研报 (.md)'}
               <input ref={fileRef} type="file" accept=".md,.markdown,.txt" onChange={onFile} hidden />
             </label>
           )}
           {user ? (
-            <span className={styles.userBox}>
-              {user.avatarUrl && <img className={styles.avatar} src={user.avatarUrl} alt="" />}
-              <span className={styles.uname}>{user.username}</span>
-              {!user.unlimited && <span className={styles.quota}>剩余 {user.remaining}</span>}
-              <button className={styles.logout} onClick={() => void logout()}>登出</button>
+            <span className="flex items-center gap-2 text-[14px]">
+              {user.avatarUrl && <img className="h-[26px] w-[26px] rounded-full" src={user.avatarUrl} alt="" />}
+              <span className="text-[#333]">{user.username}</span>
+              {!user.unlimited && (
+                <span className="rounded-full border border-gold-edge bg-gold-wash px-2 py-0.5 text-[12px] text-gold-ink">
+                  剩余 {user.remaining}
+                </span>
+              )}
+              <button
+                className="cursor-pointer rounded-lg border border-[#ddd] bg-white px-3 py-[7px] text-[14px] hover:bg-[#f3f3f0]"
+                onClick={() => void logout()}
+              >
+                登出
+              </button>
             </span>
           ) : (
-            <button className={styles.loginBtn} onClick={login}>GitHub 登录</button>
+            <button
+              className="cursor-pointer rounded-lg border border-[#1a1a1a] bg-[#1a1a1a] px-3 py-[7px] text-[14px] text-white"
+              onClick={login}
+            >
+              GitHub 登录
+            </button>
           )}
         </div>
       </header>
-      {error && <div className={styles.error}>{error}</div>}
-      <div className={styles.grid}>
+
+      {error && <div className="mb-4 text-danger">{error}</div>}
+
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
         {loading && Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className={styles.skeleton} aria-hidden>
-            <div className={`${styles.bar} ${styles.barTitle}`} />
-            <div className={`${styles.bar} ${styles.barMeta}`} />
+          <div key={i} className="rounded-xl border border-[#ececec] bg-white p-5" aria-hidden>
+            <div className="mb-4 h-[17px] w-4/5 animate-pulse rounded-md bg-[#eee] motion-reduce:animate-none" />
+            <div className="h-[13px] w-[45%] animate-pulse rounded-md bg-[#eee] motion-reduce:animate-none" />
           </div>
         ))}
         {!loading && docs.map(d => (
-          <article key={d.id} className={styles.card} onClick={() => navigate(`/reports/${d.id}`)}>
-            <h2 className={styles.title}>{d.filename}</h2>
-            <div className={styles.meta}>
+          <article
+            key={d.id}
+            className="group relative cursor-pointer rounded-xl border border-[#ececec] bg-white p-5 transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:shadow-[0_6px_24px_rgba(0,0,0,.08)] motion-reduce:transition-none"
+            onClick={() => navigate(`/reports/${d.id}`)}
+          >
+            <h2 className="mb-3 text-[17px] leading-[1.4]">{d.filename}</h2>
+            <div className="flex gap-3 text-[13px] text-[#888]">
               <span>{new Date(d.created_at).toLocaleDateString('zh-CN')}</span>
               <span>{d.chunk_count} 段</span>
             </div>
-            {isAdmin && <button className={styles.del} onClick={e => onDelete(e, d.id)}>删除</button>}
+            {/* 触屏没有 hover:移动端常显,桌面维持「悬停才出现」的原样 */}
+            {isAdmin && (
+              <button
+                className="absolute right-3.5 top-3.5 cursor-pointer text-[12px] text-danger opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                onClick={e => onDelete(e, d.id)}
+              >
+                删除
+              </button>
+            )}
           </article>
         ))}
-        {!loading && docs.length === 0 && <p className={styles.empty}>还没有报告。</p>}
+        {!loading && docs.length === 0 && (
+          <p className="col-span-full py-15 text-center text-[#999]">还没有报告。</p>
+        )}
       </div>
     </div>
   )
