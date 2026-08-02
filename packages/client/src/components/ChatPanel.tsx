@@ -29,7 +29,7 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
       <div className={styles.messages}>
         {messages.length === 0 && <p className={styles.hint}>就当前报告提问,答案会标注来源章节。</p>}
         {messages.map((m, i) => (
-          <div key={i} className={m.role === 'user' ? styles.user : styles.assistant}>
+          <div key={i} className={m.role === 'user' ? styles.user : `${styles.assistant} chat-md`}>
             {m.role === 'assistant'
               ? <Markdown remarkPlugins={[remarkGfm]}>{m.content || '…'}</Markdown>
               : m.content}

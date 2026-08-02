@@ -70,7 +70,7 @@ export default function ReaderPage() {
           ))}
         </nav>
       </aside>
-      <main className={styles.content} id="report-content">
+      <main className={`${styles.content} report-body`} id="report-content">
         <ReportMarkdown markdown={markdown} />
       </main>
       <button
