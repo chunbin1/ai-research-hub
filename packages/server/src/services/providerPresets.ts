@@ -84,18 +84,80 @@ function isPrivateIPv4(ip: string): boolean {
   return false
 }
 
+/**
+ * 把 IPv6 地址展开成 8 个十六进制分组(数值)。
+ *
+ * 需要同时处理两种输入形态:
+ *   - 常规压缩形式,如 `::1`、`fe80::1`(可能含 `::` 压缩)
+ *   - 尾部内嵌点分十进制 IPv4 的形式,如 `::ffff:127.0.0.1`
+ * 注意 Node 的 WHATWG URL 解析器会把中括号字面量里的 v4-mapped 地址
+ * 序列化成纯十六进制分组形式(如 `::ffff:7f00:1`),两种形态都要能解析。
+ * 解析失败返回 null,调用方按保守拒绝处理。
+ */
+function expandIPv6Groups(raw: string): number[] | null {
+  let ip = raw
+
+  // 尾部内嵌点分十进制 IPv4:把它转换成两个十六进制分组,复用后面的通用展开逻辑
+  if (ip.includes('.')) {
+    const lastColonIdx = ip.lastIndexOf(':')
+    if (lastColonIdx === -1) return null
+    const v4 = ip.slice(lastColonIdx + 1)
+    const parts = v4.split('.').map(Number)
+    if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return null
+    const hex1 = (((parts[0] << 8) | parts[1]) >>> 0).toString(16)
+    const hex2 = (((parts[2] << 8) | parts[3]) >>> 0).toString(16)
+    ip = `${ip.slice(0, lastColonIdx + 1)}${hex1}:${hex2}`
+  }
+
+  const halves = ip.split('::')
+  if (halves.length > 2) return null // 非法:多个 ::
+
+  let groups: string[]
+  if (halves.length === 1) {
+    groups = ip.split(':')
+  } else {
+    const head = halves[0] ? halves[0].split(':') : []
+    const tail = halves[1] ? halves[1].split(':') : []
+    const fillCount = 8 - head.length - tail.length
+    if (fillCount < 0) return null
+    groups = [...head, ...Array(fillCount).fill('0'), ...tail]
+  }
+  if (groups.length !== 8) return null
+
+  const nums = groups.map(g => parseInt(g, 16))
+  if (nums.some(n => Number.isNaN(n) || n < 0 || n > 0xffff)) return null
+  return nums
+}
+
 /** 认不出的输入一律当作私网 —— 拒绝比放行安全。 */
 export function isPrivateAddress(ip: string): boolean {
   const version = isIP(ip)
   if (version === 4) return isPrivateIPv4(ip)
   if (version !== 6) return true
 
-  const lower = ip.toLowerCase()
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower)
-  if (mapped) return isPrivateIPv4(mapped[1])
-  if (lower === '::1' || lower === '::') return true
+  const groups = expandIPv6Groups(ip.toLowerCase())
+  if (!groups) return true // 解析失败,保守拒绝
 
-  const head = parseInt(lower.split(':')[0] || '0', 16)
+  // ::(全零,未指定地址)
+  if (groups.every(g => g === 0)) return true
+
+  // ::1(回环),按完整 8 分组比较,不依赖字符串分割
+  if (groups[0] === 0 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0 &&
+      groups[4] === 0 && groups[5] === 0 && groups[6] === 0 && groups[7] === 1) return true
+
+  // v4-mapped:::ffff:a.b.c.d,分组 0-4 全零、分组 5 为 0xffff,后两组还原成 IPv4 再复用现有判断
+  if (groups[0] === 0 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0 &&
+      groups[4] === 0 && groups[5] === 0xffff) {
+    const g6 = groups[6]
+    const g7 = groups[7]
+    const a = (g6 >> 8) & 0xff
+    const b = g6 & 0xff
+    const c = (g7 >> 8) & 0xff
+    const d = g7 & 0xff
+    return isPrivateIPv4(`${a}.${b}.${c}.${d}`)
+  }
+
+  const head = groups[0]
   if ((head & 0xfe00) === 0xfc00) return true    // fc00::/7  ULA
   if ((head & 0xffc0) === 0xfe80) return true    // fe80::/10 链路本地
   return false

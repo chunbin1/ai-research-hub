@@ -54,6 +54,20 @@ test('isPrivateAddress:公网 IPv6 放行', () => {
   assert.equal(isPrivateAddress('2001:4860:4860::8888'), false)
 })
 
+test('isPrivateAddress:v4-mapped 的十六进制分组形式(WHATWG URL 序列化结果)全部拒绝', () => {
+  // new URL('https://[::ffff:127.0.0.1]/').hostname 会被序列化成 [::ffff:7f00:1]
+  // 而不是保留点分十进制形式,必须按十六进制分组正确解析
+  for (const ip of [
+    '::ffff:7f00:1',   // ::ffff:127.0.0.1
+    '::ffff:a00:1',    // ::ffff:10.0.0.1
+    '::ffff:a9fe:a9fe', // ::ffff:169.254.169.254
+  ]) assert.equal(isPrivateAddress(ip), true, `${ip} 应被拒绝`)
+})
+
+test('isPrivateAddress:完全展开的 IPv6 回环地址拒绝', () => {
+  assert.equal(isPrivateAddress('0:0:0:0:0:0:0:1'), true)
+})
+
 test('isPrivateAddress:认不出的输入保守拒绝', () => {
   for (const s of ['', 'not-an-ip', '999.999.999.999']) {
     assert.equal(isPrivateAddress(s), true, `${s} 应保守拒绝`)
@@ -82,6 +96,28 @@ test('assertPublicBaseURL:字面量内网 IP 拒绝', async () => {
 
 test('assertPublicBaseURL:字面量公网 IP 放行', async () => {
   await assertPublicBaseURL('https://1.1.1.1/v1')
+})
+
+test('assertPublicBaseURL:v4-mapped IPv6 的中括号字面量拒绝(WHATWG URL 会序列化成十六进制分组,曾绕过正则)', async () => {
+  await assert.rejects(
+    () => assertPublicBaseURL('https://[::ffff:127.0.0.1]/v1'),
+    BaseURLRejectedError,
+    '::ffff:127.0.0.1(回环)应被拒绝',
+  )
+  await assert.rejects(
+    () => assertPublicBaseURL('https://[::ffff:10.0.0.1]/v1'),
+    BaseURLRejectedError,
+    '::ffff:10.0.0.1(RFC1918)应被拒绝',
+  )
+  await assert.rejects(
+    () => assertPublicBaseURL('https://[::ffff:169.254.169.254]/latest'),
+    BaseURLRejectedError,
+    '::ffff:169.254.169.254(云元数据端点)应被拒绝',
+  )
+})
+
+test('assertPublicBaseURL:公网 IPv6 中括号字面量放行(证明修复没有过度拦截)', async () => {
+  await assertPublicBaseURL('https://[2001:4860:4860::8888]/v1')
 })
 
 test('assertPublicBaseURL:http 与畸形 URL 也走同一个拒绝路径', async () => {
