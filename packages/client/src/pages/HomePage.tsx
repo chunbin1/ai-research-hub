@@ -53,6 +53,11 @@ export default function HomePage() {
               <input ref={fileRef} type="file" accept=".md,.markdown,.txt" onChange={onFile} hidden />
             </label>
           )}
+          {user && (
+            <Link to="/settings" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
+              ⚙️ 模型
+            </Link>
+          )}
           {user ? (
             <span className="flex items-center gap-2 text-[14px]">
               {user.avatarUrl && <img className="h-[26px] w-[26px] rounded-full" src={user.avatarUrl} alt="" />}
