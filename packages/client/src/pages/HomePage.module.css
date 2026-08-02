@@ -11,6 +11,12 @@
 .del { position: absolute; top: 14px; right: 14px; opacity: 0; border: none; background: none; color: #b00020; cursor: pointer; font-size: 12px; }
 .card:hover .del { opacity: 1; }
 .empty { color: #999; grid-column: 1 / -1; text-align: center; padding: 60px 0; }
+.skeleton { background: #fff; border: 1px solid #ececec; border-radius: 12px; padding: 20px; }
+.bar { background: #eee; border-radius: 6px; animation: pulse 1.4s ease-in-out infinite; }
+.barTitle { height: 17px; width: 80%; margin-bottom: 16px; }
+.barMeta { height: 13px; width: 45%; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .bar { animation: none; } }
 .headerRight { display: flex; align-items: center; gap: 14px; }
 .traceLink { color: #555; text-decoration: none; font-size: 14px; padding: 8px 12px; border: 1px solid #e0e0e0; border-radius: 8px; }
 .traceLink:hover { color: #000; background: #f3f3f0; }

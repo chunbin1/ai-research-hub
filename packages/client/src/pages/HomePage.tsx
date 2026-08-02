@@ -7,6 +7,7 @@ import styles from './HomePage.module.css'
 
 export default function HomePage() {
   const [docs, setDocs] = useState<Document[]>([])
+  const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -15,7 +16,7 @@ export default function HomePage() {
   const isAdmin = user?.isAdmin === true
 
   const refresh = () => api.listDocuments().then(setDocs).catch(e => setError(String(e.message)))
-  useEffect(() => { refresh() }, [])
+  useEffect(() => { refresh().finally(() => setLoading(false)) }, [])
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -59,7 +60,13 @@ export default function HomePage() {
       </header>
       {error && <div className={styles.error}>{error}</div>}
       <div className={styles.grid}>
-        {docs.map(d => (
+        {loading && Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className={styles.skeleton} aria-hidden>
+            <div className={`${styles.bar} ${styles.barTitle}`} />
+            <div className={`${styles.bar} ${styles.barMeta}`} />
+          </div>
+        ))}
+        {!loading && docs.map(d => (
           <article key={d.id} className={styles.card} onClick={() => navigate(`/reports/${d.id}`)}>
             <h2 className={styles.title}>{d.filename}</h2>
             <div className={styles.meta}>
@@ -69,7 +76,7 @@ export default function HomePage() {
             {isAdmin && <button className={styles.del} onClick={e => onDelete(e, d.id)}>删除</button>}
           </article>
         ))}
-        {docs.length === 0 && <p className={styles.empty}>还没有报告。</p>}
+        {!loading && docs.length === 0 && <p className={styles.empty}>还没有报告。</p>}
       </div>
     </div>
   )
