@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { NodeIndexOutlined, BarChartOutlined, SettingOutlined } from '@ant-design/icons'
+import { Avatar, Button, Empty, Modal, Upload } from 'antd'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import type { Document } from '../types'
@@ -10,7 +11,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const { user, login, logout } = useAuth()
   const isAdmin = user?.isAdmin === true
@@ -18,19 +18,22 @@ export default function HomePage() {
   const refresh = () => api.listDocuments().then(setDocs).catch(e => setError(String(e.message)))
   useEffect(() => { refresh().finally(() => setLoading(false)) }, [])
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function handleUpload(file: File) {
     setUploading(true); setError('')
     try { await api.uploadDocument(file); await refresh() }
     catch (err) { setError(err instanceof Error ? err.message : '上传失败') }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = '' }
+    finally { setUploading(false) }
   }
 
   async function onDelete(e: React.MouseEvent, id: string) {
     e.stopPropagation()
-    if (!confirm('删除这篇报告?')) return
-    await api.deleteDocument(id); await refresh()
+    Modal.confirm({
+      title: '删除这篇报告?',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => { await api.deleteDocument(id); await refresh() },
+    })
   }
 
   return (
@@ -39,49 +42,40 @@ export default function HomePage() {
         <h1 className="m-0 text-[24px] font-bold tracking-[2px]">研报站</h1>
         <div className="flex flex-wrap items-center gap-3.5">
           {isAdmin && (
-            <Link to="/traces" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
-              <NodeIndexOutlined aria-hidden /> trace
-            </Link>
+            <Link to="/traces"><Button icon={<NodeIndexOutlined />}>trace</Button></Link>
           )}
           {isAdmin && (
-            <Link to="/eval" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
-              <BarChartOutlined aria-hidden /> 评估
-            </Link>
+            <Link to="/eval"><Button icon={<BarChartOutlined />}>评估</Button></Link>
           )}
           {isAdmin && (
-            <label className="cursor-pointer rounded-lg bg-[#1a1a1a] px-4 py-[9px] text-[14px] text-white">
-              {uploading ? '上传中…' : '+ 上传研报 (.md)'}
-              <input ref={fileRef} type="file" accept=".md,.markdown,.txt" onChange={onFile} hidden />
-            </label>
+            <Upload
+              accept=".md,.markdown,.txt"
+              showUploadList={false}
+              beforeUpload={file => { void handleUpload(file); return false }}
+            >
+              <Button type="primary" loading={uploading}>
+                {uploading ? '上传中…' : '+ 上传研报 (.md)'}
+              </Button>
+            </Upload>
           )}
           {user && (
-            <Link to="/settings" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
-              <SettingOutlined aria-hidden /> 模型
-            </Link>
+            <Link to="/settings"><Button icon={<SettingOutlined />}>模型</Button></Link>
           )}
           {user ? (
             <span className="flex items-center gap-2 text-[14px]">
-              {user.avatarUrl && <img className="h-[26px] w-[26px] rounded-full" src={user.avatarUrl} alt="" />}
+              {user.avatarUrl
+                ? <Avatar size={26} src={user.avatarUrl} />
+                : <Avatar size={26}>{user.username.slice(0, 1).toUpperCase()}</Avatar>}
               <span className="text-[#333]">{user.username}</span>
               {!user.unlimited && (
                 <span className="rounded-full border border-gold-edge bg-gold-wash px-2 py-0.5 text-[12px] text-gold-ink">
                   剩余 {user.remaining}
                 </span>
               )}
-              <button
-                className="cursor-pointer rounded-lg border border-[#ddd] bg-white px-3 py-[7px] text-[14px] hover:bg-[#f3f3f0]"
-                onClick={() => void logout()}
-              >
-                登出
-              </button>
+              <Button onClick={() => void logout()}>登出</Button>
             </span>
           ) : (
-            <button
-              className="cursor-pointer rounded-lg border border-[#1a1a1a] bg-[#1a1a1a] px-3 py-[7px] text-[14px] text-white"
-              onClick={login}
-            >
-              GitHub 登录
-            </button>
+            <Button type="primary" onClick={login}>GitHub 登录</Button>
           )}
         </div>
       </header>
@@ -118,7 +112,9 @@ export default function HomePage() {
           </article>
         ))}
         {!loading && docs.length === 0 && (
-          <p className="col-span-full py-15 text-center text-[#999]">还没有报告。</p>
+          <div className="col-span-full py-15">
+            <Empty description="还没有研报" />
+          </div>
         )}
       </div>
     </div>
