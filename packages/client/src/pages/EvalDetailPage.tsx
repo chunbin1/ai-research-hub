@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Card, Empty } from 'antd'
 import { useEval } from '../hooks/useEval'
 import { BackLink } from '../components/BackLink'
 import type { EvalResultRow } from '../types'
@@ -29,8 +30,7 @@ export default function EvalDetailPage() {
         let sections: string[] = []
         try { sections = JSON.parse(r.retrieved_sections) } catch { /* ignore */ }
         return (
-          <div key={i} className="mb-3.5 rounded-xl border border-[#ececec] bg-white p-4">
-            <div className="mb-2 font-semibold">Q{i + 1}. {r.question}</div>
+          <Card key={i} size="small" className="mb-3.5" title={`Q${i + 1}. ${r.question}`}>
             <div className="mb-2.5 flex flex-wrap gap-3 text-[13px]">
               <span className={r.recall ? 'text-[#1a7f37]' : 'text-danger'}>召回 {pct(r.recall)}</span>
               <span>精确 {pct(r.precision)}</span><span>忠实 {pct(r.faithfulness)}</span><span>相关 {pct(r.relevancy)}</span>
@@ -39,10 +39,10 @@ export default function EvalDetailPage() {
             <div className="my-1.5 text-[14px] leading-[1.6]"><b className="mr-1 text-[#555]">检索到章节:</b>{sections.join(' / ') || '(无)'}</div>
             <div className="my-1.5 text-[14px] leading-[1.6]"><b className="mr-1 text-[#555]">AI 答案:</b>{r.answer}</div>
             {reason.precision && <div className="mt-2 border-t border-dashed border-[#eee] pt-2 text-[12px] text-[#888]">判分理由 — 精确:{reason.precision};忠实:{reason.faithfulness};相关:{reason.relevancy}</div>}
-          </div>
+          </Card>
         )
       })}
-      {results.length === 0 && <p className="text-[#999]">无明细</p>}
+      {results.length === 0 && <Empty description="无明细" />}
     </div>
   )
 }

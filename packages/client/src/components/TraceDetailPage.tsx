@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Descriptions, Tag } from 'antd'
 import { useTraces, type TraceDetail } from '../hooks/useTraces'
 import { SpanWaterfall } from './SpanWaterfall'
 import { BackLink } from './BackLink'
+import { statusTag } from './TraceList'
 
 export function TraceDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -42,13 +44,15 @@ export function TraceDetailPage() {
       <BackLink to="/traces" className="text-[13px] text-violet-600 no-underline hover:underline">返回列表</BackLink>
       <div className="mt-3">
         <h1 className="mb-2 font-mono text-[18px] font-bold text-gray-900">{trace.route}</h1>
-        <div className="flex flex-wrap gap-4 text-[13px] text-gray-600">
-          <span>状态：{trace.status}</span>
-          <span>总耗时：{trace.duration_ms}ms</span>
-          <span>span：{trace.span_count}</span>
-          <span>降级/错误：{trace.degraded_count}/{trace.error_count}</span>
-          <span>{new Date(trace.started_at).toLocaleString()}</span>
-        </div>
+        <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} className="mt-2">
+          <Descriptions.Item label="状态">
+            <Tag color={statusTag[trace.status].color}>{statusTag[trace.status].label}</Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="总耗时">{trace.duration_ms}ms</Descriptions.Item>
+          <Descriptions.Item label="span">{trace.span_count}</Descriptions.Item>
+          <Descriptions.Item label="降级/错误">{trace.degraded_count}/{trace.error_count}</Descriptions.Item>
+          <Descriptions.Item label="开始时间">{new Date(trace.started_at).toLocaleString()}</Descriptions.Item>
+        </Descriptions>
       </div>
       <SpanWaterfall spans={spans} totalMs={trace.duration_ms} />
     </div>
