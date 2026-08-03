@@ -46,7 +46,7 @@ export function TracesPage() {
         <Alert
           type="error"
           className="mb-4"
-          message={error}
+          title={error}
           action={<Button size="small" danger onClick={load}>重试</Button>}
         />
       )}

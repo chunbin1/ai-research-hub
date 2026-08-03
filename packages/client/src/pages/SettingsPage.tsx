@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { CheckCircleOutlined } from '@ant-design/icons'
 import { Form, Select, Input, Switch, Button, Alert } from 'antd'
 import { useLLMConfig } from '../hooks/useLLMConfig'
 import { BackLink } from '../components/BackLink'
@@ -70,12 +69,12 @@ export default function SettingsPage() {
           type="warning"
           showIcon
           className="mb-5"
-          message={<>服务端未配置 <code>LLM_KEY_SECRET</code>,自带模型功能不可用。请联系站点管理员。</>}
+          title={<>服务端未配置 <code>LLM_KEY_SECRET</code>,自带模型功能不可用。请联系站点管理员。</>}
         />
       )}
 
       {data?.configError && (
-        <Alert type="error" showIcon className="mb-5" message={data.configError} />
+        <Alert type="error" showIcon className="mb-5" title={data.configError} />
       )}
 
       <p className="mb-5 text-[13px] leading-[1.7] text-[#777]">
@@ -86,7 +85,7 @@ export default function SettingsPage() {
       </p>
 
       {data?.config && (
-        <div className="mb-6 flex items-center gap-2.5 text-[14px]">
+        <label className="mb-6 flex items-center gap-2.5 text-[14px]">
           <Switch
             checked={data.config.enabled}
             disabled={saving}
@@ -96,12 +95,13 @@ export default function SettingsPage() {
           <span className="text-[13px] text-[#999]">
             (关闭后回到公共额度,key 保留)
           </span>
-        </div>
+        </label>
       )}
 
       <Form layout="vertical">
-        <Form.Item label="服务商" className="mb-4">
+        <Form.Item label="服务商" htmlFor="settings-provider" className="mb-4">
           <Select
+            id="settings-provider"
             value={providerId}
             onChange={value => { setProviderId(value); setModel('') }}
             options={data?.presets.map(p => ({ value: p.id, label: p.label }))}
@@ -110,18 +110,20 @@ export default function SettingsPage() {
         </Form.Item>
 
         {preset?.custom && (
-          <Form.Item label="baseURL" className="mb-4">
+          <Form.Item label="baseURL" htmlFor="settings-base-url" className="mb-4">
             <Input
+              id="settings-base-url"
               value={baseURL}
               onChange={e => setBaseURL(e.target.value)}
               placeholder="https://your-endpoint.example.com/v1"
             />
-            <div className="mt-1 text-[12px] text-[#999]">必须是 https,且不能指向内网地址。</div>
+            <div className="mt-1.5 text-[12px] text-[#999]">必须是 https,且不能指向内网地址。</div>
           </Form.Item>
         )}
 
-        <Form.Item label="模型" className="mb-4">
+        <Form.Item label="模型" htmlFor="settings-model" className="mb-4">
           <Input
+            id="settings-model"
             value={model}
             onChange={e => setModel(e.target.value)}
             placeholder="模型名"
@@ -130,30 +132,31 @@ export default function SettingsPage() {
           <datalist id="model-suggestions">
             {preset?.suggestedModels.map(m => <option key={m} value={m} />)}
           </datalist>
-          <div className="mt-1 text-[12px] text-[#999]">下拉只是建议,可以直接填任意模型名。</div>
+          <div className="mt-1.5 text-[12px] text-[#999]">下拉只是建议,可以直接填任意模型名。</div>
         </Form.Item>
 
-        <Form.Item label="API key" className="mb-4">
+        <Form.Item label="API key" htmlFor="settings-api-key" className="mb-4">
           <Input.Password
+            id="settings-api-key"
             value={apiKey}
             onChange={e => setApiKey(e.target.value)}
             placeholder={data?.config ? `已保存 ${data.config.keyHint},留空则不修改` : '填入你的 API key'}
             autoComplete="off"
           />
           {requiresKeyForChange && !apiKey.trim() && (
-            <div className="mt-1 text-[12px] text-danger">更换服务商或端点后,必须重新填写 API key。</div>
+            <div className="mt-1.5 text-[12px] text-danger">更换服务商或端点后,必须重新填写 API key。</div>
           )}
         </Form.Item>
       </Form>
 
-      {error && <Alert type="error" showIcon className="mt-4" message={error} />}
+      {error && <Alert type="error" showIcon className="mt-4" title={error} />}
 
       {testResult && (
         <Alert
           className="mt-4"
           showIcon
           type={testResult.ok ? 'success' : 'error'}
-          message={testResult.ok ? <>连接正常 <CheckCircleOutlined aria-hidden /></> : `连接失败:${testResult.reason}`}
+          title={testResult.ok ? '连接正常' : `连接失败:${testResult.reason}`}
         />
       )}
 
