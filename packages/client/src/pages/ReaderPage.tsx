@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { MenuOutlined } from '@ant-design/icons'
 import { api } from '../api'
 import { extractToc } from '../lib/toc'
 import { useIsMobile } from '../hooks/useIsMobile'
 import ReportMarkdown from '../components/ReportMarkdown'
 import ChatPanel from '../components/ChatPanel'
+import { BackLink } from '../components/BackLink'
 
 const CHAT_OPEN_KEY = 'reader.chatOpen'
 
@@ -75,7 +77,7 @@ export default function ReaderPage() {
   if (error) {
     return (
       <div className="p-10">
-        <Link to="/" className="mb-4 block text-[14px] text-[#555] hover:text-black">← 全部报告</Link>
+        <BackLink to="/" className="mb-4 block text-[14px] text-[#555] hover:text-black">全部报告</BackLink>
         <p>{error}</p>
       </div>
     )
@@ -104,7 +106,7 @@ export default function ReaderPage() {
           }}
           className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-lg text-[#555]"
         >
-          ☰
+          <MenuOutlined />
         </button>
         <span className="truncate text-sm font-medium">{filename}</span>
       </header>
@@ -125,7 +127,7 @@ export default function ReaderPage() {
           tocOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <Link to="/" className="mb-4 block text-[14px] text-[#555] hover:text-black">← 全部报告</Link>
+        <BackLink to="/" className="mb-4 block text-[14px] text-[#555] hover:text-black">全部报告</BackLink>
         <nav>
           {toc.map((t, i) => (
             <a

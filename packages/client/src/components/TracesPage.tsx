@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import { NodeIndexOutlined } from '@ant-design/icons'
 import { useTraces } from '../hooks/useTraces'
 import { TraceList } from './TraceList'
 import { TraceStats } from './TraceStats'
+import { BackLink } from './BackLink'
 
 const controlClass = 'border border-gray-200 rounded px-2.5 py-1.5 text-[13px] bg-white cursor-pointer'
 
@@ -21,8 +23,8 @@ export function TracesPage() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-5 md:p-6">
       <header className="mb-5 flex flex-wrap items-center gap-4">
-        <Link to="/" className="text-[13px] text-violet-600 no-underline hover:underline">← 返回首页</Link>
-        <h1 className="m-0 text-[20px] font-bold text-gray-900">🔍 Traces</h1>
+        <BackLink to="/" className="text-[13px] text-violet-600 no-underline hover:underline">返回首页</BackLink>
+        <h1 className="m-0 text-[20px] font-bold text-gray-900"><NodeIndexOutlined aria-hidden /> Traces</h1>
         <div className="ml-auto flex gap-2">
           <select
             className={controlClass}

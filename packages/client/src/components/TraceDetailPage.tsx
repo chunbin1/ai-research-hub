@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useTraces, type TraceDetail } from '../hooks/useTraces'
 import { SpanWaterfall } from './SpanWaterfall'
+import { BackLink } from './BackLink'
 
 export function TraceDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -20,7 +21,7 @@ export function TraceDetailPage() {
   if (notFound) {
     return (
       <div className="mx-auto max-w-[1100px] px-4 py-5 md:p-6">
-        <Link to="/traces" className="text-[13px] text-violet-600 no-underline hover:underline">← 返回列表</Link>
+        <BackLink to="/traces" className="text-[13px] text-violet-600 no-underline hover:underline">返回列表</BackLink>
         <div className="p-12 text-center text-gray-400">trace 不存在</div>
       </div>
     )
@@ -29,7 +30,7 @@ export function TraceDetailPage() {
   if (!detail) {
     return (
       <div className="mx-auto max-w-[1100px] px-4 py-5 md:p-6">
-        <Link to="/traces" className="text-[13px] text-violet-600 no-underline hover:underline">← 返回列表</Link>
+        <BackLink to="/traces" className="text-[13px] text-violet-600 no-underline hover:underline">返回列表</BackLink>
         <div className="p-12 text-center text-gray-400">加载中…</div>
       </div>
     )
@@ -38,7 +39,7 @@ export function TraceDetailPage() {
   const { trace, spans } = detail
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-5 md:p-6">
-      <Link to="/traces" className="text-[13px] text-violet-600 no-underline hover:underline">← 返回列表</Link>
+      <BackLink to="/traces" className="text-[13px] text-violet-600 no-underline hover:underline">返回列表</BackLink>
       <div className="mt-3">
         <h1 className="mb-2 font-mono text-[18px] font-bold text-gray-900">{trace.route}</h1>
         <div className="flex flex-wrap gap-4 text-[13px] text-gray-600">

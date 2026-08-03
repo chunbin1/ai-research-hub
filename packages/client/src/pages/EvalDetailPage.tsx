@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useEval } from '../hooks/useEval'
+import { BackLink } from '../components/BackLink'
 import type { EvalResultRow } from '../types'
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
@@ -19,7 +20,7 @@ export default function EvalDetailPage() {
 
   return (
     <div className="mx-auto max-w-[860px] px-4 py-5 md:px-6 md:py-7">
-      <Link to="/eval" className="text-[14px] text-[#555]">← 评估列表</Link>
+      <BackLink to="/eval" className="text-[14px] text-[#555]">评估列表</BackLink>
       <h1 className="mt-3 mb-1.5 text-[22px] font-bold">评估明细</h1>
       <div className="mb-5 text-[#666]">{title}</div>
       {results.map((r, i) => {

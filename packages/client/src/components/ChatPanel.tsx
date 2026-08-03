@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { SettingOutlined } from '@ant-design/icons'
 import { useDocChat } from '../hooks/useDocChat'
 import { useAuth } from '../hooks/useAuth'
 import { useLLMConfig } from '../hooks/useLLMConfig'
@@ -46,7 +47,7 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
             <span className="font-mono">{effective.model}</span>
             <span>·</span>
             <span>{effective.source === 'user' ? '自带 key' : '公共额度'}</span>
-            <span className="text-[#ccc]">⚙</span>
+            <SettingOutlined aria-hidden className="text-[#ccc]" />
           </Link>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { NodeIndexOutlined, BarChartOutlined, SettingOutlined } from '@ant-design/icons'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import type { Document } from '../types'
@@ -39,12 +40,12 @@ export default function HomePage() {
         <div className="flex flex-wrap items-center gap-3.5">
           {isAdmin && (
             <Link to="/traces" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
-              🔍 trace
+              <NodeIndexOutlined aria-hidden /> trace
             </Link>
           )}
           {isAdmin && (
             <Link to="/eval" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
-              📊 评估
+              <BarChartOutlined aria-hidden /> 评估
             </Link>
           )}
           {isAdmin && (
@@ -55,7 +56,7 @@ export default function HomePage() {
           )}
           {user && (
             <Link to="/settings" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
-              ⚙️ 模型
+              <SettingOutlined aria-hidden /> 模型
             </Link>
           )}
           {user ? (

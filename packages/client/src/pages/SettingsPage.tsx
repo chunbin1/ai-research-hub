@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { CheckCircleOutlined } from '@ant-design/icons'
 import { useLLMConfig } from '../hooks/useLLMConfig'
+import { BackLink } from '../components/BackLink'
 
 const inputCls = 'w-full rounded-lg border border-[#ddd] px-3 py-[9px] text-[14px]'
 const btnCls = 'cursor-pointer rounded-lg border border-[#ddd] bg-white px-4 py-[9px] text-[14px] hover:bg-[#f3f3f0] disabled:cursor-not-allowed disabled:opacity-50'
@@ -62,9 +63,9 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-[720px] px-4 py-5 md:px-6 md:py-8">
       <header className="mb-7 flex items-center justify-between gap-3">
         <h1 className="m-0 text-[24px] font-bold tracking-[2px]">模型设置</h1>
-        <Link to="/" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
-          ← 返回
-        </Link>
+        <BackLink to="/" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
+          返回
+        </BackLink>
       </header>
 
       {!data?.available && (
@@ -157,7 +158,7 @@ export default function SettingsPage() {
 
       {testResult && (
         <div className={`mt-4 text-[14px] ${testResult.ok ? 'text-gold-ink' : 'text-danger'}`}>
-          {testResult.ok ? '连接正常 ✓' : `连接失败:${testResult.reason}`}
+          {testResult.ok ? <>连接正常 <CheckCircleOutlined aria-hidden /></> : `连接失败:${testResult.reason}`}
         </div>
       )}
 
