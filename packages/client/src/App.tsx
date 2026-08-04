@@ -5,6 +5,7 @@ import { TracesPage } from './components/TracesPage'
 import { TraceDetailPage } from './components/TraceDetailPage'
 import EvalDashboard from './pages/EvalDashboard'
 import EvalDetailPage from './pages/EvalDetailPage'
+import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
       <Route path="/traces/:id" element={<TraceDetailPage />} />
       <Route path="/eval" element={<EvalDashboard />} />
       <Route path="/eval/:docId" element={<EvalDetailPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
     </Routes>
   )
 }

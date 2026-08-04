@@ -1,5 +1,4 @@
 // packages/server/src/types.ts
-export type LLMProvider = 'anthropic' | 'zhipu'
 export type MessageRole = 'user' | 'assistant'
 
 export interface LLMMessage {
@@ -7,8 +6,27 @@ export interface LLMMessage {
   content: string
 }
 
+export type ProviderKind = 'openai' | 'anthropic'
+
+/**
+ * 一次生成调用要用的全部信息。streamChat 只认这个对象,不再读 process.env ——
+ * 这样"用站长的 key"和"用用户的 key"走的是同一条代码路径。
+ */
+export interface LLMConfig {
+  kind: ProviderKind
+  /** 'zhipu' | 'anthropic' | 'custom' | … 仅用于展示与 trace */
+  providerId: string
+  /** anthropic 原生时为空(用 SDK 默认端点) */
+  baseURL?: string
+  /** 站长默认可多个(配额耗尽时依次 fallback);用户配置恒为 1 个 */
+  models: string[]
+  apiKey: string
+  source: 'user' | 'server'
+}
+
 export interface StreamChatOptions {
   messages: LLMMessage[]
+  config: LLMConfig
   system?: string
   maxTokens?: number
   tag?: string

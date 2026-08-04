@@ -26,7 +26,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-echo "→ 部署到远程 context '$CONTEXT'(端口 ${CLIENT_PORT:-8080})..."
+# 显示用端口:与 compose 变量插值同源——shell 环境优先,其次仓库根 .env,最后默认值
+PORT_SHOWN="${CLIENT_PORT:-$(grep -E '^CLIENT_PORT=' .env 2>/dev/null | cut -d= -f2- || true)}"
+echo "→ 部署到远程 context '$CONTEXT'(端口 ${PORT_SHOWN:-8080})..."
 docker --context "$CONTEXT" compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
 
 echo

@@ -1,3 +1,5 @@
+import { Table, Tag } from 'antd'
+import type { ColumnsType } from 'antd/es/table'
 import type { TraceRecord, TraceStatus } from '../types'
 
 interface Props {
@@ -5,52 +7,32 @@ interface Props {
   onSelect: (id: string) => void
 }
 
-const statusLabel: Record<TraceStatus, string> = {
-  ok: '正常',
-  degraded: '降级',
-  error: '错误',
+export const statusTag: Record<TraceStatus, { color: string; label: string }> = {
+  ok:       { color: 'success', label: '正常' },
+  degraded: { color: 'warning', label: '降级' },
+  error:    { color: 'error',   label: '错误' },
 }
 
-const badgeClass: Record<TraceStatus, string> = {
-  ok: 'bg-[#dcfce7] text-[#16a34a]',
-  degraded: 'bg-[#fef3c7] text-[#d97706]',
-  error: 'bg-[#fee2e2] text-[#dc2626]',
-}
+const columns: ColumnsType<TraceRecord> = [
+  { title: '状态', dataIndex: 'status', render: (s: TraceStatus) => <Tag color={statusTag[s].color}>{statusTag[s].label}</Tag> },
+  { title: '路由', dataIndex: 'route', render: (v: string) => <span className="font-mono text-[12px]">{v}</span> },
+  { title: '耗时', dataIndex: 'duration_ms', render: (v: number) => `${v}ms` },
+  { title: 'span', dataIndex: 'span_count' },
+  { title: '降级/错误', key: 'dg', render: (_, t) => `${t.degraded_count}/${t.error_count}` },
+  { title: '时间', dataIndex: 'started_at', render: (v: string) => <span className="text-gray-400">{new Date(v).toLocaleString()}</span> },
+]
 
 export function TraceList({ traces, onSelect }: Props) {
-  if (traces.length === 0) {
-    return <div className="p-12 text-center text-gray-400">暂无 trace 记录</div>
-  }
   return (
-    // 横向滚动发生在组件内部,而不是整个 body
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[13px]">
-        <thead>
-          <tr className="[&>th]:border-b [&>th]:border-gray-200 [&>th]:px-3 [&>th]:py-2 [&>th]:text-left [&>th]:font-semibold [&>th]:whitespace-nowrap [&>th]:text-gray-600">
-            <th>状态</th><th>路由</th><th>耗时</th><th>span</th><th>降级/错误</th><th>时间</th>
-          </tr>
-        </thead>
-        <tbody>
-          {traces.map(t => (
-            <tr
-              key={t.id}
-              className="cursor-pointer border-b border-gray-100 hover:bg-gray-50 [&>td]:px-3 [&>td]:py-2 [&>td]:text-gray-900"
-              onClick={() => onSelect(t.id)}
-            >
-              <td>
-                <span className={`inline-block rounded px-2 py-0.5 text-[11px] font-semibold ${badgeClass[t.status]}`}>
-                  {statusLabel[t.status]}
-                </span>
-              </td>
-              <td className="font-mono text-[12px]">{t.route}</td>
-              <td className="whitespace-nowrap">{t.duration_ms}ms</td>
-              <td>{t.span_count}</td>
-              <td className="whitespace-nowrap">{t.degraded_count}/{t.error_count}</td>
-              <td className="whitespace-nowrap text-gray-400">{new Date(t.started_at).toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table
+      columns={columns}
+      dataSource={traces}
+      rowKey="id"
+      size="small"
+      pagination={false}
+      scroll={{ x: 'max-content' }}
+      onRow={t => ({ onClick: () => onSelect(t.id), style: { cursor: 'pointer' } })}
+      locale={{ emptyText: '暂无 trace 记录' }}
+    />
   )
 }

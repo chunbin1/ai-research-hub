@@ -1,6 +1,8 @@
 // packages/server/src/routes/chat.ts
 import type { FastifyPluginAsync } from 'fastify'
-import { streamChat, PROVIDER } from '../llm.js'
+import { streamChat, serverLLMConfig, describeLLMError } from '../llm.js'
+import { resolveLLMConfig, LLMConfigDecryptError } from '../services/llmConfigStore.js'
+import { assertPublicBaseURL, getPreset, BaseURLRejectedError } from '../services/providerPresets.js'
 import { searchChunks, isDocVectorAvailable } from '../services/documentVector.js'
 import { getDocument } from '../services/documentStore.js'
 import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } from '../services/tracing.js'
@@ -20,14 +22,14 @@ type SSE =
   | { sources: Array<{ section_title: string; section_slug: string; chunk_index: number }> }
   | { text: string }
   | { done: true }
-  | { error: string }
+  | { error: string; code?: string }
 
 function estimateTokens(text: string): number {
   return Math.ceil((text || '').length / 3)
 }
 
 export const chatRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/chat/health', async () => ({ status: 'ok', provider: PROVIDER }))
+  app.get('/chat/health', async () => ({ status: 'ok', provider: serverLLMConfig().providerId }))
 
   app.get<{ Querystring: { docId?: string } }>('/chat/messages', async (request, reply) => {
     const user = requireUser(request, reply)
@@ -50,7 +52,36 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
 
     const user = requireUser(request, reply)
     if (!user) return
-    if (user.is_admin !== 1) {
+
+    // 必须在限次预留之前拿到 config —— 自带 key 的请求根本不该占额度。
+    let config
+    try {
+      config = resolveLLMConfig(user)
+    } catch (err) {
+      if (err instanceof LLMConfigDecryptError) {
+        return reply.status(400).send({ error: 'llm_config_invalid', message: err.message })
+      }
+      throw err
+    }
+
+    // 每次调用前复检 baseURL —— 防 DNS rebinding(保存时解析到公网、调用时解析到内网)。
+    // 只对用户自填的 custom baseURL 复检:预置 provider 的端点是本仓库源码里的
+    // 编译期常量,攻击者没有可 rebind 的对象,复检只会白付一次 DNS 并把偶发的
+    // 解析抖动误报成「用户的 baseURL 有问题」。
+    if (config.source === 'user' && config.baseURL && getPreset(config.providerId)?.custom) {
+      try {
+        await assertPublicBaseURL(config.baseURL)
+      } catch (err) {
+        if (err instanceof BaseURLRejectedError) {
+          return reply.status(400).send({ error: 'invalid_base_url', message: err.message })
+        }
+        throw err
+      }
+    }
+
+    // 自带 key 花的是用户自己的钱,不计任何额度。
+    const metered = config.source === 'server' && user.is_admin !== 1
+    if (metered) {
       if (!tryReserveMessage(user.id)) {
         return reply.status(403).send({ error: 'message_limit_reached', scope: 'user', limit: MESSAGE_LIMIT })
       }
@@ -101,12 +132,14 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
 
       // 3) 生成
       await withSpan('llm_generation', async () => {
-        spanMeta('provider', PROVIDER)
+        spanMeta('provider', config.providerId)
+        spanMeta('llmSource', config.source)
+        spanMeta('model', config.models[0])
         const t0 = performance.now()
         let firstAt = 0
         let out = ''
         try {
-          const stream = streamChat({ messages, system, tag: 'chat/stream' })
+          const stream = streamChat({ messages, system, tag: 'chat/stream', config })
           for await (const text of stream) {
             if (!firstAt) { firstAt = performance.now(); spanMeta('ttfbMs', Math.round(firstAt - t0)) }
             out += text
@@ -118,15 +151,21 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
           send({ done: true })
         } catch (err) {
           app.log.error(err)
-          send({ error: err instanceof Error ? err.message : 'Unknown error' })
+          if (config.source === 'user') {
+            send({ error: describeLLMError(err), code: 'user_llm_failed' })
+          } else {
+            send({ error: err instanceof Error ? err.message : 'Unknown error' })
+          }
           throw err   // 让 withSpan 记为 error 状态
         } finally {
           try { reply.raw.end() } catch { /* already ended */ }
         }
       })
     }).catch(() => {
-      // 生成链路任一步失败(检索/落库/组装/生成):退还本次预留的配额,失败不计数
-      if (user.is_admin !== 1) { refundMessage(user.id); refundGlobal() }
+      // 生成链路任一步失败:退还本次预留的配额,失败不计数。
+      // 条件必须与上面 `metered` 完全一致 —— 否则自带 key 的用户每失败一次
+      // 就会 refundGlobal() 一次,把全站计数白白减掉。
+      if (metered) { refundMessage(user.id); refundGlobal() }
     })
   })
 }

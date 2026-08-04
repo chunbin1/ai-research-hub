@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { SettingOutlined } from '@ant-design/icons'
 import { useDocChat } from '../hooks/useDocChat'
 import { useAuth } from '../hooks/useAuth'
+import { useLLMConfig } from '../hooks/useLLMConfig'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -8,6 +11,8 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
   const { messages, send, streaming } = useDocChat(docId)
   const { user, login } = useAuth()
   const [input, setInput] = useState('')
+  const { data: llm } = useLLMConfig()
+  const effective = llm?.effective ?? null
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -17,18 +22,33 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
     void send(text).then(() => window.dispatchEvent(new Event('auth:refresh')))
   }
 
-  const outOfQuota = user && !user.unlimited && (user.remaining ?? 0) <= 0
+  // BYOK 用户消耗的是自己的 key,不占公共额度,不能被公共计数器挡住输入框,
+  // 所以只有当前仍在用公共 key(effective.source === 'server')时才检查额度。
+  const outOfQuota = user && !user.unlimited && effective?.source === 'server' && (user.remaining ?? 0) <= 0
 
   return (
     // h-full:高度由父级 aside 决定(移动 70dvh / 桌面撑满 grid 行)
     // w-full md:w-[360px] flex-none:桌面收起时父级列宽压到 0,靠固定宽度 + 不压缩保持面板整体滑出
     <div className="flex h-full w-full flex-none flex-col md:w-[360px]">
-      <div className="flex flex-none items-center justify-between border-b border-[#eee] p-4 font-semibold">
-        问这篇报告
-        {user && !user.unlimited && (
-          <span className="rounded-full border border-gold-edge bg-gold-wash px-2 py-0.5 text-[12px] text-gold-ink">
-            剩余 {user.remaining}
-          </span>
+      <div className="flex-none border-b border-[#eee]">
+        <div className="flex items-center justify-between p-4 pb-2 font-semibold">
+          问这篇报告
+          {user && !user.unlimited && effective?.source === 'server' && (
+            <span className="rounded-full border border-gold-edge bg-gold-wash px-2 py-0.5 text-[12px] text-gold-ink">
+              剩余 {user.remaining}
+            </span>
+          )}
+        </div>
+        {user && effective && (
+          <Link
+            to="/settings"
+            className="flex items-center gap-1.5 px-4 pb-2.5 text-[12px] text-[#999] hover:text-[#555]"
+          >
+            <span className="font-mono">{effective.model}</span>
+            <span>·</span>
+            <span>{effective.source === 'user' ? '自带 key' : '公共额度'}</span>
+            <SettingOutlined aria-hidden className="text-[#ccc]" />
+          </Link>
         )}
       </div>
 

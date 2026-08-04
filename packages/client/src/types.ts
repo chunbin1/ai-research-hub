@@ -87,3 +87,42 @@ export interface EvalResultRow {
   relevancy: number
   reasoning: string
 }
+
+export interface LLMPreset {
+  id: string
+  label: string
+  kind: 'openai' | 'anthropic'
+  suggestedModels: string[]
+  custom: boolean
+}
+
+export interface LLMConfigView {
+  providerId: string
+  baseURL: string | null
+  model: string
+  keyHint: string
+  enabled: boolean
+  updatedAt: string
+}
+
+export interface LLMEffective {
+  model: string
+  source: 'user' | 'server'
+  providerId: string
+}
+
+export interface LLMConfigResponse {
+  available: boolean
+  presets: LLMPreset[]
+  config: LLMConfigView | null
+  effective: LLMEffective | null
+  configError: string | null
+}
+
+export interface LLMSaveInput {
+  providerId: string
+  baseURL?: string
+  model: string
+  apiKey?: string
+  enabled?: boolean
+}
