@@ -118,8 +118,9 @@ export default function ReaderPage() {
           aria-controls="toc-drawer"
           onClick={() => {
             setTocOpen(true)
-            // 抽屉和问答面板都是 z-30,叠在一起时下层够不着遮罩、也点不动——
-            // 打开抽屉的同时收起问答面板(仅移动端;不写 localStorage,与 jump() 一致)。
+            // 目录抽屉与问答面板都是覆盖式浮层(antd Drawer),同时打开时上层的遮罩会
+            // 挡住下层——点不到下层内容,遮罩自身也点不掉。打开抽屉的同时收起问答面板
+            // (仅移动端;不写 localStorage,与 jump() 一致)。
             if (isMobile) setChatOpen(false)
           }}
           className="flex h-9 w-9 flex-none items-center justify-center rounded-lg text-lg text-[#555]"
@@ -135,8 +136,8 @@ export default function ReaderPage() {
         与移动端 Drawer 的挂载/卸载互不影响。
       */}
       <aside
-        id="toc-drawer"
-        className="hidden overflow-y-auto border-r border-[#eee] bg-surface md:block md:static md:z-auto md:w-[240px]"
+        id={isMobile ? undefined : 'toc-drawer'}
+        className="hidden overflow-y-auto border-r border-[#eee] bg-surface md:block md:w-[240px]"
       >
         {tocContent}
       </aside>
@@ -144,10 +145,12 @@ export default function ReaderPage() {
       {/* 移动端目录抽屉:antd Drawer 自带遮罩、滚动锁、开合动画与焦点管理 */}
       {isMobile && (
         <Drawer
+          id="toc-drawer"
           placement="left"
           open={tocOpen}
           onClose={() => setTocOpen(false)}
           width={240}
+          closable={false}
           styles={{ body: { padding: 0 } }}
           rootClassName="reader-toc-drawer"
         >
@@ -188,7 +191,7 @@ export default function ReaderPage() {
         真正挂载与否仍按 isMobile 二选一,避免移动端同时挂载出两份问答会话。
       */}
       <aside
-        id="chat-panel"
+        id={isMobile ? undefined : 'chat-panel'}
         inert={!chatOpen}
         className={`hidden flex-col overflow-hidden bg-surface md:static md:z-auto md:flex md:h-auto md:transition-none ${
           chatOpen ? 'md:border-l md:border-l-[#eee]' : ''
@@ -204,11 +207,13 @@ export default function ReaderPage() {
       */}
       {isMobile && (
         <Drawer
+          id="chat-panel"
           placement="bottom"
           open={chatOpen}
           onClose={() => setChatOpen(false)}
           height="70dvh"
-          styles={{ body: { padding: 0 } }}
+          closable={false}
+          styles={{ body: { padding: 0, overflow: 'hidden' } }}
           rootClassName="reader-chat-drawer"
         >
           <ChatPanel docId={id} onCite={jump} />
