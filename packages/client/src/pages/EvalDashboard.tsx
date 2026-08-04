@@ -84,6 +84,7 @@ export default function EvalDashboard() {
         size="small"
         pagination={false}
         scroll={{ x: 'max-content' }}
+        locale={{ emptyText: '暂无报告' }}
       />
     </div>
   )

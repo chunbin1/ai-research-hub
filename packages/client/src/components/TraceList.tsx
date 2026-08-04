@@ -32,6 +32,7 @@ export function TraceList({ traces, onSelect }: Props) {
       pagination={false}
       scroll={{ x: 'max-content' }}
       onRow={t => ({ onClick: () => onSelect(t.id), style: { cursor: 'pointer' } })}
+      locale={{ emptyText: '暂无 trace 记录' }}
     />
   )
 }

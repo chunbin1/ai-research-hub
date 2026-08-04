@@ -42,10 +42,10 @@ export default function HomePage() {
         <h1 className="m-0 text-[24px] font-bold tracking-[2px]">研报站</h1>
         <div className="flex flex-wrap items-center gap-3.5">
           {isAdmin && (
-            <Button icon={<NodeIndexOutlined />} onClick={() => navigate('/traces')}>trace</Button>
+            <Button icon={<NodeIndexOutlined aria-hidden />} onClick={() => navigate('/traces')}>trace</Button>
           )}
           {isAdmin && (
-            <Button icon={<BarChartOutlined />} onClick={() => navigate('/eval')}>评估</Button>
+            <Button icon={<BarChartOutlined aria-hidden />} onClick={() => navigate('/eval')}>评估</Button>
           )}
           {isAdmin && (
             <Upload
@@ -59,7 +59,7 @@ export default function HomePage() {
             </Upload>
           )}
           {user && (
-            <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>模型</Button>
+            <Button icon={<SettingOutlined aria-hidden />} onClick={() => navigate('/settings')}>模型</Button>
           )}
           {user ? (
             <span className="flex items-center gap-2 text-[14px]">
