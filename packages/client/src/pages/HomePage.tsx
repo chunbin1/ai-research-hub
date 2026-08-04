@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { NodeIndexOutlined, BarChartOutlined, SettingOutlined } from '@ant-design/icons'
 import { Avatar, Button, Empty, Modal, Upload } from 'antd'
 import { api } from '../api'
@@ -42,10 +42,10 @@ export default function HomePage() {
         <h1 className="m-0 text-[24px] font-bold tracking-[2px]">研报站</h1>
         <div className="flex flex-wrap items-center gap-3.5">
           {isAdmin && (
-            <Link to="/traces"><Button icon={<NodeIndexOutlined />}>trace</Button></Link>
+            <Button icon={<NodeIndexOutlined />} onClick={() => navigate('/traces')}>trace</Button>
           )}
           {isAdmin && (
-            <Link to="/eval"><Button icon={<BarChartOutlined />}>评估</Button></Link>
+            <Button icon={<BarChartOutlined />} onClick={() => navigate('/eval')}>评估</Button>
           )}
           {isAdmin && (
             <Upload
@@ -59,7 +59,7 @@ export default function HomePage() {
             </Upload>
           )}
           {user && (
-            <Link to="/settings"><Button icon={<SettingOutlined />}>模型</Button></Link>
+            <Button icon={<SettingOutlined />} onClick={() => navigate('/settings')}>模型</Button>
           )}
           {user ? (
             <span className="flex items-center gap-2 text-[14px]">
