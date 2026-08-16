@@ -2,14 +2,26 @@
 //
 // 生成侧的唯一入口。这里刻意不读 process.env —— 用哪把 key、哪个模型、哪个
 // 端点,全由调用方传进来的 LLMConfig 决定(见 services/llmConfigStore.ts)。
-// 站长默认配置由 serverLLMConfig() 从环境变量拼出来,和用户自带配置走同一条路。
+// 站长默认配置由 serverLLMConfig() 拼出来(库里的站点默认模型优先,回落环境
+// 变量),和用户自带配置走同一条路。
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import type { LLMConfig, StreamChatOptions } from './types.js'
 import { logLlmRequest } from './llmLog.js'
 import { markDegraded } from './services/tracing.js'
+import { getSetting, DEFAULT_MODEL_KEY } from './services/siteSettingsStore.js'
 
 const ZHIPU_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4/'
+
+/**
+ * 逗号分隔的降级链解析。.env 里可以配 `glm-4.7,glm-4-flash` —— 前一个报配额
+ * 错误时 withModelFallback 会切到后一个。解析结果为空时回落到内置默认,
+ * 避免 `ZHIPU_MODEL=` 这种空值把 models 变成空数组。
+ */
+function parseModels(raw: string | null | undefined, fallback: string): string[] {
+  const list = (raw ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  return list.length ? list : [fallback]
+}
 
 /** 站长默认配置。没配任何 key 时抛错 —— 调用时才抛,不在模块加载时炸掉整个进程。 */
 export function serverLLMConfig(): LLMConfig {
@@ -24,11 +36,15 @@ export function serverLLMConfig(): LLMConfig {
     throw new Error('No LLM provider configured. Set ANTHROPIC_API_KEY or ZHIPU_API_KEY in .env')
   }
 
+  // 站点默认模型:管理员在 /admin 改的值存在库里,优先级高于 .env。
+  // 库未初始化(单元测试)或没设过时 getSetting 返回 null,自然回落到 env。
+  const override = getSetting(DEFAULT_MODEL_KEY)
+
   if (provider === 'anthropic') {
     return {
       kind: 'anthropic',
       providerId: 'anthropic',
-      models: [process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-5'],
+      models: parseModels(override ?? process.env.ANTHROPIC_MODEL, 'claude-sonnet-4-5'),
       apiKey: process.env.ANTHROPIC_API_KEY ?? '',
       source: 'server',
     }
@@ -38,7 +54,7 @@ export function serverLLMConfig(): LLMConfig {
     kind: 'openai',
     providerId: 'zhipu',
     baseURL: ZHIPU_BASE_URL,
-    models: (process.env.ZHIPU_MODEL ?? 'glm-4-flash').split(',').map(s => s.trim()).filter(Boolean),
+    models: parseModels(override ?? process.env.ZHIPU_MODEL, 'glm-4-flash'),
     apiKey: process.env.ZHIPU_API_KEY ?? '',
     source: 'server',
   }

@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { withModelFallback, isQuotaError, describeLLMError, serverLLMConfig } from './llm.ts'
+import Database from 'better-sqlite3'
+import { initSiteSettingsTable, setSetting, deleteSetting, DEFAULT_MODEL_KEY } from './services/siteSettingsStore.ts'
 
 /** 造一个带 status 的错误,模拟 SDK 抛出的 HTTP 错误 */
 function httpError(status: number, message = 'boom'): Error {
@@ -109,4 +111,62 @@ test('serverLLMConfig:按 env 决定 provider,source 恒为 server', () => {
     for (const k of Object.keys(process.env)) if (!(k in snapshot)) delete process.env[k]
     Object.assign(process.env, snapshot)
   }
+})
+
+// serverLLMConfig 的模型来源优先级。
+// 注:node:test 每个测试文件跑在独立子进程里,这里对 process.env 和模块级
+// _db 的改动不会串到别的测试文件。
+function siteDb() {
+  initSiteSettingsTable(new Database(':memory:'))
+  process.env.ZHIPU_API_KEY = 'server-key'
+  delete process.env.ANTHROPIC_API_KEY
+  delete process.env.LLM_PROVIDER
+}
+
+test('serverLLMConfig:库里没有 override 时用 .env 的 ZHIPU_MODEL', () => {
+  siteDb()
+  deleteSetting(DEFAULT_MODEL_KEY)
+  process.env.ZHIPU_MODEL = 'glm-4.7'
+  assert.deepEqual(serverLLMConfig().models, ['glm-4.7'])
+})
+
+test('serverLLMConfig:.env 里的逗号降级链解析成多个模型', () => {
+  siteDb()
+  deleteSetting(DEFAULT_MODEL_KEY)
+  process.env.ZHIPU_MODEL = 'glm-4.7, glm-4-flash'
+  assert.deepEqual(serverLLMConfig().models, ['glm-4.7', 'glm-4-flash'])
+})
+
+test('serverLLMConfig:库里有 override 时优先于 .env', () => {
+  siteDb()
+  process.env.ZHIPU_MODEL = 'glm-4.7'
+  setSetting(DEFAULT_MODEL_KEY, 'glm-4.7-flash')
+  assert.deepEqual(serverLLMConfig().models, ['glm-4.7-flash'])
+})
+
+test('serverLLMConfig:override 是单个模型名时降级链只剩它自己', () => {
+  siteDb()
+  process.env.ZHIPU_MODEL = 'glm-4.7,glm-4-flash'
+  setSetting(DEFAULT_MODEL_KEY, 'glm-4.7-flash')
+  assert.deepEqual(serverLLMConfig().models, ['glm-4.7-flash'])
+})
+
+test('serverLLMConfig:ZHIPU_MODEL 是空串时回落到内置默认,不是空数组', () => {
+  siteDb()
+  deleteSetting(DEFAULT_MODEL_KEY)
+  process.env.ZHIPU_MODEL = ''
+  assert.deepEqual(serverLLMConfig().models, ['glm-4-flash'])
+})
+
+test('serverLLMConfig:anthropic 分支同样吃 override', () => {
+  initSiteSettingsTable(new Database(':memory:'))
+  process.env.ANTHROPIC_API_KEY = 'sk-ant'
+  process.env.LLM_PROVIDER = 'anthropic'
+  process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-5'
+  setSetting(DEFAULT_MODEL_KEY, 'claude-haiku-4-5-20251001')
+  const cfg = serverLLMConfig()
+  assert.equal(cfg.kind, 'anthropic')
+  assert.deepEqual(cfg.models, ['claude-haiku-4-5-20251001'])
+  delete process.env.ANTHROPIC_API_KEY
+  delete process.env.LLM_PROVIDER
 })
