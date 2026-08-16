@@ -8,6 +8,8 @@ export default function AdminPage() {
   const { user, loading: authLoading } = useAuth()
   const { data, loading, saving, error, saved, save, reset } = useSiteModel()
   const [model, setModel] = useState('')
+  // 输入框里的内容是否是还没保存/恢复的草稿,用来挡掉陈旧的「已保存/错误」提示
+  const [dirty, setDirty] = useState(false)
 
   // 首次拿到服务端值时填充;之后管理员的输入不再被覆盖
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function AdminPage() {
           <Input
             id="admin-model"
             value={model}
-            onChange={e => setModel(e.target.value)}
+            onChange={e => { setModel(e.target.value); setDirty(true) }}
             placeholder="模型名"
             list="site-model-suggestions"
           />
@@ -85,20 +87,25 @@ export default function AdminPage() {
         </Form.Item>
       </Form>
 
-      {error && <Alert type="error" showIcon className="mt-4" title={error} />}
-      {saved && !error && <Alert type="success" showIcon className="mt-4" title="已保存,下一次提问生效" />}
+      {!dirty && error && <Alert type="error" showIcon className="mt-4" title={error} />}
+      {!dirty && saved && !error && <Alert type="success" showIcon className="mt-4" title="已保存,下一次提问生效" />}
 
       <div className="mt-6 flex flex-wrap gap-3">
         <Button
           type="primary"
           autoInsertSpace={false}
           disabled={saving || !model.trim()}
-          onClick={() => void save(model.trim())}
+          onClick={() => void save(model.trim()).finally(() => setDirty(false))}
         >
           {saving ? '正在验证…' : '保存'}
         </Button>
         {data?.source === 'db' && (
-          <Button disabled={saving} onClick={() => void reset()}>
+          <Button
+            disabled={saving}
+            onClick={() => void reset()
+              .then(ok => { if (ok) setModel(data.envModel ?? '') })
+              .finally(() => setDirty(false))}
+          >
             恢复为 .env 默认
           </Button>
         )}

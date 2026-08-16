@@ -115,3 +115,36 @@ test('.env 里是降级链时给出会失效的提示', async () => {
   renderPage()
   expect(await screen.findByText(/降级链/)).toBeTruthy()
 })
+
+test('点击恢复为 .env 默认后,输入框回填为 .env 里的模型名,而不是停留在旧的覆盖值', async () => {
+  let deleted = false
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/auth/me') return { ok: true, json: async () => ADMIN } as Response
+    if (init?.method === 'DELETE') { deleted = true; return { ok: true, json: async () => ({ ok: true }) } as Response }
+    return { ok: true, json: async () => (deleted ? FROM_ENV : FROM_DB) } as Response
+  }))
+
+  const { container } = renderPage()
+  await waitFor(() => expect(modelInput(container)?.value).toBe('glm-4.7-flash'))
+  fireEvent.click(screen.getByRole('button', { name: '恢复为 .env 默认' }))
+  await waitFor(() => expect(modelInput(container)?.value).toBe('glm-4.7'))
+  // 顺带确认恢复按钮消失,防止管理员误以为还能再次「恢复」
+  expect(screen.queryByRole('button', { name: '恢复为 .env 默认' })).toBeNull()
+})
+
+test('保存成功后接着修改输入框,已保存提示应随之消失,不能让未保存的草稿看起来已生效', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/auth/me') return { ok: true, json: async () => ADMIN } as Response
+    if (init?.method === 'PUT') return { ok: true, json: async () => ({ ok: true }) } as Response
+    return { ok: true, json: async () => FROM_ENV } as Response
+  }))
+
+  const { container } = renderPage()
+  await waitFor(() => expect(modelInput(container)).toBeTruthy())
+  fireEvent.change(modelInput(container), { target: { value: 'glm-4.7-flash' } })
+  fireEvent.click(screen.getByRole('button', { name: '保存' }))
+  expect(await screen.findByText('已保存,下一次提问生效')).toBeTruthy()
+
+  fireEvent.change(modelInput(container), { target: { value: 'glm-4-flash' } })
+  await waitFor(() => expect(screen.queryByText('已保存,下一次提问生效')).toBeNull())
+})
