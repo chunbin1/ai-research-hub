@@ -30,6 +30,7 @@ pnpm dev:client   # http://localhost:5173
 - [x] 溯源回链:答案标注来源章节,点击跳回原文并高亮
 - [x] Trace 可观测:每次问答一棵 span 树(检索距离 / prompt / 各阶段耗时 / degraded·error),`/traces` 可视化 waterfall
 - [x] 用户自带模型(BYOK):设置页填自己的 API key + 选模型,自带 key 的提问豁免次数限制
+- [x] 站点默认模型切换:管理员在 /admin 改公共额度用的模型,保存前自动验证,改完即时生效不重启
 - [ ] 全库问答 / 上线部署(后续)
 
 ## Trace / 可观测
@@ -38,6 +39,21 @@ pnpm dev:client   # http://localhost:5173
 
 - `TRACING=off` — 整体关闭 trace(不落库)
 - `TRACE_CONTENT=off` — 只记结构与 metadata,不记 prompt / 检索正文(投研内容敏感时用)
+
+## 站点默认模型
+
+走公共额度的提问用哪个模型,管理员可以在 `/admin` 直接改(首页右上角「站点模型」),
+保存后下一次提问即生效,不用重启。付费套餐用完时切到 `glm-4.7-flash` 这类免费模型即可。
+
+- 值存在 SQLite 的 `site_settings` 表里,**优先级高于 `.env` 的 `ZHIPU_MODEL` / `ANTHROPIC_MODEL`**;
+  点「恢复为 .env 默认」删掉它就回到环境变量
+- 保存前会用站长的 key 对新模型名实际调一次(`max_tokens=1`),不通过不落库 ——
+  避免模型名填错把全站问答打挂
+- 这个页面**只改模型名**。服务商、baseURL、站长 API key 仍然只来自 `.env`,不进数据库,
+  因此该功能不依赖 `LLM_KEY_SECRET`
+- `.env` 里可以配逗号分隔的降级链(如 `ZHIPU_MODEL=glm-4.7,glm-4-flash`),前一个报配额不足时
+  自动切下一个;但一旦在 `/admin` 保存了单个模型名,降级链就不再生效
+- 自带 key(BYOK)的用户不受影响;评估模块有自己的模型常量,也不受影响
 
 ## 用户自带模型(BYOK)
 
