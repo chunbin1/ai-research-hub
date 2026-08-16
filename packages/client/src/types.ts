@@ -126,3 +126,16 @@ export interface LLMSaveInput {
   apiKey?: string
   enabled?: boolean
 }
+
+/** GET /api/site-model —— 站点默认模型(管理员)。 */
+export interface SiteModelResponse {
+  /** 站长未配任何 key 时为 null(此时 configError 非空) */
+  providerId: string | null
+  /** 下一次提问生效的模型配置,原始字符串;.env 配了降级链时形如 `a,b` */
+  model: string | null
+  /** db = 管理员在界面上覆盖过;env = 仍来自 .env */
+  source: 'db' | 'env'
+  envModel: string | null
+  suggestedModels: string[]
+  configError: string | null
+}
