@@ -14,6 +14,7 @@ import { initUserTables } from './services/userStore.js'
 import { initUsageTable } from './services/usageStore.js'
 import { initChatTable } from './services/chatStore.js'
 import { initLLMConfigTable } from './services/llmConfigStore.js'
+import { initSiteSettingsTable } from './services/siteSettingsStore.js'
 import { initEvalTables, markStaleRunsFailed } from './services/evalStore.js'
 import { documentRoutes } from './routes/documents.js'
 import { chatRoutes } from './routes/chat.js'
@@ -21,6 +22,7 @@ import { traceRoutes } from './routes/traces.js'
 import { authRoutes } from './routes/auth.js'
 import { evalRoutes } from './routes/eval.js'
 import { llmConfigRoutes } from './routes/llmConfig.js'
+import { siteSettingsRoutes } from './routes/siteSettings.js'
 
 const app = Fastify({
   logger: { transport: { target: 'pino-pretty', options: { colorize: true } } },
@@ -40,6 +42,7 @@ initUserTables(db)
 initUsageTable(db)
 initChatTable(db)
 initLLMConfigTable(db)
+initSiteSettingsTable(db)
 initEvalTables(db)
 markStaleRunsFailed()
 await initDocCollection()
@@ -50,6 +53,7 @@ await app.register(chatRoutes, { prefix: '/api' })
 await app.register(traceRoutes, { prefix: '/api' })
 await app.register(evalRoutes, { prefix: '/api' })
 await app.register(llmConfigRoutes, { prefix: '/api' })
+await app.register(siteSettingsRoutes, { prefix: '/api' })
 
 app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 

@@ -24,7 +24,7 @@ export const PRESETS: Preset[] = [
     label: '智谱 GLM',
     kind: 'openai',
     baseURL: 'https://open.bigmodel.cn/api/paas/v4/',
-    suggestedModels: ['glm-4.7', 'glm-4-flash'],
+    suggestedModels: ['glm-4.7-flash', 'glm-4.7', 'glm-4.6', 'glm-4-flash'],
   },
   {
     id: 'openai',
