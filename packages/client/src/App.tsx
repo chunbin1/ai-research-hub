@@ -6,6 +6,7 @@ import { TraceDetailPage } from './components/TraceDetailPage'
 import EvalDashboard from './pages/EvalDashboard'
 import EvalDetailPage from './pages/EvalDetailPage'
 import SettingsPage from './pages/SettingsPage'
+import AdminPage from './pages/AdminPage'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
       <Route path="/eval" element={<EvalDashboard />} />
       <Route path="/eval/:docId" element={<EvalDetailPage />} />
       <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/admin" element={<AdminPage />} />
     </Routes>
   )
 }

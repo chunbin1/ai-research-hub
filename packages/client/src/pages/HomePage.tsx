@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { NodeIndexOutlined, BarChartOutlined, SettingOutlined } from '@ant-design/icons'
+import { NodeIndexOutlined, BarChartOutlined, SettingOutlined, RobotOutlined } from '@ant-design/icons'
 import { Avatar, Button, Empty, Modal, Upload } from 'antd'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
@@ -41,6 +41,9 @@ export default function HomePage() {
       <header className="mb-7 flex flex-wrap items-center justify-between gap-3">
         <h1 className="m-0 text-[24px] font-bold tracking-[2px]">研报站</h1>
         <div className="flex flex-wrap items-center gap-3.5">
+          {isAdmin && (
+            <Button icon={<RobotOutlined aria-hidden />} onClick={() => navigate('/admin')}>站点模型</Button>
+          )}
           {isAdmin && (
             <Button icon={<NodeIndexOutlined aria-hidden />} onClick={() => navigate('/traces')}>trace</Button>
           )}
