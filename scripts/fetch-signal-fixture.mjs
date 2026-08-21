@@ -17,7 +17,9 @@ const adj = r.indicators.adjclose[0].adjclose
 
 const bars = []
 for (let i = 0; i < r.timestamp.length; i++) {
-  if (q.close[i] == null) continue
+  // 四个字段任缺其一就整根跳过 —— JS 里 null 参与算术会静默变成 0,
+  // 只挡 close 的话,adjclose 为 null 会让复权因子变 0、整根价格塌成 0。
+  if (q.close[i] == null || adj[i] == null || q.high[i] == null || q.low[i] == null) continue
   const date = new Date(r.timestamp[i] * 1000).toISOString().slice(0, 10)
   if (date > CUTOFF) continue
   const f = adj[i] / q.close[i]        // 复权因子

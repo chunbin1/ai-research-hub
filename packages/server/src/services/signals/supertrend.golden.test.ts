@@ -4,7 +4,10 @@
 // Yahoo 的 adjclose 会在两次请求之间发生 ~1e-7 量级的浮点抖动(实测同一天两次取数,
 // 1254 根里有 747 根不同),所以重新生成 fixture **会让本测试失败**。
 // 这是刻意的:fixture 变了就该有人来看一眼,而不是无脑重新基线化。
-// 真要重建 fixture,必须用独立实现交叉验算后再更新这里的期望值。
+// 真要重建 fixture,必须用独立实现交叉验算后再更新这里的期望值 ——
+// 仓库里就有一份:`scripts/verify-supertrend-reference.py`。它是照 Pine v6 语义
+// 直接写的 Python 实现,不是从本目录的 TS 移植的,所以拿它对账才叫交叉验算;
+// 跑 supertrend() 自己的输出来「验证」自己毫无意义。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
