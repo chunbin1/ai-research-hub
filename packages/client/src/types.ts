@@ -139,3 +139,41 @@ export interface SiteModelResponse {
   suggestedModels: string[]
   configError: string | null
 }
+
+export interface SignalSide {
+  trend: 1 | -1
+  barDate: string
+  stopLine: number
+  closeAdj: number
+  atr: number
+  distPct: number
+  flipDate: string | null
+  flipPrice: number | null
+  heldDays: number | null
+  sinceFlipPct: number | null
+}
+
+export interface SignalRow {
+  symbol: string
+  name: string | null
+  market: 'US' | 'HK'
+  currency: string | null
+  closeRaw: number | null
+  daily: SignalSide | null
+  weekly: SignalSide | null
+  divergent: boolean
+  flips90d: number
+  sourceDoc: { id: string; filename: string } | null
+  sourceText: string | null
+  enabled: boolean
+  status: 'ok' | 'invalid' | 'insufficient'
+  lastError: string | null
+  lastScanAt: string | null
+}
+
+export interface ScanSummary {
+  total: number
+  ok: number
+  failed: number
+  insufficient: number
+}

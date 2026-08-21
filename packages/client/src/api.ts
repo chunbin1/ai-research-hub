@@ -27,4 +27,27 @@ export const api = {
     if (!r.ok) return []
     return (await r.json()).messages
   },
+  async listSignals(): Promise<import('./types').SignalRow[]> {
+    const r = await fetch('/api/signals')
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '看板加载失败')
+    return (await r.json()).rows
+  },
+  async scanSignals(): Promise<import('./types').ScanSummary> {
+    const r = await fetch('/api/signals/scan', { method: 'POST' })
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '扫描失败')
+    return (await r.json()).summary
+  },
+  async extractWatchlist(): Promise<{ documents: number; symbols: string[] }> {
+    const r = await fetch('/api/signals/extract', { method: 'POST' })
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '抽取失败')
+    return r.json()
+  },
+  async setWatchlistEnabled(symbol: string, enabled: boolean): Promise<void> {
+    const r = await fetch(`/api/signals/watchlist/${encodeURIComponent(symbol)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+    if (!r.ok) throw new Error('操作失败')
+  },
 }
