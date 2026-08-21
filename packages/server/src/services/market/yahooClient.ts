@@ -97,15 +97,21 @@ export async function fetchDailyQuotes(symbol: string, deps: YahooDeps = {}): Pr
     rawClose[date] = close
   }
 
-  // 最后一根可能是进行中的当日 bar —— 未收盘的 SuperTrend 会随盘中价来回翻
-  const regularEnd = meta?.currentTradingPeriod?.regular?.end
-  const marketTime = meta?.regularMarketTime
+  // 最后一根可能是进行中的当日 bar —— 未收盘的 SuperTrend 会随盘中价来回翻。
+  //
+  // 判据:当前正处在交易时段内,且最后一根就是这个时段那天。
+  // **不要用 meta.regularMarketTime** —— 它是最近一次成交的时刻(收盘后就是上一场的
+  // 收盘时间),而 currentTradingPeriod 指的是今天这一场(开盘前描述的是尚未开始的那场)。
+  // 开盘前两者分属不同日期,混着比会把已经收盘的那根误删。
+  const regular = meta?.currentTradingPeriod?.regular
+  const nowSec = nowMs() / 1000
   if (
     bars.length > 0
-    && typeof regularEnd === 'number'
-    && typeof marketTime === 'number'
-    && nowMs() / 1000 < regularEnd
-    && bars[bars.length - 1].date === utcDate(marketTime)
+    && typeof regular?.start === 'number'
+    && typeof regular?.end === 'number'
+    && nowSec >= regular.start
+    && nowSec < regular.end
+    && bars[bars.length - 1].date === utcDate(regular.start)
   ) {
     const dropped = bars.pop()!
     delete rawClose[dropped.date]
