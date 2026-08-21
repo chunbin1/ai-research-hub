@@ -40,16 +40,32 @@ test('请求失败时记录错误,rows 保持空数组', async () => {
 })
 
 test('scan 期间 scanning 为 true,结束后自动刷新', async () => {
+  // 必须观察到**中途**的 true —— 只断言结束态的话,把 scanning 整个删掉测试照样绿,
+  // 而它存在的唯一理由就是驱动按钮的 loading 态。所以用一个闸门把 /scan 卡住。
   let scanned = false
-  stubFetch((url) => {
-    if (url.endsWith('/scan')) { scanned = true; return { body: { summary: { total: 1, ok: 1, failed: 0, insufficient: 0 } } } }
-    return { body: { rows: scanned ? [ALB, { ...ALB, symbol: 'SQM' }] : [ALB] } }
-  })
+  let releaseScan!: () => void
+  const scanGate = new Promise<void>(resolve => { releaseScan = resolve })
+
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.endsWith('/scan')) {
+      await scanGate
+      scanned = true
+      return { ok: true, json: async () => ({ summary: { total: 1, ok: 1, failed: 0, insufficient: 0 } }) } as Response
+    }
+    return { ok: true, json: async () => ({ rows: scanned ? [ALB, { ...ALB, symbol: 'SQM' }] : [ALB] }) } as Response
+  }))
+
   const { result } = renderHook(() => useSignals())
   await waitFor(() => expect(result.current.loading).toBe(false))
   expect(result.current.rows).toHaveLength(1)
+  expect(result.current.scanning).toBe(false)
 
-  await act(async () => { await result.current.scan() })
+  let pending!: Promise<void>
+  act(() => { pending = result.current.scan() })
+  await waitFor(() => expect(result.current.scanning).toBe(true))   // 中途态
+
+  releaseScan()
+  await act(async () => { await pending })
   await waitFor(() => expect(result.current.rows).toHaveLength(2))
   expect(result.current.scanning).toBe(false)
 })

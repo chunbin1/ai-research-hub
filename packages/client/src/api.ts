@@ -48,6 +48,6 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled }),
     })
-    if (!r.ok) throw new Error('操作失败')
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '操作失败')
   },
 }
