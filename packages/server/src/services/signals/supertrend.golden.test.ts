@@ -1,5 +1,10 @@
 // 真实历史数据回归基线。fixture 是冻结快照(截止 2026-08-20),不联网。
-// 期望值来自设计文档「参考输出」一节,由与 Pine 等价的参考实现算出。
+//
+// ⚠️ 期望值是从**已提交的这份 fixture** 算出来的,不是从「某次 Yahoo 请求」算出来的。
+// Yahoo 的 adjclose 会在两次请求之间发生 ~1e-7 量级的浮点抖动(实测同一天两次取数,
+// 1254 根里有 747 根不同),所以重新生成 fixture **会让本测试失败**。
+// 这是刻意的:fixture 变了就该有人来看一眼,而不是无脑重新基线化。
+// 真要重建 fixture,必须用独立实现交叉验算后再更新这里的期望值。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -17,7 +22,7 @@ test('ALB 5 年日线:序列长度与预热边界', () => {
   const pts = supertrend(bars, { period: 10, mult: 3 })
   assert.equal(pts.length, 1245)          // 1254 - (period - 1)
   assert.equal(pts[0].date, '2021-09-03')
-  near(pts[0].atr, 7.386700702482514, '首点 ATR')
+  near(pts[0].atr, 7.386699176133493, '首点 ATR')
 })
 
 test('ALB 5 年日线:末根状态', () => {
@@ -25,9 +30,9 @@ test('ALB 5 年日线:末根状态', () => {
   const last = pts[pts.length - 1]
   assert.equal(last.date, '2026-08-20')
   assert.equal(last.trend, 1)
-  near(last.up, 119.36452899657336, '末根 up')
-  near(last.dn, 145.7954382856291, '末根 dn')
-  near(last.atr, 5.021823769534143, '末根 ATR')
+  near(last.up, 119.36452899658198, '末根 up')
+  near(last.dn, 145.79543828561287, '末根 dn')
+  near(last.atr, 5.0218237695312675, '末根 ATR')
 })
 
 test('ALB 5 年日线:翻转序列', () => {
