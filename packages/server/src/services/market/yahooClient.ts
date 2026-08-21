@@ -74,7 +74,12 @@ export async function fetchDailyQuotes(symbol: string, deps: YahooDeps = {}): Pr
   const result = payload?.chart?.result?.[0]
   const quote = result?.indicators?.quote?.[0]
   const adjclose = result?.indicators?.adjclose?.[0]?.adjclose
-  if (!result || !Array.isArray(result.timestamp) || !quote || !Array.isArray(adjclose)) {
+  if (
+    !result || !Array.isArray(result.timestamp) || !quote || !Array.isArray(adjclose)
+    || !Array.isArray(quote.high) || !Array.isArray(quote.low) || !Array.isArray(quote.close)
+  ) {
+    // 在边界一次性拒掉,后面就不会抛裸 TypeError —— 调用方按 YahooError.kind
+    // 分流的容错逻辑才不会被绕过(单只票失败不该升级成整批崩溃)。
     throw new YahooError(`${symbol}: 响应结构不符合预期`, 'bad_response')
   }
 
@@ -85,13 +90,17 @@ export async function fetchDailyQuotes(symbol: string, deps: YahooDeps = {}): Pr
   for (let i = 0; i < result.timestamp.length; i++) {
     const close = quote.close[i]
     const adj = adjclose[i]
-    if (close == null || adj == null) continue      // 停牌日
+    const high = quote.high[i]
+    const low = quote.low[i]
+    // 四个字段任缺其一就整根跳过 —— JS 里 null 参与算术会静默变 0,
+    // 只挡 close 的话,high/low 为 null 会让整根价格塌成 0 流进引擎。
+    if (close == null || adj == null || high == null || low == null) continue
     const date = utcDate(result.timestamp[i])
     const factor = adj / close
     bars.push({
       date,
-      high: quote.high[i] * factor,
-      low: quote.low[i] * factor,
+      high: high * factor,
+      low: low * factor,
       close: adj,
     })
     rawClose[date] = close

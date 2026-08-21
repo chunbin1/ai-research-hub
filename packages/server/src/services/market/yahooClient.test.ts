@@ -116,6 +116,31 @@ test('close 为 null 的停牌日整根跳过', async () => {
   assert.deepEqual(s.bars.map(b => b.date), ['2026-08-18', '2026-08-20'])
 })
 
+test('high 或 low 单独为 null 的一根也跳过,不能塌成 0', async () => {
+  // JS 里 null * factor === 0。只挡 close 的话,这一根会带着 high=0 / low=0
+  // 流进引擎,而 0 会把 SuperTrend 的止损线直接拖到地板上。
+  const payload = fakePayload({ closes: [100, 101, 102], session: sessionOn(2) })
+  const payloadAny = payload as any
+  payloadAny.chart.result[0].indicators.quote[0].high[1] = null
+  const s = await fetchDailyQuotes('ALB', {
+    fetchImpl: okFetch(payloadAny) as unknown as typeof fetch,
+    nowMs: () => (sessionOn(2).end + 3600) * 1000,
+  })
+  assert.deepEqual(s.bars.map(b => b.date), ['2026-08-18', '2026-08-20'])
+  assert.ok(s.bars.every(b => b.high > 0 && b.low > 0))
+})
+
+test('响应缺少 high/low/close 数组时抛 bad_response,而不是裸 TypeError', async () => {
+  // 调用方靠 YahooError.kind 分流(单只票失败不该升级成整批崩溃),
+  // 所以结构畸形必须在边界就转成 YahooError。
+  const payload = fakePayload({ closes: [100, 101], session: sessionOn(1) }) as any
+  delete payload.chart.result[0].indicators.quote[0].high
+  await assert.rejects(
+    () => fetchDailyQuotes('ALB', { fetchImpl: okFetch(payload) as unknown as typeof fetch }),
+    (err: unknown) => err instanceof YahooError && err.kind === 'bad_response',
+  )
+})
+
 test('404 抛 not_found,不重试', async () => {
   let calls = 0
   const f = async () => { calls++; return new Response('', { status: 404 }) }
