@@ -86,15 +86,17 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
     return { rows }
   })
 
-  app.get<{ Params: { symbol: string }; Querystring: { timeframe?: string; days?: string } }>(
+  app.get<{ Params: { symbol: string }; Querystring: { timeframe?: string; limit?: string } }>(
     '/signals/:symbol/log',
     async (request, reply) => {
       const tf = (request.query.timeframe ?? '1d') as Timeframe
       if (!TIMEFRAMES.includes(tf)) {
         return reply.status(400).send({ error: 'invalid_input', message: 'timeframe 只能是 1d 或 1wk' })
       }
-      const days = Math.min(Math.max(Number(request.query.days) || 60, 1), 3650)
-      return { states: getStates(request.params.symbol, tf, days) }
+      // 参数名是 limit 而不是 days:这里取的是**条数**上限。周线一年只有约 50 根,
+      // 60 条覆盖一年多 —— 若按自然日窗口算,同一个 60 在日线和周线上的含义会差一个量级。
+      const limit = Math.min(Math.max(Number(request.query.limit) || 60, 1), 3650)
+      return { states: getStates(request.params.symbol, tf, limit) }
     },
   )
 

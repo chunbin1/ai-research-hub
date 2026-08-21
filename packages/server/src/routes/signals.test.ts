@@ -85,13 +85,13 @@ test('没有状态的票也出现在列表里,状态字段为 null', async () =>
   assert.equal(row.lastError, '历史数据不足')
 })
 
-test('GET /signals/:symbol/log 按周期与天数返回', async () => {
+test('GET /signals/:symbol/log 按周期与条数返回', async () => {
   const { app, db } = await freshApp(); seedALB(db)
-  const res = await app.inject({ method: 'GET', url: '/api/signals/ALB/log?timeframe=1d&days=999' })
+  const res = await app.inject({ method: 'GET', url: '/api/signals/ALB/log?timeframe=1d&limit=999' })
   assert.equal(res.statusCode, 200)
   assert.deepEqual(res.json().states.map((s: { bar_date: string }) => s.bar_date), ['2026-08-20', '2026-08-07'])
 
-  const wk = await app.inject({ method: 'GET', url: '/api/signals/ALB/log?timeframe=1wk&days=999' })
+  const wk = await app.inject({ method: 'GET', url: '/api/signals/ALB/log?timeframe=1wk&limit=999' })
   assert.equal(wk.json().states.length, 1)
 
   const bad = await app.inject({ method: 'GET', url: '/api/signals/ALB/log?timeframe=1h' })
