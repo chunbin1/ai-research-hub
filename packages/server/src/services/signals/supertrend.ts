@@ -27,9 +27,10 @@ export function supertrend(
 ): SupertrendPoint[] {
   const period = opts.period ?? 10
   const mult = opts.mult ?? 3
-  // 数学守卫:少于 period+1 根算不出 ATR。「预热不足不给信号」的业务门槛
+  // 数学守卫:period 至少为 2(为 1 时循环首轮就要读 bars[-1]),
+  // 且至少 period+1 根才算得出 ATR。「预热不足不给信号」的业务门槛
   // 在 scanner 里(MIN_BARS),不放这里 —— 那是策略,不是数学。
-  if (bars.length < period + 1) return []
+  if (period < 2 || bars.length < period + 1) return []
 
   const n = bars.length
 

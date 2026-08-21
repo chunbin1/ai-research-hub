@@ -65,3 +65,18 @@ test('bars 不够算 ATR 时返回空数组', () => {
   assert.deepEqual(supertrend(make(10), { period: 10, mult: 3 }), [])
   assert.equal(supertrend(make(11), { period: 10, mult: 3 }).length, 2)
 })
+
+test('period 小于 2 时返回空数组,而不是越界崩溃', () => {
+  // period=1 时循环从 i=0 开始,首轮就要读 bars[i-1] —— 必须挡在门口。
+  const make = (n: number): Bar[] =>
+    Array.from({ length: n }, (_, i) => ({ date: `d${i}`, high: 101, low: 99, close: 100 }))
+  assert.deepEqual(supertrend(make(50), { period: 1, mult: 3 }), [])
+  assert.deepEqual(supertrend(make(50), { period: 0, mult: 3 }), [])
+})
+
+test('不传 opts 时用默认 period=10 / mult=3', () => {
+  const make = (n: number): Bar[] =>
+    Array.from({ length: n }, (_, i) => ({ date: `d${i}`, high: 101, low: 99, close: 100 }))
+  assert.deepEqual(supertrend(make(20)), supertrend(make(20), { period: 10, mult: 3 }))
+  assert.equal(supertrend(make(20)).length, 11)
+})
