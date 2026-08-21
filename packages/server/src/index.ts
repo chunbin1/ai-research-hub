@@ -16,6 +16,9 @@ import { initChatTable } from './services/chatStore.js'
 import { initLLMConfigTable } from './services/llmConfigStore.js'
 import { initSiteSettingsTable } from './services/siteSettingsStore.js'
 import { initEvalTables, markStaleRunsFailed } from './services/evalStore.js'
+import { initWatchlistTable } from './services/watchlistStore.js'
+import { initSignalTables } from './services/signalStore.js'
+import { startDailyScan } from './jobs/dailyScan.js'
 import { documentRoutes } from './routes/documents.js'
 import { chatRoutes } from './routes/chat.js'
 import { traceRoutes } from './routes/traces.js'
@@ -44,6 +47,8 @@ initChatTable(db)
 initLLMConfigTable(db)
 initSiteSettingsTable(db)
 initEvalTables(db)
+initWatchlistTable(db)
+initSignalTables(db)
 markStaleRunsFailed()
 await initDocCollection()
 
@@ -60,6 +65,10 @@ app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOStrin
 const port = Number(process.env.PORT) || 3001
 try {
   await app.listen({ port, host: '0.0.0.0' })
+  startDailyScan({
+    info: (m) => app.log.info(m),
+    error: (m) => app.log.error(m),
+  })
 } catch (err) {
   app.log.error(err)
   process.exit(1)
