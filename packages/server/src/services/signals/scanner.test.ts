@@ -132,6 +132,27 @@ test('日线数据不足标记 insufficient 且不写信号', async () => {
   assert.equal(getLatestState('NEW', '1d'), null)
 })
 
+test('曾经正常的票后来数据变短:两个周期的 states 与 events 都被清空', async () => {
+  // 上一条测试用的是全新标的,本来就没有历史行 —— 把清空周线的两行删掉它照样绿。
+  // 真正要防的是这个场景:先扫成 ok 填满两个周期,数据源缩水后必须连周线一起清干净,
+  // 否则看板上会留着一份再也不会更新的陈旧周线信号。
+  addWatchlistEntry({ symbol: 'SHRANK', market: 'US', sourceDoc: 'd', sourceText: 't' })
+  await scanAll({ fetchQuotes: async (s) => fakeSeries(s) })
+  assert.ok(getLatestState('SHRANK', '1d'))
+  assert.ok(getLatestState('SHRANK', '1wk'))
+  assert.ok(getLatestEvent('SHRANK', '1d'))
+  assert.ok(getLatestEvent('SHRANK', '1wk'))
+
+  await scanAll({
+    fetchQuotes: async (s) => ({ ...fakeSeries(s), bars: fakeSeries(s).bars.slice(0, 50) }),
+  })
+  assert.equal(listWatchlist().find(e => e.symbol === 'SHRANK')!.status, 'insufficient')
+  assert.equal(getLatestState('SHRANK', '1d'), null)
+  assert.equal(getLatestState('SHRANK', '1wk'), null)
+  assert.equal(getLatestEvent('SHRANK', '1d'), null)
+  assert.equal(getLatestEvent('SHRANK', '1wk'), null)
+})
+
 test('日线够但周线不够时:日线照出,周线留空,状态仍是 ok', async () => {
   // 300 个自然日 → 日线 300 根(够),聚合出 43 根周线(不够)
   addWatchlistEntry({ symbol: 'YOUNG', market: 'US', sourceDoc: 'd', sourceText: 't' })
