@@ -8,10 +8,17 @@ test('美股:剥掉交易所前缀', () => {
   assert.deepEqual(normalizeSymbol('NYSE American: SLI'), { symbol: 'SLI', market: 'US' })
 })
 
-test('港股:去掉前导 0 并统一 .HK', () => {
+test('港股:数字补/截到 4 位', () => {
+  // Yahoo 只认 4 位港股代码,实测:0700.HK 200 / 700.HK 404,
+  // 9696.HK 200 / 09696.HK 404。所以既要去多余前导 0,也要补足到 4 位。
   assert.deepEqual(normalizeSymbol('09696.HK'), { symbol: '9696.HK', market: 'HK' })
   assert.deepEqual(normalizeSymbol('01772.HK'), { symbol: '1772.HK', market: 'HK' })
   assert.deepEqual(normalizeSymbol('2899.HK'), { symbol: '2899.HK', market: 'HK' })
+  // 四位以下必须补零 —— 腾讯 0700、汇丰 0005、中国移动 0941
+  assert.deepEqual(normalizeSymbol('0700.HK'), { symbol: '0700.HK', market: 'HK' })
+  assert.deepEqual(normalizeSymbol('700.HK'), { symbol: '0700.HK', market: 'HK' })
+  assert.deepEqual(normalizeSymbol('0005.HK'), { symbol: '0005.HK', market: 'HK' })
+  assert.deepEqual(normalizeSymbol('5.HK'), { symbol: '0005.HK', market: 'HK' })
 })
 
 test('A 股一律丢弃', () => {

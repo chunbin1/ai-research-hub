@@ -36,8 +36,10 @@ export function normalizeSymbol(raw: string): NormalizedSymbol | null {
   }
 
   const hk = HK_CODE.exec(s)
-  // 港股代码去掉前导 0 后 Yahoo 用 4 位;1772 / 9696 / 2899 都是 4 位。
-  if (hk) return { symbol: `${hk[1]}.HK`, market: 'HK' }
+  // Yahoo 的港股代码**恰好 4 位**,不足补零、超出保持原样(港交所已有 5 位代码)。
+  // 实测:0700.HK 200 / 700.HK 404;9696.HK 200 / 09696.HK 404 ——
+  // 只去前导 0 会把腾讯 0700 变成 700,查不到。
+  if (hk) return { symbol: `${hk[1].padStart(4, '0')}.HK`, market: 'HK' }
 
   if (A_SHARE.test(s)) return null
 
