@@ -19,6 +19,10 @@ test('港股:数字补/截到 4 位', () => {
   assert.deepEqual(normalizeSymbol('700.HK'), { symbol: '0700.HK', market: 'HK' })
   assert.deepEqual(normalizeSymbol('0005.HK'), { symbol: '0005.HK', market: 'HK' })
   assert.deepEqual(normalizeSymbol('5.HK'), { symbol: '0005.HK', market: 'HK' })
+  // 港交所的 5 位代码保持原样 —— padStart(4) 对它是空操作。
+  // 实测这两个在 Yahoo 上都有效:80737.HK(深圳投控湾区发展)、87001.HK(汇贤产业信托)
+  assert.deepEqual(normalizeSymbol('80737.HK'), { symbol: '80737.HK', market: 'HK' })
+  assert.deepEqual(normalizeSymbol('87001.HK'), { symbol: '87001.HK', market: 'HK' })
 })
 
 test('A 股一律丢弃', () => {
