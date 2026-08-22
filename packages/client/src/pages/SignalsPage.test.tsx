@@ -18,6 +18,9 @@ const BROKEN = {
   divergent: false, flips90d: 0, status: 'invalid', lastError: 'NOPE: 代码不存在',
 } as SignalRow
 
+/** 与 ALB 同形,但翻转次数在阈值以下 —— 用来证明「震荡」是有条件的 */
+const CALM = { ...ALB, symbol: 'CALM', name: 'Calm Corp', flips90d: 1 } as SignalRow
+
 function stubRows(rows: SignalRow[]) {
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ rows }) }) as Response))
 }
@@ -42,17 +45,21 @@ test('日周背离时给出提示', async () => {
   await waitFor(() => expect(screen.getByText(/背离/)).toBeTruthy())
 })
 
-test('近 90 天翻转过多时标出 whipsaw 警示', async () => {
-  stubRows([ALB])
+test('近 90 天翻转过多时标出 whipsaw 警示,未超阈值的不标', async () => {
+  // 阈值两侧都要有样本 —— 只放一个超阈值的行,「永远显示震荡」的回归也能蒙混过关
+  stubRows([ALB, CALM])
   renderPage()
-  // flips90d = 5,应带上警示文案
-  await waitFor(() => expect(screen.getByText(/震荡/)).toBeTruthy())
+  await waitFor(() => expect(screen.getByText(/5 次 · 震荡/)).toBeTruthy())
+  expect(screen.getByText('1 次')).toBeTruthy()
+  expect(screen.queryAllByText(/震荡/)).toHaveLength(1)
 })
 
 test('异常标的显示错误信息,不显示信号', async () => {
   stubRows([BROKEN])
   renderPage()
   await waitFor(() => expect(screen.getByText(/代码不存在/)).toBeTruthy())
+  // 90天翻转 也是信号列。显示「0 次」等于把「没数据」说成「确认没震荡」
+  expect(screen.queryByText('0 次')).toBeNull()
 })
 
 test('空列表给出引导文案', async () => {

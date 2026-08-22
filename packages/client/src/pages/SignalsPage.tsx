@@ -18,7 +18,7 @@ function TrendCell({ side }: { side: SignalSide | null }) {
       <Tag color={up ? 'green' : 'red'}>{up ? '🟢多' : '🔴空'}</Tag>
       {side.flipDate && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {side.flipDate} 起 {side.heldDays} 天
+          {side.flipDate} 起 {side.heldDays ?? '—'} 天
         </Typography.Text>
       )}
     </Space>
@@ -83,10 +83,13 @@ export default function SignalsPage() {
     },
     {
       title: '90天翻转', key: 'flips',
-      render: (_: unknown, r: SignalRow) =>
-        r.flips90d >= WHIPSAW_THRESHOLD
+      render: (_: unknown, r: SignalRow) => {
+        // 没有日线信号的行不显示这一列 —— 「0 次」会把「没数据」说成「确认没震荡」
+        if (!r.daily) return <Typography.Text type="secondary">—</Typography.Text>
+        return r.flips90d >= WHIPSAW_THRESHOLD
           ? <Typography.Text type="danger">{r.flips90d} 次 · 震荡</Typography.Text>
-          : <span>{r.flips90d} 次</span>,
+          : <span>{r.flips90d} 次</span>
+      },
     },
     {
       title: '来源', key: 'source',
@@ -100,7 +103,9 @@ export default function SignalsPage() {
   ]
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <div className="mx-auto max-w-[1440px] p-6">
+      {/* 九列需要约 1282px;max-w-7xl(1280) 减去内边距只剩 1232,来源列会被永久截掉。
+          窄屏仍由 Table 自己的横向滚动兜底。 */}
       <BackLink to="/">返回首页</BackLink>
       <div className="mb-4 mt-3 flex flex-wrap items-center justify-between gap-3">
         <Typography.Title level={3} style={{ margin: 0 }}>信号追踪</Typography.Title>
