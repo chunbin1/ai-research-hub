@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Alert, Button, Descriptions, Input, Modal, Space, Typography } from 'antd'
 import { api } from '../api'
 import type { ProbeResult } from '../types'
@@ -23,20 +23,30 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
   const [adding, setAdding] = useState(false)
   const [result, setResult] = useState<ProbeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 每次「查询」和每次改动代码都自增。回调里比对它,就能把过期的那次请求整个丢掉。
+  const reqId = useRef(0)
 
-  const reset = () => { setCode(''); setResult(null); setError(null) }
+  const reset = () => { reqId.current++; setCode(''); setResult(null); setError(null) }
 
   // 代码一改,上一次的探测结果立刻作废 —— 否则会出现
-  // 「查的是 RKLB、加进去的是别的代码」这种最坏情况
-  const onCodeChange = (v: string) => { setCode(v); setResult(null); setError(null) }
+  // 「查的是 RKLB、加进去的是别的代码」这种最坏情况。
+  // 自增 reqId 是为了连**正在飞的那次请求**也一起作废:只清 state 挡不住它,
+  // 它回来时照样会 setResult,让输入框显示 RKLBX、面板显示 Rocket Lab、按钮还亮着。
+  const onCodeChange = (v: string) => { reqId.current++; setCode(v); setResult(null); setError(null) }
 
   const doProbe = async () => {
+    const myId = ++reqId.current
     setProbing(true); setError(null); setResult(null)
     try {
-      setResult(await api.probeSymbol(code))
+      const r = await api.probeSymbol(code)
+      if (myId !== reqId.current) return      // 期间代码被改过,这次结果作废
+      setResult(r)
     } catch (err) {
+      if (myId !== reqId.current) return
       setError(err instanceof Error ? err.message : '查询失败')
-    } finally { setProbing(false) }
+    } finally {
+      if (myId === reqId.current) setProbing(false)
+    }
   }
 
   const doConfirm = async () => {

@@ -102,6 +102,43 @@ test('改动代码后要重新查询 —— 旧的探测结果作废', async () 
   expect(screen.queryByText('Rocket Lab Corporation')).toBeNull()
 })
 
+test('查询飞行途中改代码:旧结果回来也不能生效', async () => {
+  // 只清 state 挡不住已经发出的请求 —— 它回来时照样 setResult,
+  // 于是输入框显示 RKLBX、面板显示 Rocket Lab、确认按钮还亮着,
+  // 用户以为在加 RKLBX,实际加的是 RKLB。
+  let release!: () => void
+  const gate = new Promise<void>(r => { release = r })
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    await gate
+    return { ok: true, json: async () => RKLB } as Response
+  }))
+  render(<AddSymbolModal open onCancel={() => {}} onConfirm={noop} />)
+
+  const input = screen.getByLabelText('代码')
+  await userEvent.type(input, 'RKLB')
+  await userEvent.click(screen.getByRole('button', { name: '查询' }))
+  await userEvent.type(input, 'X')          // 请求还在飞的时候改了代码
+
+  release()
+  await new Promise(r => setTimeout(r, 0))
+  expect(confirmBtn().disabled).toBe(true)
+  expect(screen.queryByText('Rocket Lab Corporation')).toBeNull()
+})
+
+test('关掉再打开是干净的,不留上一次的结果', async () => {
+  stubProbe(() => ({ body: RKLB }))
+  const { rerender } = render(<AddSymbolModal open onCancel={() => {}} onConfirm={noop} />)
+  await userEvent.type(screen.getByLabelText('代码'), 'RKLB')
+  await userEvent.click(screen.getByRole('button', { name: '查询' }))
+  await waitFor(() => expect(screen.getByText('Rocket Lab Corporation')).toBeTruthy())
+
+  await userEvent.click(screen.getByRole('button', { name: '取消' }))
+  rerender(<AddSymbolModal open onCancel={() => {}} onConfirm={noop} />)
+  expect((screen.getByLabelText('代码') as HTMLInputElement).value).toBe('')
+  expect(screen.queryByText('Rocket Lab Corporation')).toBeNull()
+  expect(confirmBtn().disabled).toBe(true)
+})
+
 test('确认添加把探测到的 symbol 与 market 交回去', async () => {
   stubProbe(() => ({ body: RKLB }))
   const onConfirm = vi.fn(async () => true)
