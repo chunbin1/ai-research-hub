@@ -8,7 +8,7 @@
 // 只有把公司全名摆到管理员面前才能。
 import { normalizeSymbol, type Market } from '../market/symbol.js'
 import { fetchDailyQuotes, YahooError, type QuoteSeries } from '../market/yahooClient.js'
-import { listWatchlist, type WatchlistEntry } from '../watchlistStore.js'
+import type { WatchlistEntry } from '../watchlistStore.js'
 import { MIN_BARS } from './scanner.js'
 import { getDb } from '../db.js'
 
@@ -59,10 +59,15 @@ export async function probeSymbol(raw: string, deps: ProbeDeps = {}): Promise<Pr
   try {
     series = await fetchQuotes(norm.symbol)
   } catch (err) {
-    if (err instanceof YahooError && err.kind === 'not_found') {
-      throw new ProbeError(`Yahoo 上查不到 ${norm.symbol}`, 'not_found')
+    if (err instanceof YahooError) {
+      if (err.kind === 'not_found') throw new ProbeError(`Yahoo 上查不到 ${norm.symbol}`, 'not_found')
+      // YahooError 的文案本来就是中文,可以直接透出
+      throw new ProbeError(err.message, 'upstream')
     }
-    throw new ProbeError(err instanceof Error ? err.message : String(err), 'upstream')
+    // 非 YahooError 说明连 fetch 都没走通(DNS / ECONNREFUSED 之类)——
+    // Node 的 fetch 抛的是英文 TypeError,原样透到界面上会违反「文案一律中文」。
+    // 真实原因记在日志里没意义(这里拿不到 logger),给用户一句能行动的中文。
+    throw new ProbeError('查询行情失败,请检查网络后重试', 'upstream')
   }
 
   const entry = findEntry(norm.symbol)

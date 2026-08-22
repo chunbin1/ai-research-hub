@@ -72,7 +72,20 @@ test('上游其他故障抛 upstream,与「代码不存在」区分开', async (
       fetchQuotes: async () => { throw new YahooError('被限流', 'rate_limited') },
       findEntry: noEntry,
     }),
-    (e: unknown) => e instanceof ProbeError && e.kind === 'upstream',
+    (e: unknown) => e instanceof ProbeError && e.kind === 'upstream' && e.message === '被限流',
+  )
+})
+
+test('连不上网络时给中文文案,不把 Node 的英文 TypeError 透出去', async () => {
+  // Node 的 fetch 连接失败抛的是英文 "fetch failed",原样透到管理员界面
+  // 会违反「用户可见文案一律中文」。
+  await assert.rejects(
+    () => probeSymbol('NASDAQ: RKLB', {
+      fetchQuotes: async () => { throw new TypeError('fetch failed') },
+      findEntry: noEntry,
+    }),
+    (e: unknown) => e instanceof ProbeError && e.kind === 'upstream'
+      && e.message === '查询行情失败,请检查网络后重试',
   )
 })
 
