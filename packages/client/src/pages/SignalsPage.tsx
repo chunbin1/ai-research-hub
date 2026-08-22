@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Alert, Button, Space, Table, Tag, Typography } from 'antd'
+import { Alert, Button, Space, Switch, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useSignals } from '../hooks/useSignals'
@@ -42,12 +42,12 @@ function DistCell({ side }: { side: SignalSide | null }) {
 }
 
 export default function SignalsPage() {
-  const { rows, loading, scanning, error, scan, extract } = useSignals()
+  const { rows, loading, scanning, error, scan, extract, version, lastScan, setEnabled } = useSignals()
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
   const navigate = useNavigate()
 
-  const columns: ColumnsType<SignalRow> = [
+  const baseColumns: ColumnsType<SignalRow> = [
     {
       title: '标的', dataIndex: 'symbol', key: 'symbol',
       render: (_: unknown, r: SignalRow) => (
@@ -104,6 +104,22 @@ export default function SignalsPage() {
     },
   ]
 
+  const enabledColumn: ColumnsType<SignalRow>[number] = {
+    title: '启用', key: 'enabled',
+    render: (_: unknown, r: SignalRow) => (
+      <Switch
+        size="small"
+        checked={r.enabled}
+        onChange={(checked) => void setEnabled(r.symbol, checked)}
+        aria-label={`${r.symbol} 启用`}
+      />
+    ),
+  }
+
+  // 只有 admin 看得到「启用」列 —— 禁用误抽的行是管理动作,规格里写的「支持 admin
+  // 禁用误抽的行」需要一个真正能点的入口,而不只是后端接口和 api 封装
+  const columns: ColumnsType<SignalRow> = isAdmin ? [...baseColumns, enabledColumn] : baseColumns
+
   return (
     <div className="mx-auto max-w-[1440px] p-6">
       {/* 九列需要约 1282px;max-w-7xl(1280) 减去内边距只剩 1232,来源列会被永久截掉。
@@ -140,7 +156,16 @@ export default function SignalsPage() {
 
       {error && <Alert type="error" title={error} showIcon className="mb-4" />}
 
-      <RecentSignalEvents />
+      {lastScan && (
+        <Alert
+          className="mb-4"
+          type={lastScan.failed > 0 ? 'warning' : 'info'}
+          showIcon
+          title={`扫描完成:共 ${lastScan.total},成功 ${lastScan.ok},失败 ${lastScan.failed},数据不足 ${lastScan.insufficient}`}
+        />
+      )}
+
+      <RecentSignalEvents version={version} />
 
       <Table<SignalRow>
         rowKey="symbol"
@@ -151,10 +176,12 @@ export default function SignalsPage() {
         // 必须是具体像素而不是 'max-content':展开行里的 SignalLog 是一张带
         // `min-width: 100%` 的嵌套表格,父级若是 max-content 就构成循环约束 ——
         // 浏览器实测会把表格撑到 500000px,除「标的」外所有列被推出屏幕。
-        scroll={{ x: 1280 }}
+        // admin 多出的「启用」列把所需宽度从 1280 提到了 1380。
+        scroll={{ x: 1380 }}
+        rowClassName={(r) => (r.enabled ? '' : 'opacity-50')}
         locale={{ emptyText: '还没有自选股 —— 上传一篇标题里带股票代码的研报,或点「重新抽取」' }}
         expandable={{
-          expandedRowRender: (r) => <SignalLog symbol={r.symbol} />,
+          expandedRowRender: (r) => <SignalLog symbol={r.symbol} version={version} />,
           rowExpandable: (r) => r.status === 'ok',
         }}
       />

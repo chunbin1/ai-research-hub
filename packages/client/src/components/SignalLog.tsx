@@ -4,11 +4,13 @@ import { api } from '../api'
 import type { SignalStateRow } from '../types'
 
 /** 展开行里的每日状态日志 —— 「保留每天的日志」这个需求的可见出口 */
-export function SignalLog({ symbol }: { symbol: string }) {
+export function SignalLog({ symbol, version }: { symbol: string; version: number }) {
   const [timeframe, setTimeframe] = useState<'1d' | '1wk'>('1d')
   const [states, setStates] = useState<SignalStateRow[]>([])
   const [loading, setLoading] = useState(true)
 
+  // version 由 useSignals 在每次成功 refresh 后自增。行已经展开着的时候扫描一次,
+  // 只靠 [symbol, timeframe] 是看不出数据变了的,得靠这个 dep 触发重新拉取
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -17,7 +19,7 @@ export function SignalLog({ symbol }: { symbol: string }) {
       .catch(() => { if (!cancelled) setStates([]) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [symbol, timeframe])
+  }, [symbol, timeframe, version])
 
   const columns = [
     { title: '交易日', dataIndex: 'bar_date', key: 'bar_date' },
@@ -41,6 +43,9 @@ export function SignalLog({ symbol }: { symbol: string }) {
         optionType="button"
         size="small"
       />
+      {/* 这张嵌套表没有自己的 scroll.x,靠 antd 默认的 min-width: 100% 撑满父级。
+          这依赖外层 SignalsPage 的 Table 保持一个具体像素的 scroll.x —— 那边一旦
+          改回 'max-content',约束就变成循环的,布局会直接撑爆(实测到过 500048px)。 */}
       <Table<SignalStateRow>
         rowKey="bar_date"
         size="small"

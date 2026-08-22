@@ -18,11 +18,16 @@ function stubFetch(impl: (url: string) => unknown) {
     ({ ok: true, json: async () => impl(url) }) as Response))
 }
 
-afterEach(() => { vi.unstubAllGlobals() })
+// 见 SignalsPage.test.tsx 里同名 afterEach 的注释:version 变化会触发横幅补拉一次
+// /events,晚一个宏任务再 unstub,给这类请求留出发出的窗口。
+afterEach(async () => {
+  await new Promise(resolve => setTimeout(resolve, 0))
+  vi.unstubAllGlobals()
+})
 
 test('展开后默认显示日线日志', async () => {
   stubFetch(url => ({ states: url.includes('1wk') ? weekly : daily }))
-  render(<SignalLog symbol="ALB" />)
+  render(<SignalLog symbol="ALB" version={0} />)
   await waitFor(() => expect(screen.getByText('2026-08-20')).toBeTruthy())
   expect(screen.getByText('2026-08-19')).toBeTruthy()
   expect(screen.getByText(/119\.36/)).toBeTruthy()
@@ -30,7 +35,7 @@ test('展开后默认显示日线日志', async () => {
 
 test('可以切到周线', async () => {
   stubFetch(url => ({ states: url.includes('1wk') ? weekly : daily }))
-  render(<SignalLog symbol="ALB" />)
+  render(<SignalLog symbol="ALB" version={0} />)
   await waitFor(() => expect(screen.getByText('2026-08-20')).toBeTruthy())
 
   // 点**可见的标签**而不是 getByRole('radio') 拿到的隐藏 input ——
@@ -43,7 +48,7 @@ test('可以切到周线', async () => {
 
 test('没有日志时给出空态', async () => {
   stubFetch(() => ({ states: [] }))
-  render(<SignalLog symbol="NEW" />)
+  render(<SignalLog symbol="NEW" version={0} />)
   await waitFor(() => expect(screen.getByText(/暂无日志/)).toBeTruthy())
 })
 
@@ -54,7 +59,7 @@ const events: SignalEventRow[] = [
 
 test('事件横幅列出最近信号', async () => {
   stubFetch(() => ({ events }))
-  render(<RecentSignalEvents />)
+  render(<RecentSignalEvents version={0} />)
   await waitFor(() => expect(screen.getByText(/ALB/)).toBeTruthy())
   expect(screen.getByText(/9696\.HK/)).toBeTruthy()
   expect(screen.getByText(/翻多/)).toBeTruthy()
@@ -63,6 +68,16 @@ test('事件横幅列出最近信号', async () => {
 
 test('近 7 天没有事件时横幅整个不渲染', async () => {
   stubFetch(() => ({ events: [] }))
-  const { container } = render(<RecentSignalEvents />)
+  const { container } = render(<RecentSignalEvents version={0} />)
   await waitFor(() => expect(container.textContent).toBe(''))
+})
+
+test('version 变化时重新拉取事件 —— 扫描完横幅要跟着刷新', async () => {
+  stubFetch(() => ({ events }))
+  const { rerender } = render(<RecentSignalEvents version={0} />)
+  await waitFor(() => expect(screen.getByText(/ALB/)).toBeTruthy())
+  expect(fetch).toHaveBeenCalledTimes(1)
+
+  rerender(<RecentSignalEvents version={1} />)
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
 })
