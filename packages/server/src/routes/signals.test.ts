@@ -15,18 +15,26 @@ delete process.env.SIGNALS
 // 这样 /signals/extract 测试里真实写盘的原始 markdown 不会碰到项目的 data/raw。
 process.env.RAW_DIR = mkdtempSync(join(tmpdir(), 'signals-extract-'))
 
-const { initWatchlistTable, addWatchlistEntry, updateScanResult, listWatchlist } =
+const { initWatchlistTable, addWatchlistEntry, updateScanResult, listWatchlist, softDeleteWatchlistEntry } =
   await import('../services/watchlistStore.ts')
-const { initSignalTables, replaceStates, replaceEvents } = await import('../services/signalStore.ts')
+const { initSignalTables, replaceStates, replaceEvents, getLatestState, getLatestEvent } =
+  await import('../services/signalStore.ts')
 const { initSiteSettingsTable } = await import('../services/siteSettingsStore.ts')
 const { initDocumentTable, saveRawMarkdown } = await import('../services/documentStore.ts')
 const { signalRoutes } = await import('./signals.ts')
 
-async function freshApp() {
+async function freshApp(probe?: unknown) {
   const db = new Database(':memory:')
   initWatchlistTable(db); initSignalTables(db); initSiteSettingsTable(db); initDocumentTable(db)
   const app = fastify()
-  await app.register(signalRoutes, { prefix: '/api', scan: async () => ({ total: 2, ok: 2, failed: 0, insufficient: 0 }) })
+  await app.register(signalRoutes, {
+    prefix: '/api',
+    scan: async () => ({ total: 2, ok: 2, failed: 0, insufficient: 0 }),
+    probe: (probe ?? (async () => ({
+      symbol: 'RKLB', market: 'US', name: 'Rocket Lab Corporation', currency: 'USD',
+      exchange: 'NasdaqGS', bars: 1218, enough: true, alreadyListed: false, deleted: false,
+    }))) as never,
+  })
   await app.ready()
   return { app, db }
 }
@@ -136,15 +144,93 @@ test('POST /signals/extract 从磁盘上的原始 markdown 抽取标的并写入
   assert.equal(listWatchlist().find(e => e.symbol === 'ALB')?.symbol, 'ALB')
 })
 
-test('PATCH 禁用与启用', async () => {
+test('POST /signals/watchlist/probe 返回公司身份', async () => {
+  const { app } = await freshApp()
+  const res = await app.inject({ method: 'POST', url: '/api/signals/watchlist/probe', payload: { code: 'RKLB' } })
+  assert.equal(res.statusCode, 200)
+  const b = res.json()
+  assert.equal(b.symbol, 'RKLB')
+  assert.equal(b.name, 'Rocket Lab Corporation')
+  assert.equal(b.exchange, 'NasdaqGS')
+  assert.equal(b.enough, true)
+})
+
+test('probe 的 code 必须是非空字符串', async () => {
+  const { app } = await freshApp()
+  for (const payload of [{}, { code: '' }, { code: '   ' }, { code: 123 }]) {
+    const res = await app.inject({ method: 'POST', url: '/api/signals/watchlist/probe', payload })
+    assert.equal(res.statusCode, 400, `payload ${JSON.stringify(payload)} 应该 400`)
+  }
+})
+
+test('probe 失败时把 ProbeError 的 kind 与文案透传出去', async () => {
+  const { ProbeError } = await import('../services/signals/probeSymbol.ts')
+  const { app } = await freshApp(async () => { throw new ProbeError('只支持美股与港股', 'unsupported_market') })
+  const res = await app.inject({ method: 'POST', url: '/api/signals/watchlist/probe', payload: { code: '002466' } })
+  assert.equal(res.statusCode, 400)
+  assert.equal(res.json().error, 'unsupported_market')
+  assert.match(res.json().message, /只支持美股与港股/)
+})
+
+test('POST /signals/watchlist 新增标的,来源为空表示手动添加', async () => {
+  const { app } = await freshApp()
+  const res = await app.inject({ method: 'POST', url: '/api/signals/watchlist', payload: { symbol: 'RKLB', market: 'US' } })
+  assert.equal(res.statusCode, 200)
+  const e = listWatchlist()[0]
+  assert.equal(e.symbol, 'RKLB')
+  assert.equal(e.market, 'US')
+  assert.equal(e.source_doc, null)
+  assert.equal(e.source_text, null)
+})
+
+test('POST /signals/watchlist 复活已删除的标的', async () => {
+  const { app } = await freshApp()
+  addWatchlistEntry({ symbol: 'RKLB', market: 'US', sourceDoc: 'doc_1', sourceText: '来自研报' })
+  updateScanResult('RKLB', { status: 'invalid', lastError: '旧的失败', lastScanAt: 'a' })
+  softDeleteWatchlistEntry('RKLB')
+  assert.deepEqual(listWatchlist(), [])
+
+  const res = await app.inject({ method: 'POST', url: '/api/signals/watchlist', payload: { symbol: 'RKLB', market: 'US' } })
+  assert.equal(res.statusCode, 200)
+  const e = listWatchlist()[0]
+  assert.equal(e.symbol, 'RKLB')
+  assert.equal(e.status, 'ok')
+  assert.equal(e.last_error, null)
+  assert.equal(e.source_doc, 'doc_1', '复活保留原来的来源,不该被抹成手动添加')
+})
+
+test('POST /signals/watchlist 重复添加返回 409', async () => {
+  const { app } = await freshApp()
+  addWatchlistEntry({ symbol: 'RKLB', market: 'US', sourceDoc: null, sourceText: null })
+  const res = await app.inject({ method: 'POST', url: '/api/signals/watchlist', payload: { symbol: 'RKLB', market: 'US' } })
+  assert.equal(res.statusCode, 409)
+})
+
+test('POST /signals/watchlist 校验入参', async () => {
+  const { app } = await freshApp()
+  for (const payload of [{}, { symbol: 'RKLB' }, { symbol: '', market: 'US' }, { symbol: 'RKLB', market: 'CN' }]) {
+    const res = await app.inject({ method: 'POST', url: '/api/signals/watchlist', payload })
+    assert.equal(res.statusCode, 400, `payload ${JSON.stringify(payload)} 应该 400`)
+  }
+})
+
+test('DELETE 软删除并清掉两个周期的日志与事件', async () => {
   const { app, db } = await freshApp(); seedALB(db)
-  const off = await app.inject({ method: 'PATCH', url: '/api/signals/watchlist/ALB', payload: { enabled: false } })
-  assert.equal(off.statusCode, 200)
-  assert.equal(listWatchlist()[0].enabled, 0)
+  assert.ok(getLatestState('ALB', '1d'))
+  assert.ok(getLatestState('ALB', '1wk'))
+  assert.ok(getLatestEvent('ALB', '1d'))
 
-  const bad = await app.inject({ method: 'PATCH', url: '/api/signals/watchlist/ALB', payload: { enabled: '不是布尔' } })
-  assert.equal(bad.statusCode, 400)
+  const res = await app.inject({ method: 'DELETE', url: '/api/signals/watchlist/ALB' })
+  assert.equal(res.statusCode, 200)
+  assert.deepEqual(listWatchlist(), [], '删除后不再出现在列表里')
+  assert.equal(getLatestState('ALB', '1d'), null)
+  assert.equal(getLatestState('ALB', '1wk'), null)
+  assert.equal(getLatestEvent('ALB', '1d'), null)
+  assert.equal(getLatestEvent('ALB', '1wk'), null)
+})
 
-  const missing = await app.inject({ method: 'PATCH', url: '/api/signals/watchlist/NOPE', payload: { enabled: true } })
-  assert.equal(missing.statusCode, 404)
+test('DELETE 不存在的标的返回 404', async () => {
+  const { app } = await freshApp()
+  const res = await app.inject({ method: 'DELETE', url: '/api/signals/watchlist/NOPE' })
+  assert.equal(res.statusCode, 404)
 })
