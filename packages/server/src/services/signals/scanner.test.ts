@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
-import { initWatchlistTable, addWatchlistEntry, listWatchlist, setWatchlistEnabled } from '../watchlistStore.ts'
+import { initWatchlistTable, addWatchlistEntry, listWatchlist, softDeleteWatchlistEntry } from '../watchlistStore.ts'
 import { initSignalTables, getLatestState, getStates, getLatestEvent } from '../signalStore.ts'
 import { initSiteSettingsTable, getSetting, setSetting } from '../siteSettingsStore.ts'
 import { YahooError, type QuoteSeries } from '../market/yahooClient.ts'
@@ -26,7 +26,7 @@ function fakeSeries(symbol: string): QuoteSeries {
     bars.push({ date, high: close + 1, low: close - 1, close })
     rawClose[date] = close * 2      // 刻意与复权价不同,验证展示价走的是这一路
   }
-  return { symbol, name: `${symbol} Inc`, currency: 'USD', bars, rawClose }
+  return { symbol, name: `${symbol} Inc`, currency: 'USD', exchange: 'NasdaqGS', bars, rawClose }
 }
 
 beforeEach(() => {
@@ -202,9 +202,9 @@ test('日线够但周线不够时:日线照出,周线留空,状态仍是 ok', as
   assert.equal(getLatestState('YOUNG', '1wk'), null)
 })
 
-test('禁用的票不扫描', async () => {
+test('已删除的票不扫描', async () => {
   addWatchlistEntry({ symbol: 'ALB', market: 'US', sourceDoc: 'd', sourceText: 't' })
-  setWatchlistEnabled('ALB', false)
+  softDeleteWatchlistEntry('ALB')
   const summary = await scanAll({ fetchQuotes: async () => { throw new Error('不该被调用') } })
   assert.deepEqual(summary, { total: 0, ok: 0, failed: 0, insufficient: 0 })
 })
