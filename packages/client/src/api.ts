@@ -42,13 +42,26 @@ export const api = {
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '抽取失败')
     return r.json()
   },
-  async setWatchlistEnabled(symbol: string, enabled: boolean): Promise<void> {
-    const r = await fetch(`/api/signals/watchlist/${encodeURIComponent(symbol)}`, {
-      method: 'PATCH',
+  async probeSymbol(code: string): Promise<import('./types').ProbeResult> {
+    const r = await fetch('/api/signals/watchlist/probe', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ code }),
     })
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '操作失败')
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '查询失败')
+    return r.json()
+  },
+  async addSymbol(symbol: string, market: 'US' | 'HK'): Promise<void> {
+    const r = await fetch('/api/signals/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, market }),
+    })
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '添加失败')
+  },
+  async deleteSymbol(symbol: string): Promise<void> {
+    const r = await fetch(`/api/signals/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' })
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '删除失败')
   },
   async getSignalLog(symbol: string, timeframe: '1d' | '1wk', limit = 60): Promise<import('./types').SignalStateRow[]> {
     const r = await fetch(`/api/signals/${encodeURIComponent(symbol)}/log?timeframe=${timeframe}&limit=${limit}`)

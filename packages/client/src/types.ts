@@ -196,3 +196,18 @@ export interface SignalEventRow {
   direction: 1 | -1
   price: number
 }
+
+export interface ProbeResult {
+  symbol: string
+  market: 'US' | 'HK'
+  name: string | null
+  currency: string | null
+  exchange: string | null
+  /** 可用的已收盘日线根数 */
+  bars: number
+  /** 是否达到预热门槛。false 不阻止添加,只提示 */
+  enough: boolean
+  alreadyListed: boolean
+  /** 曾被删除。添加即复活 */
+  deleted: boolean
+}

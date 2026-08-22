@@ -81,3 +81,48 @@ test('extract 结束后也刷新', async () => {
   await act(async () => { await result.current.extract() })
   await waitFor(() => expect(result.current.rows).toHaveLength(1))
 })
+
+test('add 成功后刷新并自增 version', async () => {
+  let added = false
+  stubFetch((url, init) => {
+    if (url === '/api/signals/watchlist' && init?.method === 'POST') { added = true; return { body: { ok: true } } }
+    return { body: { rows: added ? [ALB, { ...ALB, symbol: 'RKLB' }] : [ALB] } }
+  })
+  const { result } = renderHook(() => useSignals())
+  await waitFor(() => expect(result.current.loading).toBe(false))
+  const v0 = result.current.version
+
+  await act(async () => { await result.current.add('RKLB', 'US') })
+  await waitFor(() => expect(result.current.rows).toHaveLength(2))
+  expect(result.current.version).toBe(v0 + 1)
+})
+
+test('remove 成功后刷新并自增 version', async () => {
+  let removed = false
+  stubFetch((url, init) => {
+    if (init?.method === 'DELETE') { removed = true; return { body: { ok: true } } }
+    return { body: { rows: removed ? [] : [ALB] } }
+  })
+  const { result } = renderHook(() => useSignals())
+  await waitFor(() => expect(result.current.loading).toBe(false))
+  const v0 = result.current.version
+
+  await act(async () => { await result.current.remove('ALB') })
+  await waitFor(() => expect(result.current.rows).toHaveLength(0))
+  expect(result.current.version).toBe(v0 + 1)
+})
+
+test('add 失败时把服务端文案放进 error,且不动 rows', async () => {
+  stubFetch((url, init) => {
+    if (url === '/api/signals/watchlist' && init?.method === 'POST') {
+      return { ok: false, body: { error: 'already_listed', message: 'RKLB 已在自选股中' } }
+    }
+    return { body: { rows: [ALB] } }
+  })
+  const { result } = renderHook(() => useSignals())
+  await waitFor(() => expect(result.current.loading).toBe(false))
+
+  await act(async () => { await result.current.add('RKLB', 'US') })
+  expect(result.current.error).toBe('RKLB 已在自选股中')
+  expect(result.current.rows).toHaveLength(1)
+})
