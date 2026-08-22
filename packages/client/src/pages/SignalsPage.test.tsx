@@ -35,9 +35,10 @@ function stubRows(rows: SignalRow[]) {
   }))
 }
 
-/** 与 stubRows 相同,但 /api/auth/me 显式返回一个 admin 用户 —— 用来测「启用」列 */
-function stubRowsAsAdmin(rows: SignalRow[]) {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+/** 与 stubRows 相同,但 /api/auth/me 显式返回一个 admin 用户 —— 用来测操作列与添加标的 */
+function stubRowsAsAdmin(rows: SignalRow[], onDelete?: () => void) {
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === 'DELETE') { onDelete?.(); return { ok: true, json: async () => ({ ok: true }) } as Response }
     const body = url.includes('/auth/me')
       ? { id: 'u1', username: 'admin', avatarUrl: null, messageCount: 0, limit: 100, unlimited: false, isAdmin: true, remaining: 100 }
       : url.includes('/events') ? { events: [] }
@@ -108,18 +109,41 @@ test('空列表给出引导文案', async () => {
   await waitFor(() => expect(screen.getByText(/还没有自选股/)).toBeTruthy())
 })
 
-test('未登录时看不到启用开关 —— 禁用是管理动作', async () => {
+test('非管理员看不到操作列与添加按钮', async () => {
   stubRows([ALB])
   renderPage()
   await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
-  expect(screen.queryByRole('switch')).toBeNull()
+  expect(screen.queryByRole('button', { name: /添加标的/ })).toBeNull()
+  expect(screen.queryByRole('button', { name: /删除/ })).toBeNull()
 })
 
-test('admin 能看到启用开关', async () => {
+test('管理员看得到「添加标的」与操作列的删除', async () => {
   stubRowsAsAdmin([ALB])
   renderPage()
-  await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
-  expect(screen.getByRole('switch', { name: 'ALB 启用' })).toBeTruthy()
+  await waitFor(() => expect(screen.getByRole('button', { name: /添加标的/ })).toBeTruthy())
+  expect(screen.getByRole('button', { name: /删除/ })).toBeTruthy()
+})
+
+test('删除要二次确认,确认后才发请求', async () => {
+  let deleted = false
+  stubRowsAsAdmin([ALB], () => { deleted = true })
+  renderPage()
+  await waitFor(() => expect(screen.getByRole('button', { name: /删除/ })).toBeTruthy())
+
+  await userEvent.click(screen.getByRole('button', { name: /删除/ }))
+  expect(deleted).toBe(false)   // 只是弹出确认,还没删
+
+  await waitFor(() => expect(screen.getByText(/确定删除/)).toBeTruthy())
+  await userEvent.click(screen.getByRole('button', { name: '确定' }))
+  await waitFor(() => expect(deleted).toBe(true))
+})
+
+test('点「添加标的」弹出弹窗', async () => {
+  stubRowsAsAdmin([ALB])
+  renderPage()
+  await waitFor(() => expect(screen.getByRole('button', { name: /添加标的/ })).toBeTruthy())
+  await userEvent.click(screen.getByRole('button', { name: /添加标的/ }))
+  await waitFor(() => expect(screen.getByLabelText('代码')).toBeTruthy())
 })
 
 test('被禁用的行整行置灰', async () => {
