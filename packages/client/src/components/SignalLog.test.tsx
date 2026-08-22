@@ -18,12 +18,7 @@ function stubFetch(impl: (url: string) => unknown) {
     ({ ok: true, json: async () => impl(url) }) as Response))
 }
 
-// 见 SignalsPage.test.tsx 里同名 afterEach 的注释:version 变化会触发横幅补拉一次
-// /events,晚一个宏任务再 unstub,给这类请求留出发出的窗口。
-afterEach(async () => {
-  await new Promise(resolve => setTimeout(resolve, 0))
-  vi.unstubAllGlobals()
-})
+afterEach(() => { vi.unstubAllGlobals() })
 
 test('展开后默认显示日线日志', async () => {
   stubFetch(url => ({ states: url.includes('1wk') ? weekly : daily }))

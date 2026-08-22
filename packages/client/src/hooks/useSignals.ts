@@ -7,8 +7,10 @@ export function useSignals() {
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // 扫一次数字变一次,给横幅和展开行的日志当作重新拉取的信号 —— 它们自己的
-  // useEffect deps 看不到 rows 变化
+  // 语义是「一次动作(扫描/抽取/切换启用)改了数据」,不是「刷新过了」——
+  // 挂载时的首次 refresh 已经覆盖了首屏加载,不需要再触发横幅/日志重拉一次;
+  // 只有 scan/extract/setEnabled 成功后才自增,给横幅和展开行的日志当作
+  // 重新拉取的信号(它们自己的 useEffect deps 看不到 rows 变化)
   const [version, setVersion] = useState(0)
   const [lastScan, setLastScan] = useState<ScanSummary | null>(null)
 
@@ -16,7 +18,6 @@ export function useSignals() {
     setError(null)
     try {
       setRows(await api.listSignals())
-      setVersion(v => v + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : '看板加载失败')
     } finally {
@@ -33,6 +34,7 @@ export function useSignals() {
       const summary = await api.scanSignals()
       setLastScan(summary)
       await refresh()
+      setVersion(v => v + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : '扫描失败')
     } finally { setScanning(false) }
@@ -43,6 +45,7 @@ export function useSignals() {
     try {
       await api.extractWatchlist()
       await refresh()
+      setVersion(v => v + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : '抽取失败')
     } finally { setScanning(false) }
@@ -53,6 +56,7 @@ export function useSignals() {
     try {
       await api.setWatchlistEnabled(symbol, enabled)
       await refresh()
+      setVersion(v => v + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作失败')
     }

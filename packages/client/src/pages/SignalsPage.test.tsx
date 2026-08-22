@@ -49,14 +49,7 @@ function stubRowsAsAdmin(rows: SignalRow[]) {
 
 const renderPage = () => render(<MemoryRouter><SignalsPage /></MemoryRouter>)
 
-// useSignals 在每次成功 refresh 后(包括挂载时的首次自动 refresh)都会把 version
-// 加一,这会让横幅再补拉一次 /events —— 如果这个补拉是在某条用例的断言已经满足、
-// 但 afterEach 还没跑完之前才发出,它会用到已经被 unstubAllGlobals 撤掉的 fetch,
-// 打到真实网络。让 unstub 晚一个宏任务,把这类还没来得及发出的请求让出窗口先发完。
-afterEach(async () => {
-  await new Promise(resolve => setTimeout(resolve, 0))
-  vi.unstubAllGlobals()
-})
+afterEach(() => { vi.unstubAllGlobals() })
 
 test('渲染标的、现价与日周趋势', async () => {
   stubRows([ALB])
@@ -66,6 +59,24 @@ test('渲染标的、现价与日周趋势', async () => {
   expect(screen.getByText(/134\.19/)).toBeTruthy()
   expect(screen.getByText(/2026-08-07/)).toBeTruthy()
   expect(screen.getByText(/2026-06-26/)).toBeTruthy()
+})
+
+test('挂载只拉一次 /events —— version 不应该在首次 refresh 后又自增一次', async () => {
+  // 回归用例:version 曾经在 refresh() 内部自增,而挂载时的首次 refresh 也走
+  // 这条路,导致横幅在挂载阶段就多打一次 /events。version 现在只在
+  // scan/extract/setEnabled 成功后才自增,挂载本身不应该触发第二次请求。
+  const fetchMock = vi.fn(async (url: string) => {
+    const body = url.includes('/events') ? { events: [] }
+      : url.includes('/log') ? { states: [] }
+      : { rows: [ALB] }
+    return { ok: true, json: async () => body } as Response
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderPage()
+  await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
+  // 给任何多余的补拉留出机会真的发出来,而不是靠时间点侥幸躲过断言
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/events')).length).toBe(1)
 })
 
 test('日周背离时给出提示', async () => {
@@ -135,8 +146,4 @@ test('扫描完成后页面显示本次扫描摘要', async () => {
   await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
   await userEvent.click(screen.getByRole('button', { name: /立即扫描/ }))
   await waitFor(() => expect(screen.getByText(/扫描完成:共 4,成功 4,失败 0,数据不足 0/)).toBeTruthy())
-  // 扫描成功会把 version 往上加一,横幅那边跟着再拉一次 /events —— 等这个也
-  // 落地,不然它的 fetch 调用会晚于本用例的 afterEach(unstubAllGlobals) 才发出,
-  // 打到没有 mock 的真实网络上
-  await waitFor(() => expect(fetchMock.mock.calls.filter(c => String(c[0]).includes('/events')).length).toBeGreaterThanOrEqual(2))
 })
