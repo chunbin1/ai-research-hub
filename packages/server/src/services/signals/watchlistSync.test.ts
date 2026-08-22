@@ -59,6 +59,26 @@ test('重复同步幂等,来源保留第一次', () => {
   assert.equal(listWatchlist().find(e => e.symbol === 'ALB')!.source_doc, 'doc_1')
 })
 
+test('没有正文的标题也要抽 —— 主标的常年住在这种标题里', () => {
+  // 回归测试。曾经 titlesOf 走 parseMarkdown 的 chunks,而 chunks 只为**有正文**的
+  // 小节产出;下面这个 `### 4.0 腾讯控股（0700.HK）` 紧跟着子标题、自己没有正文段落,
+  // 于是整条标题连同代码一起消失。线上七篇研报因此漏掉 5 只,全是各篇的主标的
+  // (0700.HK 腾讯、0883.HK 中海油、1088.HK 中国神华)。
+  const md = `# 腾讯生态产业链投资研究报告
+
+## 第四部分：核心标的
+
+### 4.0 腾讯控股（0700.HK / TCEHY）—— 产业链绝对核心
+
+#### 网易（NTES / 9999.HK）——游戏双寡头之二
+
+网易的正文内容。
+`
+  const symbols = syncWatchlistFromMarkdown('doc_x', md)
+  assert.ok(symbols.includes('0700.HK'), `应抽到 0700.HK,实际 ${JSON.stringify(symbols)}`)
+  assert.ok(symbols.includes('9999.HK'), `应抽到 9999.HK,实际 ${JSON.stringify(symbols)}`)
+})
+
 test('没有可抽标题的文档不产生条目', () => {
   assert.deepEqual(syncWatchlistFromMarkdown('doc_x', '# 宏观随笔\n\n## 一、总量\n\n正文。'), [])
   assert.equal(listWatchlist().length, 0)
