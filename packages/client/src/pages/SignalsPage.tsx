@@ -5,6 +5,8 @@ import { ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useSignals } from '../hooks/useSignals'
 import { useAuth } from '../hooks/useAuth'
 import { BackLink } from '../components/BackLink'
+import { SignalLog } from '../components/SignalLog'
+import { RecentSignalEvents } from '../components/RecentSignalEvents'
 import type { SignalRow, SignalSide } from '../types'
 
 /** 近 90 天日线翻转达到这个次数就提示震荡 —— 这段时间的日线信号不可信 */
@@ -138,6 +140,8 @@ export default function SignalsPage() {
 
       {error && <Alert type="error" title={error} showIcon className="mb-4" />}
 
+      <RecentSignalEvents />
+
       <Table<SignalRow>
         rowKey="symbol"
         loading={loading}
@@ -146,6 +150,10 @@ export default function SignalsPage() {
         pagination={false}
         scroll={{ x: 'max-content' }}
         locale={{ emptyText: '还没有自选股 —— 上传一篇标题里带股票代码的研报,或点「重新抽取」' }}
+        expandable={{
+          expandedRowRender: (r) => <SignalLog symbol={r.symbol} />,
+          rowExpandable: (r) => r.status === 'ok',
+        }}
       />
     </div>
   )

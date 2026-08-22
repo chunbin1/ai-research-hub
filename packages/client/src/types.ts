@@ -177,3 +177,22 @@ export interface ScanSummary {
   failed: number
   insufficient: number
 }
+
+export interface SignalStateRow {
+  symbol: string
+  timeframe: '1d' | '1wk'
+  bar_date: string
+  trend: 1 | -1
+  stop_line: number
+  close_adj: number
+  close_raw: number
+  atr: number
+}
+
+export interface SignalEventRow {
+  symbol: string
+  timeframe: '1d' | '1wk'
+  bar_date: string
+  direction: 1 | -1
+  price: number
+}

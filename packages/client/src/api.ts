@@ -50,4 +50,16 @@ export const api = {
     })
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '操作失败')
   },
+  async getSignalLog(symbol: string, timeframe: '1d' | '1wk', limit = 60): Promise<import('./types').SignalStateRow[]> {
+    const r = await fetch(`/api/signals/${encodeURIComponent(symbol)}/log?timeframe=${timeframe}&limit=${limit}`)
+    if (!r.ok) throw new Error('日志加载失败')
+    // 响应体缺 states 字段时兜底为空数组,避免把整页打挂
+    return (await r.json()).states ?? []
+  },
+  async listSignalEvents(days = 7): Promise<import('./types').SignalEventRow[]> {
+    const r = await fetch(`/api/signals/events?days=${days}`)
+    if (!r.ok) throw new Error('事件加载失败')
+    // 响应体缺 events 字段时兜底为空数组,避免把整页打挂
+    return (await r.json()).events ?? []
+  },
 }
