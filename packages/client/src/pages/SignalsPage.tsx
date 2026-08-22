@@ -148,7 +148,10 @@ export default function SignalsPage() {
         columns={columns}
         dataSource={rows}
         pagination={false}
-        scroll={{ x: 'max-content' }}
+        // 必须是具体像素而不是 'max-content':展开行里的 SignalLog 是一张带
+        // `min-width: 100%` 的嵌套表格,父级若是 max-content 就构成循环约束 ——
+        // 浏览器实测会把表格撑到 500000px,除「标的」外所有列被推出屏幕。
+        scroll={{ x: 1280 }}
         locale={{ emptyText: '还没有自选股 —— 上传一篇标题里带股票代码的研报,或点「重新抽取」' }}
         expandable={{
           expandedRowRender: (r) => <SignalLog symbol={r.symbol} />,
