@@ -78,7 +78,19 @@ function toRows(
   return { states, events }
 }
 
-export async function scanAll(deps: ScanDeps = {}): Promise<ScanSummary> {
+// 进程内并发闸门:scanning 标志只存在于前端的某一个标签页,拦不住第二个标签页、
+// 也拦不住手动扫描与 21:30 cron / 启动补扫撞车。没有这个闸,重叠的扫描会把
+// 对 Yahoo 的并发请求量直接翻倍,而 Yahoo 本就会限流,backoff 只重试两次,
+// 撑不住这种自己人造成的压力。同一时刻只跑一份 scanAll,后来者拿同一个 Promise。
+let inFlight: Promise<ScanSummary> | null = null
+
+export function scanAll(deps: ScanDeps = {}): Promise<ScanSummary> {
+  if (inFlight) return inFlight
+  inFlight = runScan(deps).finally(() => { inFlight = null })
+  return inFlight
+}
+
+async function runScan(deps: ScanDeps): Promise<ScanSummary> {
   const fetchQuotes = deps.fetchQuotes ?? ((s: string) => fetchDailyQuotes(s))
   const nowIso = deps.nowIso ?? (() => new Date().toISOString())
   const concurrency = deps.concurrency ?? 5
@@ -132,6 +144,14 @@ export async function scanAll(deps: ScanDeps = {}): Promise<ScanSummary> {
         const message = err instanceof Error ? err.message : String(err)
         // 代码不存在是永久失败,标 invalid 后不再浪费请求;限流等是临时的,下次还扫
         const status = err instanceof YahooError && err.kind === 'not_found' ? 'invalid' : entry.status
+        if (status === 'invalid') {
+          // 永久失效(退市/改代码/被合并)的票不能留着旧信号:
+          // listScannable() 会把它排除在下次扫描之外,状态和事件从此再也不会更新,
+          // 看板上会一直渲染一个冻结的多/空标签;若这个冻结的翻转恰好落在最近 7 天
+          // 窗口内,还会混进「最近 7 天的信号」横幅冒充一条新信号。
+          replaceStates(entry.symbol, '1d', []); replaceEvents(entry.symbol, '1d', [])
+          replaceStates(entry.symbol, '1wk', []); replaceEvents(entry.symbol, '1wk', [])
+        }
         updateScanResult(entry.symbol, { status, lastError: message, lastScanAt: nowIso() })
         summary.failed++
       }

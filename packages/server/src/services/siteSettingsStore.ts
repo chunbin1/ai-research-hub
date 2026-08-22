@@ -1,7 +1,8 @@
 // packages/server/src/services/siteSettingsStore.ts
 //
-// 站点级设置的通用键值表。目前只有一个 key:default_model —— 站点默认模型名,
-// 优先级高于 .env 里的 ZHIPU_MODEL / ANTHROPIC_MODEL。
+// 站点级设置的通用键值表。key 包括:default_model —— 站点默认模型名,
+// 优先级高于 .env 里的 ZHIPU_MODEL / ANTHROPIC_MODEL;
+// 以及 signals.atr_period / signals.atr_mult / signals.last_scan_at —— 信号扫描的参数与状态。
 //
 // getSetting 在未初始化时返回 null 而不是抛错,这一点和 llmConfigStore 的
 // 约定相反,是刻意的:serverLLMConfig() 会在不建库的单元测试(llm.test.ts)里

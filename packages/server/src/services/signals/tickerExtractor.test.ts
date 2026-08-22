@@ -39,6 +39,11 @@ test('同一代码多次出现只保留第一次,并记录来源标题', () => {
   assert.equal(got[0].sourceText, '5.5 Albemarle（NYSE: ALB）')
 })
 
+test('交易所前缀大小写不敏感', () => {
+  const got = extractTickersFromTitles(['5.4 SQM（Nasdaq: SGML）'])
+  assert.deepEqual(got.map(t => t.symbol), ['SGML'])
+})
+
 test('空输入', () => {
   assert.deepEqual(extractTickersFromTitles([]), [])
   assert.deepEqual(extractTickersFromTitles(['', '   ']), [])

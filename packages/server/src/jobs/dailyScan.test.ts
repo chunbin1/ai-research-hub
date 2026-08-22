@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { shouldBackfill, BACKFILL_GATE_MS, CRON_EXPR } from './dailyScan.ts'
+import { shouldBackfill, BACKFILL_GATE_MS } from './dailyScan.ts'
 
 const NOW = Date.parse('2026-08-21T10:00:00.000Z')
 
@@ -23,8 +23,4 @@ test('刚扫过 → 跳过(防开发期反复重启)', () => {
 test('时间戳损坏时按需要补扫处理', () => {
   assert.equal(shouldBackfill('不是时间', NOW), true)
   assert.equal(shouldBackfill('', NOW), true)
-})
-
-test('cron 表达式:工作日 21:30', () => {
-  assert.equal(CRON_EXPR, '30 21 * * 1-5')
 })

@@ -67,11 +67,14 @@ app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOStrin
 const port = Number(process.env.PORT) || 3001
 try {
   await app.listen({ port, host: '0.0.0.0' })
-  startDailyScan({
-    info: (m) => app.log.info(m),
-    error: (m) => app.log.error(m),
-  })
 } catch (err) {
   app.log.error(err)
   process.exit(1)
 }
+
+// 放在 try/catch 外面:那个 catch 会 process.exit(1)。listen 一旦成功,
+// 后台任务注册失败也不该把已经在监听的服务器带下去。
+startDailyScan({
+  info: (m) => app.log.info(m),
+  error: (m) => app.log.error(m),
+})

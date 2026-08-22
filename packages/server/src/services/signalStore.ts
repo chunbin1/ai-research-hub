@@ -111,7 +111,9 @@ export function countEventsSince(symbol: string, timeframe: Timeframe, sinceDate
 }
 
 export function getRecentEvents(sinceDate: string): SignalEvent[] {
+  // 公开接口,路由层把 days 限到 3650 —— 不加 LIMIT 的话 ?days=3650 会把整张表吐出来。
+  // 客户端只用过 7 天,500 条对正常用法绰绰有余。
   return db().prepare(
-    'SELECT * FROM signal_events WHERE bar_date >= ? ORDER BY bar_date DESC, symbol',
+    'SELECT * FROM signal_events WHERE bar_date >= ? ORDER BY bar_date DESC, symbol LIMIT 500',
   ).all(sinceDate) as SignalEvent[]
 }

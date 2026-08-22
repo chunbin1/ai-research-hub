@@ -20,6 +20,9 @@ export function isoWeekKey(date: string): string {
  * 按 ISO 周聚合。`todayIso` 默认取当前 UTC 日期 —— 一律用 UTC,
  * 因为 Yahoo 日线 bar 的 UTC 日期恰好等于该市场的交易日(美股 13:30 UTC 开盘、
  * 港股 01:30 UTC 开盘,都落在同一 UTC 日),用本地时区反而会错位。
+ *
+ * 前置条件:`bars` 必须按日期升序传入 —— 组内「最后一根赢」和 Map 插入顺序
+ * 等价于时间顺序,都依赖这一点,函数内部不做排序或校验。
  */
 export function toWeekly(bars: Bar[], todayIso?: string): Bar[] {
   const today = todayIso ?? new Date().toISOString().slice(0, 10)

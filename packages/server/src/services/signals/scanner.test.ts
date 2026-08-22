@@ -153,6 +153,43 @@ test('曾经正常的票后来数据变短:两个周期的 states 与 events 都
   assert.equal(getLatestEvent('SHRANK', '1wk'), null)
 })
 
+test('曾经正常的票后来 404:标记 invalid 且两个周期的 states/events 都被清空', async () => {
+  // 退市 / 改代码 / 被合并的票会一直 404。若不清空,catch 分支只更新 watchlist 的
+  // status,daily_states / signal_events 里上一次扫描留下的行会永远留在库里 ——
+  // 看板渲染一个再也不会变的冻结趋势标签,冻结的翻转还可能混进「最近 7 天信号」横幅。
+  addWatchlistEntry({ symbol: 'DEAD', market: 'US', sourceDoc: 'd', sourceText: 't' })
+  await scanAll({ fetchQuotes: async (s) => fakeSeries(s) })
+  assert.ok(getLatestState('DEAD', '1d'))
+  assert.ok(getLatestState('DEAD', '1wk'))
+  assert.ok(getLatestEvent('DEAD', '1d'))
+  assert.ok(getLatestEvent('DEAD', '1wk'))
+
+  await scanAll({
+    fetchQuotes: async (s) => { throw new YahooError(`${s}: 代码不存在`, 'not_found') },
+  })
+  assert.equal(listWatchlist().find(e => e.symbol === 'DEAD')!.status, 'invalid')
+  assert.equal(getLatestState('DEAD', '1d'), null)
+  assert.equal(getLatestState('DEAD', '1wk'), null)
+  assert.equal(getLatestEvent('DEAD', '1d'), null)
+  assert.equal(getLatestEvent('DEAD', '1wk'), null)
+})
+
+test('scanAll 有进程内并发闸门:重叠调用只实际扫一遍', async () => {
+  // 前端 scanning 标志是每个标签页各自的状态,拦不住两个标签页或手动扫描撞上 cron。
+  // 没有这道闸,两次几乎同时发起的 scanAll 会把 fetchQuotes 的调用量直接翻倍。
+  addWatchlistEntry({ symbol: 'ALB', market: 'US', sourceDoc: 'd', sourceText: 't' })
+  let calls = 0
+  const fetchQuotes = async (s: string) => { calls++; return fakeSeries(s) }
+
+  const p1 = scanAll({ fetchQuotes })
+  const p2 = scanAll({ fetchQuotes })
+  const [r1, r2] = await Promise.all([p1, p2])
+
+  assert.equal(calls, 1)              // 第二次没有再触发一轮请求
+  assert.deepEqual(r1, r2)            // 两次调用拿到同一份结果
+  assert.deepEqual(r1, { total: 1, ok: 1, failed: 0, insufficient: 0 })
+})
+
 test('日线够但周线不够时:日线照出,周线留空,状态仍是 ok', async () => {
   // 300 个自然日 → 日线 300 根(够),聚合出 43 根周线(不够)
   addWatchlistEntry({ symbol: 'YOUNG', market: 'US', sourceDoc: 'd', sourceText: 't' })

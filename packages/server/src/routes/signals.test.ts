@@ -2,17 +2,24 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import fastify from 'fastify'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 // AUTH_DISABLED 必须精确等于 'true'(见 auth.ts 的 `=== 'true'`),
 // 不能用 '1' 之类的真值代替 —— 否则 requireAdmin 仍会当作未登录处理。
 process.env.AUTH_DISABLED = 'true'
 delete process.env.SIGNALS
+// documentStore 在模块顶层用 `process.env.RAW_DIR ?? 'data/raw'` 求值一次,
+// 必须在下面 import 它之前把 RAW_DIR 指到一个临时目录,
+// 这样 /signals/extract 测试里真实写盘的原始 markdown 不会碰到项目的 data/raw。
+process.env.RAW_DIR = mkdtempSync(join(tmpdir(), 'signals-extract-'))
 
 const { initWatchlistTable, addWatchlistEntry, updateScanResult, listWatchlist } =
   await import('../services/watchlistStore.ts')
 const { initSignalTables, replaceStates, replaceEvents } = await import('../services/signalStore.ts')
 const { initSiteSettingsTable } = await import('../services/siteSettingsStore.ts')
-const { initDocumentTable } = await import('../services/documentStore.ts')
+const { initDocumentTable, saveRawMarkdown } = await import('../services/documentStore.ts')
 const { signalRoutes } = await import('./signals.ts')
 
 async function freshApp() {
@@ -110,6 +117,23 @@ test('POST /signals/scan 调用注入的 scan', async () => {
   const res = await app.inject({ method: 'POST', url: '/api/signals/scan' })
   assert.equal(res.statusCode, 200)
   assert.deepEqual(res.json().summary, { total: 2, ok: 2, failed: 0, insufficient: 0 })
+})
+
+test('POST /signals/extract 从磁盘上的原始 markdown 抽取标的并写入自选股', async () => {
+  const { app, db } = await freshApp()
+  seedDoc1(db)
+  saveRawMarkdown('doc_1', [
+    '# 5.5 Albemarle（NYSE: ALB）',
+    '',
+    '正文随便写点什么,标题以外的内容不参与抽取。',
+  ].join('\n'))
+
+  const res = await app.inject({ method: 'POST', url: '/api/signals/extract' })
+  assert.equal(res.statusCode, 200)
+  const body = res.json()
+  assert.equal(body.documents, 1)
+  assert.deepEqual(body.symbols, ['ALB'])
+  assert.equal(listWatchlist().find(e => e.symbol === 'ALB')?.symbol, 'ALB')
 })
 
 test('PATCH 禁用与启用', async () => {
