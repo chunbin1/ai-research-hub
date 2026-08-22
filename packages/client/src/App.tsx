@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import ReaderPage from './pages/ReaderPage'
+import SignalsPage from './pages/SignalsPage'
 import { TracesPage } from './components/TracesPage'
 import { TraceDetailPage } from './components/TraceDetailPage'
 import EvalDashboard from './pages/EvalDashboard'
@@ -13,6 +14,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/reports/:id" element={<ReaderPage />} />
+      <Route path="/signals" element={<SignalsPage />} />
       <Route path="/traces" element={<TracesPage />} />
       <Route path="/traces/:id" element={<TraceDetailPage />} />
       <Route path="/eval" element={<EvalDashboard />} />

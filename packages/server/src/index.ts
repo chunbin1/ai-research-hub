@@ -16,6 +16,9 @@ import { initChatTable } from './services/chatStore.js'
 import { initLLMConfigTable } from './services/llmConfigStore.js'
 import { initSiteSettingsTable } from './services/siteSettingsStore.js'
 import { initEvalTables, markStaleRunsFailed } from './services/evalStore.js'
+import { initWatchlistTable } from './services/watchlistStore.js'
+import { initSignalTables } from './services/signalStore.js'
+import { startDailyScan } from './jobs/dailyScan.js'
 import { documentRoutes } from './routes/documents.js'
 import { chatRoutes } from './routes/chat.js'
 import { traceRoutes } from './routes/traces.js'
@@ -23,6 +26,7 @@ import { authRoutes } from './routes/auth.js'
 import { evalRoutes } from './routes/eval.js'
 import { llmConfigRoutes } from './routes/llmConfig.js'
 import { siteSettingsRoutes } from './routes/siteSettings.js'
+import { signalRoutes } from './routes/signals.js'
 
 const app = Fastify({
   logger: { transport: { target: 'pino-pretty', options: { colorize: true } } },
@@ -44,6 +48,8 @@ initChatTable(db)
 initLLMConfigTable(db)
 initSiteSettingsTable(db)
 initEvalTables(db)
+initWatchlistTable(db)
+initSignalTables(db)
 markStaleRunsFailed()
 await initDocCollection()
 
@@ -54,6 +60,7 @@ await app.register(traceRoutes, { prefix: '/api' })
 await app.register(evalRoutes, { prefix: '/api' })
 await app.register(llmConfigRoutes, { prefix: '/api' })
 await app.register(siteSettingsRoutes, { prefix: '/api' })
+await app.register(signalRoutes, { prefix: '/api' })
 
 app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 
@@ -64,3 +71,10 @@ try {
   app.log.error(err)
   process.exit(1)
 }
+
+// 放在 try/catch 外面:那个 catch 会 process.exit(1)。listen 一旦成功,
+// 后台任务注册失败也不该把已经在监听的服务器带下去。
+startDailyScan({
+  info: (m) => app.log.info(m),
+  error: (m) => app.log.error(m),
+})

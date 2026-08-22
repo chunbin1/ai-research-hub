@@ -6,6 +6,7 @@ import {
   saveRawMarkdown, readRawMarkdown, deleteRawMarkdown,
 } from '../services/documentStore.js'
 import { upsertChunks, deleteByDocId, isDocVectorAvailable } from '../services/documentVector.js'
+import { syncWatchlistFromMarkdown } from '../services/signals/watchlistSync.js'
 import { requireAdmin } from './auth.js'
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
@@ -35,6 +36,15 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
     const doc = saveDocument({ filename, size_bytes: buffer.length, chunk_count: chunks.length })
     saveRawMarkdown(doc.id, md)
+
+    // 从标题抽标的进自选股。抽取失败不该让上传失败 —— 上传的主职责是存报告。
+    try {
+      const symbols = syncWatchlistFromMarkdown(doc.id, md)
+      if (symbols.length) app.log.info(`[watchlist] ${doc.id} 抽到 ${symbols.join(', ')}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      app.log.warn(`[watchlist] ${doc.id} 抽取失败: ${msg}`)
+    }
 
     if (isDocVectorAvailable()) {
       upsertChunks(doc.id, doc.filename, chunks).catch((err: unknown) => {
