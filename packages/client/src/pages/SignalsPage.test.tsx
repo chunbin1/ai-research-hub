@@ -22,7 +22,14 @@ const BROKEN = {
 const CALM = { ...ALB, symbol: 'CALM', name: 'Calm Corp', flips90d: 1 } as SignalRow
 
 function stubRows(rows: SignalRow[]) {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ rows }) }) as Response))
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    // 按 URL 返回对应形状。一律返回 {rows} 会让横幅与展开行拿到 undefined ——
+    // 那是 stub 在说谎,不该让生产代码加兜底去迁就它。
+    const body = url.includes('/events') ? { events: [] }
+      : url.includes('/log') ? { states: [] }
+      : { rows }
+    return { ok: true, json: async () => body } as Response
+  }))
 }
 
 const renderPage = () => render(<MemoryRouter><SignalsPage /></MemoryRouter>)

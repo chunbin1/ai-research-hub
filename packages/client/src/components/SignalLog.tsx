@@ -33,13 +33,12 @@ export function SignalLog({ symbol }: { symbol: string }) {
 
   return (
     <div className="p-2">
-      {/* 不用 optionType="button" —— 那种样式下真实 <input> 带 pointer-events:none,
-          点击面靠外层 label/span 承接,与「保留默认 radio」相比不影响功能,只是少一层按钮式外观。 */}
       <Radio.Group
         className="mb-3"
         value={timeframe}
         onChange={e => setTimeframe(e.target.value as '1d' | '1wk')}
         options={[{ label: '日线', value: '1d' }, { label: '周线', value: '1wk' }]}
+        optionType="button"
         size="small"
       />
       <Table<SignalStateRow>

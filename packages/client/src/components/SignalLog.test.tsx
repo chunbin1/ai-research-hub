@@ -33,7 +33,10 @@ test('可以切到周线', async () => {
   render(<SignalLog symbol="ALB" />)
   await waitFor(() => expect(screen.getByText('2026-08-20')).toBeTruthy())
 
-  await userEvent.click(screen.getByRole('radio', { name: '周线' }))
+  // 点**可见的标签**而不是 getByRole('radio') 拿到的隐藏 input ——
+  // antd 的 optionType="button" 给那个 input 加了 pointer-events:none,
+  // user-event 会拒绝点击。点标签既能通过,也更贴近真人操作。
+  await userEvent.click(screen.getByText('周线'))
   await waitFor(() => expect(screen.getByText('2026-08-14')).toBeTruthy())
   expect(screen.queryByText('2026-08-20')).toBeNull()
 })
