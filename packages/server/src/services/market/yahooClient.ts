@@ -22,6 +22,8 @@ export interface QuoteSeries {
   symbol: string
   name: string | null
   currency: string | null
+  /** 交易所全名,如 NasdaqGS / HKSE。确认弹窗要显示它 */
+  exchange: string | null
   /** 全复权序列,信号就是用它算的 */
   bars: Bar[]
   /** 交易日 → 原始未复权收盘价,展示用 */
@@ -130,6 +132,7 @@ export async function fetchDailyQuotes(symbol: string, deps: YahooDeps = {}): Pr
     symbol,
     name: typeof meta.longName === 'string' ? meta.longName : null,
     currency: typeof meta.currency === 'string' ? meta.currency : null,
+    exchange: typeof meta.fullExchangeName === 'string' ? meta.fullExchangeName : null,
     bars,
     rawClose,
   }

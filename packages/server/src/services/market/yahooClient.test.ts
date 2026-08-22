@@ -24,6 +24,7 @@ function fakePayload(opts: {
         meta: {
           currency: 'USD',
           longName: 'Albemarle Corporation',
+          fullExchangeName: 'NYSE',
           currentTradingPeriod: { regular: opts.session },
         },
         timestamp: Array.from({ length: n }, (_, i) => T0 + i * DAY),
@@ -55,6 +56,7 @@ test('解析出 UTC 日期的 OHLC,并带上名称与币种', async () => {
   })
   assert.equal(s.name, 'Albemarle Corporation')
   assert.equal(s.currency, 'USD')
+  assert.equal(s.exchange, 'NYSE')
   // 第三根(08-20)正在交易中,被丢弃
   assert.deepEqual(s.bars.map(b => b.date), ['2026-08-18', '2026-08-19'])
 })
