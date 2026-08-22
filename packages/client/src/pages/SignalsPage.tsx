@@ -94,13 +94,24 @@ export default function SignalsPage() {
       },
     },
     {
-      title: '来源', key: 'source',
-      render: (_: unknown, r: SignalRow) =>
-        r.sourceDoc
-          ? <Button type="link" size="small" onClick={() => navigate(`/reports/${r.sourceDoc!.id}`)}>
-              {r.sourceDoc.filename}
-            </Button>
-          : <Typography.Text type="secondary">—</Typography.Text>,
+      // 研报名很长(「碳酸锂产业链投资研究报告」12 字),占满宽度会把信号列挤扁。
+      // 收到 100px 并截断,鼠标悬停看全名,点进去看正文。
+      title: '来源', key: 'source', width: 100, ellipsis: true,
+      render: (_: unknown, r: SignalRow) => {
+        const doc = r.sourceDoc
+        if (!doc) return <Typography.Text type="secondary">—</Typography.Text>
+        return (
+          <Button
+            type="link"
+            size="small"
+            title={doc.filename}
+            style={{ padding: 0, maxWidth: '100%', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            onClick={() => navigate(`/reports/${doc.id}`)}
+          >
+            {doc.filename}
+          </Button>
+        )
+      },
     },
   ]
 
