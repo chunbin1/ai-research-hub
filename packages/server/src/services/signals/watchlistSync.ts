@@ -6,8 +6,10 @@ import { getAllDocuments, readRawMarkdown } from '../documentStore.js'
 import { addWatchlistEntry } from '../watchlistStore.js'
 import { extractTickersFromTitles } from './tickerExtractor.js'
 
-/** ATX 标题行。与 markdownParser 的 HEADING_RE 同源,允许结尾的闭合 # */
+/** ATX 标题行:`#` 后必须有空白,允许结尾的闭合 `#`。与 markdownParser 的形状一致。 */
 const HEADING_RE = /^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/gm
+/** 围栏代码块。整段挖掉再扫标题 —— 否则里面的 `# 注释` 会被当成标题。 */
+const FENCE_RE = /^(```|~~~).*$[\s\S]*?^\1.*$/gm
 
 /**
  * 抽出全部标题(含文档标题),按出现顺序去重。
@@ -20,9 +22,12 @@ const HEADING_RE = /^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/gm
  * (0700.HK 腾讯、0883.HK 中海油、1088.HK 中国神华)。
  */
 function titlesOf(markdown: string): string[] {
+  // 先把围栏代码块整段挖掉。研报里普遍有围栏(七篇线上研报全都有),
+  // 里面一旦出现 `# NYSE: FOO` 这样的注释行就会被误当成标题。
+  const stripped = markdown.replace(FENCE_RE, '')
   const titles: string[] = []
   const seen = new Set<string>()
-  for (const m of markdown.matchAll(HEADING_RE)) {
+  for (const m of stripped.matchAll(HEADING_RE)) {
     const title = m[1].trim()
     if (title && !seen.has(title)) {
       seen.add(title)
