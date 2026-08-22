@@ -14,6 +14,7 @@ export interface WatchlistEntry {
   currency: string | null
   source_doc: string | null
   source_text: string | null
+  /** 1 = 未删除,0 = 已被管理员删除(墓碑)。不是「启用/禁用」——禁用功能已移除。 */
   enabled: 0 | 1
   status: WatchStatus
   last_error: string | null
@@ -33,6 +34,9 @@ export function initWatchlistTable(db: DB): void {
       currency     TEXT,
       source_doc   TEXT,
       source_text  TEXT,
+      -- enabled 现在的语义是「未删除」而不是「启用/禁用」:0 表示已被管理员删除。
+      -- 保留墓碑行是刻意的 —— addWatchlistEntry 的 ON CONFLICT DO NOTHING 会因此
+      -- 直接冲突,使「重新抽取」不会把已删除的标的带回来。
       enabled      INTEGER NOT NULL DEFAULT 1,
       status       TEXT NOT NULL DEFAULT 'ok',
       last_error   TEXT,
@@ -62,7 +66,8 @@ export function addWatchlistEntry(e: {
 }
 
 export function listWatchlist(): WatchlistEntry[] {
-  return db().prepare('SELECT * FROM watchlist ORDER BY symbol').all() as WatchlistEntry[]
+  // 墓碑(enabled = 0)不返回 —— 界面上不该看到已删除的标的
+  return db().prepare('SELECT * FROM watchlist WHERE enabled = 1 ORDER BY symbol').all() as WatchlistEntry[]
 }
 
 export function listScannable(): WatchlistEntry[] {
@@ -93,6 +98,21 @@ export function updateScanResult(symbol: string, patch: {
   )
 }
 
-export function setWatchlistEnabled(symbol: string, enabled: boolean): void {
-  db().prepare('UPDATE watchlist SET enabled = ? WHERE symbol = ?').run(enabled ? 1 : 0, symbol)
+/**
+ * 软删除。只打墓碑,不删行 —— 墓碑占着主键,使 addWatchlistEntry 的
+ * ON CONFLICT DO NOTHING 直接冲突,「重新抽取」因此不会把它带回来。
+ * 该标的的日志与事件由调用方(routes/signals.ts)另行清除。
+ */
+export function softDeleteWatchlistEntry(symbol: string): void {
+  db().prepare('UPDATE watchlist SET enabled = 0 WHERE symbol = ?').run(symbol)
+}
+
+/**
+ * 复活一个已删除的标的。状态一并归零 —— 若上次是因 invalid 被标记,
+ * 不清掉的话它复活后仍会被 listScannable 排除在外,等于活不过来。
+ */
+export function reviveWatchlistEntry(symbol: string): void {
+  db().prepare(
+    "UPDATE watchlist SET enabled = 1, status = 'ok', last_error = NULL WHERE symbol = ?",
+  ).run(symbol)
 }
