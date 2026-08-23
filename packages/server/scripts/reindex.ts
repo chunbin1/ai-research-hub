@@ -12,6 +12,9 @@
 // 注意:本脚本只重建关键词索引。向量索引在 ChromaDB 里,更换 embedding
 // 模型后需要另行重建(维度会变,存量向量全部作废)。
 
+// 必须是第一个 import:ESM 按顺序求值,晚于其他模块加载会让 ragConfig
+// 等在模块作用域读 env 的地方拿到默认值。
+import 'dotenv/config'
 import { initDb } from '../src/services/db.js'
 import { initDocumentTable, getAllDocuments, readRawMarkdown } from '../src/services/documentStore.js'
 import { initChunkFtsTable } from '../src/services/chunkFts.js'
