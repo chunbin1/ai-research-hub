@@ -35,7 +35,9 @@ test('SIGNALS=off 时整组路由返回 404,读接口也不例外', async () => 
     ['GET', '/api/signals/events', undefined],
     ['POST', '/api/signals/scan', undefined],
     ['POST', '/api/signals/extract', undefined],
-    ['PATCH', '/api/signals/watchlist/ALB', { enabled: false }],
+    ['POST', '/api/signals/watchlist/probe', { code: 'RKLB' }],
+    ['POST', '/api/signals/watchlist', { symbol: 'RKLB', market: 'US' }],
+    ['DELETE', '/api/signals/watchlist/ALB', undefined],
   ] as const) {
     const res = await app.inject({ method, url, payload })
     assert.equal(res.statusCode, 404, `${method} ${url} 应该 404`)

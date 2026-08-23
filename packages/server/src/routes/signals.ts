@@ -4,18 +4,24 @@
 // 扫描 / 抽取 / 启停仅 admin。SIGNALS=off 时全部 404。
 import type { FastifyPluginAsync } from 'fastify'
 import { requireAdmin } from './auth.js'
-import { listWatchlist, setWatchlistEnabled, type WatchlistEntry } from '../services/watchlistStore.js'
+import {
+  listWatchlist, addWatchlistEntry, softDeleteWatchlistEntry, reviveWatchlistEntry,
+  type WatchlistEntry,
+} from '../services/watchlistStore.js'
 import {
   getLatestState, getStates, getLatestEvent, countEventsSince, getRecentEvents,
-  type Timeframe,
+  replaceStates, replaceEvents, type Timeframe,
 } from '../services/signalStore.js'
 import { scanAll, isSignalsEnabled } from '../services/signals/scanner.js'
 import { syncWatchlistFromAllDocuments } from '../services/signals/watchlistSync.js'
+import { probeSymbol, ProbeError } from '../services/signals/probeSymbol.js'
 import { getDocument } from '../services/documentStore.js'
 
 export interface SignalsRoutesOptions {
   /** 测试注入假实现,避免真的打 Yahoo */
   scan?: typeof scanAll
+  /** 同上 */
+  probe?: typeof probeSymbol
 }
 
 const TIMEFRAMES: Timeframe[] = ['1d', '1wk']
@@ -74,6 +80,7 @@ function rowOf(entry: WatchlistEntry) {
 
 export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app, opts) => {
   const scan = opts.scan ?? scanAll
+  const probe = opts.probe ?? probeSymbol
 
   app.addHook('onRequest', async (_request, reply) => {
     if (!isSignalsEnabled()) return reply.status(404).send({ error: 'signals_disabled' })
@@ -115,19 +122,61 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
     return syncWatchlistFromAllDocuments()
   })
 
-  app.patch<{ Params: { symbol: string }; Body: { enabled?: unknown } }>(
-    '/signals/watchlist/:symbol',
-    async (request, reply) => {
-      if (!requireAdmin(request, reply)) return
-      const enabled = (request.body ?? {}).enabled
-      if (typeof enabled !== 'boolean') {
-        return reply.status(400).send({ error: 'invalid_input', message: 'enabled 必须是布尔值' })
+  app.post<{ Body: { code?: unknown } }>('/signals/watchlist/probe', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
+    const raw = (request.body ?? {}).code
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return reply.status(400).send({ error: 'invalid_input', message: '代码不能为空' })
+    }
+    const code = raw.trim()
+    try {
+      return await probe(code)
+    } catch (err) {
+      // ProbeError 的 kind 原样透传 —— 前端要靠它区分「市场不支持」和「查不到」
+      if (err instanceof ProbeError) {
+        return reply.status(400).send({ error: err.kind, message: err.message })
       }
-      if (!listWatchlist().some(e => e.symbol === request.params.symbol)) {
-        return reply.status(404).send({ error: 'not_found' })
-      }
-      setWatchlistEnabled(request.params.symbol, enabled)
-      return { ok: true }
-    },
-  )
+      throw err
+    }
+  })
+
+  app.post<{ Body: { symbol?: unknown; market?: unknown } }>('/signals/watchlist', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
+    const raw = (request.body ?? {}).symbol
+    const { market } = request.body ?? {}
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return reply.status(400).send({ error: 'invalid_input', message: 'symbol 不能为空' })
+    }
+    const symbol = raw.trim()
+    if (market !== 'US' && market !== 'HK') {
+      return reply.status(400).send({ error: 'invalid_input', message: 'market 只能是 US 或 HK' })
+    }
+    // listWatchlist 只返回未删除的行 —— 在列表里说明是真正的重复,而不是曾被删除
+    if (listWatchlist().some(e => e.symbol === symbol)) {
+      return reply.status(409).send({ error: 'already_listed', message: `${symbol} 已在自选股中` })
+    }
+    // 两条都是幂等操作,顺序调用即可覆盖「新增」与「复活」两种情况,不必先查一次「是否曾被删除」:
+    // - 曾被删除:reviveWatchlistEntry 生效(保留原 source_doc/source_text),随后
+    //   addWatchlistEntry 因主键冲突被 ON CONFLICT DO NOTHING 忽略,不会把来源抹成手动添加。
+    // - 全新标的:reviveWatchlistEntry 找不到行,是空操作;addWatchlistEntry 真正建行,
+    //   来源留空表示手动添加。
+    reviveWatchlistEntry(symbol)
+    addWatchlistEntry({ symbol, market, sourceDoc: null, sourceText: null })
+    return { ok: true }
+  })
+
+  app.delete<{ Params: { symbol: string } }>('/signals/watchlist/:symbol', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
+    const { symbol } = request.params
+    if (!listWatchlist().some(e => e.symbol === symbol)) {
+      return reply.status(404).send({ error: 'not_found' })
+    }
+    softDeleteWatchlistEntry(symbol)
+    // 连日志一起清 —— 一只票约 1200 行,留着是再也不会更新、也没人看的死数据
+    for (const tf of TIMEFRAMES) {
+      replaceStates(symbol, tf, [])
+      replaceEvents(symbol, tf, [])
+    }
+    return { ok: true }
+  })
 }

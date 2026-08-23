@@ -29,7 +29,9 @@ test('读接口公开,写接口未登录一律 401', async () => {
   for (const [method, url, payload] of [
     ['POST', '/api/signals/scan', undefined],
     ['POST', '/api/signals/extract', undefined],
-    ['PATCH', '/api/signals/watchlist/ALB', { enabled: false }],
+    ['POST', '/api/signals/watchlist/probe', { code: 'RKLB' }],
+    ['POST', '/api/signals/watchlist', { symbol: 'RKLB', market: 'US' }],
+    ['DELETE', '/api/signals/watchlist/ALB', undefined],
   ] as const) {
     const res = await app.inject({ method, url, payload })
     assert.equal(res.statusCode, 401, `${method} ${url} 应该 401`)
