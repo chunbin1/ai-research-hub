@@ -203,7 +203,6 @@ export default function SignalsPage() {
         // 浏览器实测会把表格撑到 500000px,除「标的」外所有列被推出屏幕。
         // admin 多出的「操作」列把所需宽度从 1280 提到了 1380。
         scroll={{ x: 1380 }}
-        rowClassName={(r) => (r.enabled ? '' : 'opacity-50')}
         locale={{ emptyText: '还没有自选股 —— 上传一篇标题里带股票代码的研报,或点「重新抽取」' }}
         expandable={{
           expandedRowRender: (r) => <SignalLog symbol={r.symbol} version={version} />,

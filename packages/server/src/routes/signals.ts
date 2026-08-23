@@ -124,10 +124,11 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
 
   app.post<{ Body: { code?: unknown } }>('/signals/watchlist/probe', async (request, reply) => {
     if (!requireAdmin(request, reply)) return
-    const code = (request.body ?? {}).code
-    if (typeof code !== 'string' || !code.trim()) {
+    const raw = (request.body ?? {}).code
+    if (typeof raw !== 'string' || !raw.trim()) {
       return reply.status(400).send({ error: 'invalid_input', message: '代码不能为空' })
     }
+    const code = raw.trim()
     try {
       return await probe(code)
     } catch (err) {
@@ -141,10 +142,12 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
 
   app.post<{ Body: { symbol?: unknown; market?: unknown } }>('/signals/watchlist', async (request, reply) => {
     if (!requireAdmin(request, reply)) return
-    const { symbol, market } = request.body ?? {}
-    if (typeof symbol !== 'string' || !symbol.trim()) {
+    const raw = (request.body ?? {}).symbol
+    const { market } = request.body ?? {}
+    if (typeof raw !== 'string' || !raw.trim()) {
       return reply.status(400).send({ error: 'invalid_input', message: 'symbol 不能为空' })
     }
+    const symbol = raw.trim()
     if (market !== 'US' && market !== 'HK') {
       return reply.status(400).send({ error: 'invalid_input', message: 'market 只能是 US 或 HK' })
     }

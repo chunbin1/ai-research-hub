@@ -206,6 +206,14 @@ test('POST /signals/watchlist 重复添加返回 409', async () => {
   assert.equal(res.statusCode, 409)
 })
 
+test('symbol 前后空白要 trim,不能绕过 409 建出第二行', async () => {
+  const { app } = await freshApp()
+  await app.inject({ method: 'POST', url: '/api/signals/watchlist', payload: { symbol: 'RKLB', market: 'US' } })
+  const res = await app.inject({ method: 'POST', url: '/api/signals/watchlist', payload: { symbol: ' RKLB ', market: 'US' } })
+  assert.equal(res.statusCode, 409)
+  assert.equal(listWatchlist().length, 1)
+})
+
 test('POST /signals/watchlist 校验入参', async () => {
   const { app } = await freshApp()
   for (const payload of [{}, { symbol: 'RKLB' }, { symbol: '', market: 'US' }, { symbol: 'RKLB', market: 'CN' }]) {

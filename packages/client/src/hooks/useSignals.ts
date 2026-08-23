@@ -51,29 +51,33 @@ export function useSignals() {
     } finally { setScanning(false) }
   }, [refresh])
 
+  /** 成功返回 null,失败返回中文错误文案(同时也写进 error 供页面横幅显示) */
   const add = useCallback(async (symbol: string, market: 'US' | 'HK') => {
     setError(null)
     try {
       await api.addSymbol(symbol, market)
       await refresh()
       setVersion(v => v + 1)
-      return true
+      return null
     } catch (err) {
-      setError(err instanceof Error ? err.message : '添加失败')
-      return false
+      const msg = err instanceof Error ? err.message : '添加失败'
+      setError(msg)
+      return msg
     }
   }, [refresh])
 
+  /** 成功返回 null,失败返回中文错误文案(同时也写进 error 供页面横幅显示) */
   const remove = useCallback(async (symbol: string) => {
     setError(null)
     try {
       await api.deleteSymbol(symbol)
       await refresh()
       setVersion(v => v + 1)
-      return true
+      return null
     } catch (err) {
-      setError(err instanceof Error ? err.message : '删除失败')
-      return false
+      const msg = err instanceof Error ? err.message : '删除失败'
+      setError(msg)
+      return msg
     }
   }, [refresh])
 

@@ -146,13 +146,6 @@ test('点「添加标的」弹出弹窗', async () => {
   await waitFor(() => expect(screen.getByLabelText('代码')).toBeTruthy())
 })
 
-test('被禁用的行整行置灰', async () => {
-  stubRows([{ ...ALB, enabled: false }])
-  const { container } = renderPage()
-  await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
-  expect(container.querySelector('tr.opacity-50')).toBeTruthy()
-})
-
 test('扫描完成后页面显示本次扫描摘要', async () => {
   const fetchMock = vi.fn(async (url: string) => {
     if (url.includes('/auth/me')) {

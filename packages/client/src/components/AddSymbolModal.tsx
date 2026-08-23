@@ -6,8 +6,8 @@ import type { ProbeResult } from '../types'
 interface Props {
   open: boolean
   onCancel: () => void
-  /** 返回 true 表示添加成功,弹窗自行关闭并复位 */
-  onConfirm: (symbol: string, market: 'US' | 'HK') => Promise<boolean>
+  /** 成功返回 null;失败返回中文错误文案,由弹窗自己显示出来 */
+  onConfirm: (symbol: string, market: 'US' | 'HK') => Promise<string | null>
 }
 
 /**
@@ -26,13 +26,17 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
   // 每次「查询」和每次改动代码都自增。回调里比对它,就能把过期的那次请求整个丢掉。
   const reqId = useRef(0)
 
-  const reset = () => { reqId.current++; setCode(''); setResult(null); setError(null) }
+  // 清空上一次探测的一切痕迹。**必须连 probing 一起清** —— 若此刻正有一个请求在飞,
+  // 它的 finally 会因为 reqId 已经变了而跳过 setProbing(false),转圈就再也停不下来。
+  const clearProbe = () => { setResult(null); setError(null); setProbing(false) }
+
+  const reset = () => { reqId.current++; setCode(''); clearProbe() }
 
   // 代码一改,上一次的探测结果立刻作废 —— 否则会出现
   // 「查的是 RKLB、加进去的是别的代码」这种最坏情况。
   // 自增 reqId 是为了连**正在飞的那次请求**也一起作废:只清 state 挡不住它,
   // 它回来时照样会 setResult,让输入框显示 RKLBX、面板显示 Rocket Lab、按钮还亮着。
-  const onCodeChange = (v: string) => { reqId.current++; setCode(v); setResult(null); setError(null) }
+  const onCodeChange = (v: string) => { reqId.current++; setCode(v); clearProbe() }
 
   const doProbe = async () => {
     const myId = ++reqId.current
@@ -53,7 +57,9 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
     if (!result) return
     setAdding(true)
     try {
-      if (await onConfirm(result.symbol, result.market)) { reset(); onCancel() }
+      const msg = await onConfirm(result.symbol, result.market)
+      if (msg) { setError(msg); return }   // 错误要显示在弹窗里 —— 页面横幅被遮罩挡住了
+      reset(); onCancel()
     } finally { setAdding(false) }
   }
 
@@ -71,7 +77,7 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
         </Button>,
       ]}
     >
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
         <Space.Compact style={{ width: '100%' }}>
           <Input
             aria-label="代码"

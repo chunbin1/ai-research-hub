@@ -165,6 +165,7 @@ export interface SignalRow {
   flips90d: number
   sourceDoc: { id: string; filename: string } | null
   sourceText: string | null
+  /** 恒为 true —— 接口只返回未删除的行。保留字段是为了与服务端结构对齐 */
   enabled: boolean
   status: 'ok' | 'invalid' | 'insufficient'
   lastError: string | null

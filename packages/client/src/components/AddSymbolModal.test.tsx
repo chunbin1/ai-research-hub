@@ -17,7 +17,7 @@ function stubProbe(impl: (code: string) => { ok?: boolean; body: unknown }) {
 
 afterEach(() => { vi.unstubAllGlobals() })
 
-const noop = async () => true
+const noop = async () => null
 
 // 仓库没装 @testing-library/jest-dom,没有 toBeDisabled 这类 matcher ——
 // antd 禁用时渲染的就是原生 <button disabled>,直接读属性即可。
@@ -125,6 +125,35 @@ test('查询飞行途中改代码:旧结果回来也不能生效', async () => {
   expect(screen.queryByText('Rocket Lab Corporation')).toBeNull()
 })
 
+test('查询途中改代码,转圈要停下来 —— 否则查询按钮永远点不动', async () => {
+  let release!: () => void
+  const gate = new Promise<void>(r => { release = r })
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    await gate
+    return { ok: true, json: async () => RKLB } as Response
+  }))
+  render(<AddSymbolModal open onCancel={() => {}} onConfirm={noop} />)
+
+  const input = screen.getByLabelText('代码')
+  await userEvent.type(input, 'RKLB')
+  await userEvent.click(screen.getByRole('button', { name: '查询' }))
+  await userEvent.type(input, 'X')
+
+  // 用正则而非精确字符串定位:loading 图标退场动画期间,antd 的 Spin
+  // 图标仍带着 aria-label="loading" 留在 DOM 里一拍,会把可访问名暂时
+  // 变成 "loading 查询"。这只是退场动画的残留,不代表按钮真的还在转圈 ——
+  // 真正反映 `loading` prop 的是 antd 内部维护的 ant-btn-loading class,
+  // 它在 setProbing(false) 生效的同一渲染里就已经被摘掉,所以下面仍然
+  // 断言这个 class,只是查找按钮时放宽成子串匹配。
+  const probeBtn = screen.getByRole('button', { name: /查询/ }) as HTMLButtonElement
+  expect(probeBtn.classList.contains('ant-btn-loading')).toBe(false)
+
+  release()
+  await new Promise(r => setTimeout(r, 0))
+  expect((screen.getByRole('button', { name: /查询/ }) as HTMLButtonElement)
+    .classList.contains('ant-btn-loading')).toBe(false)
+})
+
 test('关掉再打开是干净的,不留上一次的结果', async () => {
   stubProbe(() => ({ body: RKLB }))
   const { rerender } = render(<AddSymbolModal open onCancel={() => {}} onConfirm={noop} />)
@@ -139,9 +168,22 @@ test('关掉再打开是干净的,不留上一次的结果', async () => {
   expect(confirmBtn().disabled).toBe(true)
 })
 
+test('添加失败时错误显示在弹窗里,弹窗不关闭', async () => {
+  // 页面自己的错误横幅在弹窗遮罩后面,看不见 —— 所以必须在弹窗内显示
+  stubProbe(() => ({ body: RKLB }))
+  render(<AddSymbolModal open onCancel={() => {}} onConfirm={async () => 'RKLB 已在自选股中'} />)
+
+  await userEvent.type(screen.getByLabelText('代码'), 'RKLB')
+  await userEvent.click(screen.getByRole('button', { name: '查询' }))
+  await waitFor(() => expect(confirmBtn().disabled).toBe(false))
+  await userEvent.click(confirmBtn())
+
+  await waitFor(() => expect(screen.getByText('RKLB 已在自选股中')).toBeTruthy())
+})
+
 test('确认添加把探测到的 symbol 与 market 交回去', async () => {
   stubProbe(() => ({ body: RKLB }))
-  const onConfirm = vi.fn(async () => true)
+  const onConfirm = vi.fn(async () => null)
   render(<AddSymbolModal open onCancel={() => {}} onConfirm={onConfirm} />)
 
   await userEvent.type(screen.getByLabelText('代码'), ' nasdaq: rklb ')
