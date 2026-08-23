@@ -11,6 +11,7 @@ import { tryReserveMessage, refundMessage, MESSAGE_LIMIT } from '../services/use
 import { tryReserveGlobal, refundGlobal, GLOBAL_LIMIT } from '../services/usageStore.js'
 import { appendMessage, getMessages } from '../services/chatStore.js'
 import { buildSystemPrompt } from '../services/ragPrompt.js'
+import { analyzeCitations } from '../services/citationMetrics.js'
 import type { LLMMessage, DocumentChunk } from '../types.js'
 
 interface StreamBody {
@@ -146,6 +147,8 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
             send({ text })
           }
           spanMeta('outputTokens', estimateTokens(out))
+          // 引用覆盖率:塞了几块 vs 模型点名用了几块。纯字符串统计,不额外调用任何 API。
+          spanMeta('citation', analyzeCitations(out, chunks))
           spanOutput(out)
           appendMessage(user.id, docId, { role: 'assistant', content: out, sources })
           send({ done: true })
