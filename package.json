@@ -7,6 +7,7 @@
     "dev:client": "pnpm --filter @arh/client dev",
     "build:client": "pnpm --filter @arh/client build",
     "typecheck": "pnpm --filter @arh/server typecheck && pnpm --filter @arh/client exec tsc --noEmit",
-    "test": "pnpm --filter @arh/server test && pnpm --filter @arh/client test"
+    "test": "pnpm --filter @arh/server test && pnpm --filter @arh/client test",
+    "reset:dev": "pnpm --filter @arh/server reset:dev"
   }
 }
