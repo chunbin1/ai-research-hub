@@ -4,6 +4,10 @@ import { streamChat, serverLLMConfig, describeLLMError } from '../llm.js'
 import { resolveLLMConfig, LLMConfigDecryptError } from '../services/llmConfigStore.js'
 import { assertPublicBaseURL, getPreset, BaseURLRejectedError } from '../services/providerPresets.js'
 import { searchChunks, isDocVectorAvailable } from '../services/documentVector.js'
+import { searchBm25 } from '../services/chunkFts.js'
+import { hybridRetrieve } from '../services/retrieval.js'
+import { RAG } from '../services/ragConfig.js'
+import { getDb } from '../services/db.js'
 import { getDocument } from '../services/documentStore.js'
 import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } from '../services/tracing.js'
 import { requireUser } from './auth.js'
@@ -96,10 +100,20 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       // 1) 检索
       const chunks: DocumentChunk[] = await withSpan('doc_retrieval', async () => {
         spanInput(message)
-        const found = isDocVectorAvailable() ? await searchChunks(message, docId) : []
-        if (!found.length) markDegraded('doc_retrieval_empty')
+        const db = getDb()
+        const { chunks: found, meta } = await hybridRetrieve(message, docId, {
+          // 向量库不可用时这一路返回空而不是抛错 —— 那是「没配置」,
+          // 不是「出故障」,不该被记成降级。
+          vectorSearch: (q, d) => (isDocVectorAvailable() ? searchChunks(q, d) : Promise.resolve([])),
+          keywordSearch: (q, d, limit) => searchBm25(db, d, q, limit),
+        }, { k: RAG.rrfK })
+
+        // both_empty 沿用历史名字 doc_retrieval_empty,保持与旧 trace 可比。
+        if (meta.degraded === 'both_empty') markDegraded('doc_retrieval_empty')
+        else if (meta.degraded) markDegraded(`doc_retrieval_${meta.degraded}`)
+
         spanMeta('kept', found.length)
-        spanMeta('distances', found.map(c => Number(c.distance.toFixed(4))))
+        spanMeta('retrieval', meta)
         spanMeta('sections', found.map(c => c.section_title))
         spanOutput(found.map(c => `[§${c.section_title}] ${c.content}`).join('\n\n'))
         return found

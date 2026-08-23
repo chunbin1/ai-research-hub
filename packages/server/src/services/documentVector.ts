@@ -1,8 +1,7 @@
 // packages/server/src/services/documentVector.ts
 import { ChromaClient } from 'chromadb'
 import { embedBatch, isEmbeddingAvailable, ZhipuEmbeddingFunction } from './embeddings.js'
-import { RAG, candidatePool } from './ragConfig.js'
-import { markDegraded } from './tracing.js'
+import { RAG } from './ragConfig.js'
 import type { MdChunk } from './markdownParser.js'
 import type { DocumentChunk } from '../types.js'
 
@@ -59,45 +58,33 @@ export async function upsertChunks(docId: string, filename: string, chunks: MdCh
   }
 }
 
-export async function searchChunks(query: string, docId: string, maxK = RAG.maxK): Promise<DocumentChunk[]> {
+export async function searchChunks(query: string, docId: string, limit = RAG.poolSize): Promise<DocumentChunk[]> {
   if (!_available || !_collection) return []
-  try {
-    const queryEmbedding = (await embedBatch([query]))[0]
-    const results = await _collection.query({
-      queryEmbeddings: [queryEmbedding],
-      nResults: candidatePool(maxK),
-      where: { doc_id: { $eq: docId } },
-    })
-    const documents = results.documents[0] ?? []
-    const metadatas = results.metadatas[0] ?? []
-    const distances = results.distances?.[0] ?? []
-    const meta = (i: number) => (metadatas[i] as Record<string, unknown>) ?? {}
+  const queryEmbedding = (await embedBatch([query]))[0]
+  const results = await _collection.query({
+    queryEmbeddings: [queryEmbedding],
+    nResults: limit,
+    where: { doc_id: { $eq: docId } },
+  })
+  const documents = results.documents[0] ?? []
+  const metadatas = results.metadatas[0] ?? []
+  const distances = results.distances?.[0] ?? []
+  const meta = (i: number) => (metadatas[i] as Record<string, unknown>) ?? {}
 
-    const candidates: DocumentChunk[] = documents.map((_, i) => ({
-      doc_id: String(meta(i).doc_id ?? ''),
-      filename: String(meta(i).filename ?? ''),
-      chunk_index: Number(meta(i).chunk_index ?? 0),
-      content: documents[i] ?? '',
-      distance: distances[i] ?? 0,
-      section_title: String(meta(i).section_title ?? ''),
-      section_slug: String(meta(i).section_slug ?? ''),
-    }))
+  const hits: DocumentChunk[] = documents.map((_, i) => ({
+    doc_id: String(meta(i).doc_id ?? ''),
+    filename: String(meta(i).filename ?? ''),
+    chunk_index: Number(meta(i).chunk_index ?? 0),
+    content: documents[i] ?? '',
+    distance: distances[i] ?? null,
+    section_title: String(meta(i).section_title ?? ''),
+    section_slug: String(meta(i).section_slug ?? ''),
+  }))
 
-    const within = candidates.filter(c => c.distance <= RAG.distanceThreshold)
-    let kept = within.slice(0, maxK)
-    if (kept.length < RAG.minK) {
-      kept = candidates.slice(0, RAG.minK)
-      markDegraded('doc_retrieval_minK', { topDistance: candidates[0]?.distance ?? null })
-    }
-    if (LOG_RETRIEVAL) {
-      console.error(`🔍 检索 q="${query.slice(0, 40)}" 候选 ${candidates.length} → 保留 ${kept.length}`)
-    }
-    return kept
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.warn(`[documentVector] searchChunks failed: ${msg}`)
-    return []
+  if (LOG_RETRIEVAL) {
+    console.error(`🔍 向量 q="${query.slice(0, 40)}" 召回 ${hits.length} 块`)
   }
+  return hits
 }
 
 export async function deleteByDocId(docId: string): Promise<void> {

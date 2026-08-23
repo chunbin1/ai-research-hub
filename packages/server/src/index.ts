@@ -7,7 +7,9 @@ import { randomBytes } from 'node:crypto'
 import 'dotenv/config'
 
 import { initDb } from './services/db.js'
-import { initDocumentTable } from './services/documentStore.js'
+import { initDocumentTable, getAllDocuments, readRawMarkdown } from './services/documentStore.js'
+import { initChunkFtsTable, countChunkFts } from './services/chunkFts.js'
+import { reindexFts } from './services/reindex.js'
 import { initDocCollection } from './services/documentVector.js'
 import { initTraceTables } from './services/traceStore.js'
 import { initUserTables } from './services/userStore.js'
@@ -41,6 +43,7 @@ await app.register(cookie, { secret: cookieSecret || randomBytes(32).toString('h
 
 const db = initDb()
 initDocumentTable(db)
+initChunkFtsTable(db)
 initTraceTables(db)
 initUserTables(db)
 initUsageTable(db)
@@ -50,6 +53,19 @@ initSiteSettingsTable(db)
 initEvalTables(db)
 initWatchlistTable(db)
 initSignalTables(db)
+
+// BM25 索引自愈:表是空的但库里有文档,说明索引没建过(首次上线)或刚因
+// schema 变更被重建。这里直接回填 —— 纯本地 SQLite,不调任何 API,毫秒级。
+// 不自愈的话 BM25 那一路会静默零召回,而这种静默失效我们已经吃过一次亏。
+{
+  const docs = getAllDocuments()
+  if (docs.length > 0 && countChunkFts(db) === 0) {
+    const out = reindexFts(db, docs.map(d => d.id), readRawMarkdown)
+    const ok = out.filter(r => r.status === 'ok')
+    const chunks = ok.reduce((n, r) => n + r.chunks, 0)
+    console.info(`[chunkFts] 索引为空,已自动回填 ${ok.length}/${docs.length} 篇 / ${chunks} 块`)
+  }
+}
 markStaleRunsFailed()
 await initDocCollection()
 
