@@ -6,6 +6,8 @@ import {
   saveRawMarkdown, readRawMarkdown, deleteRawMarkdown,
 } from '../services/documentStore.js'
 import { upsertChunks, deleteByDocId, isDocVectorAvailable } from '../services/documentVector.js'
+import { upsertChunkFts, deleteChunkFts } from '../services/chunkFts.js'
+import { getDb } from '../services/db.js'
 import { syncWatchlistFromMarkdown } from '../services/signals/watchlistSync.js'
 import { requireAdmin } from './auth.js'
 
@@ -46,6 +48,10 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       app.log.warn(`[watchlist] ${doc.id} 抽取失败: ${msg}`)
     }
 
+    // 关键词索引:纯本地 SQLite,同步写。它不依赖任何外部服务,
+    // 所以不像向量那样做成 fire-and-forget —— 失败就是真失败。
+    upsertChunkFts(getDb(), doc.id, chunks)
+
     if (isDocVectorAvailable()) {
       upsertChunks(doc.id, doc.filename, chunks).catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err)
@@ -60,6 +66,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const doc = getDocument(request.params.id)
     if (!doc) return reply.status(404).send({ error: 'not_found' })
     await deleteByDocId(doc.id)
+    deleteChunkFts(getDb(), doc.id)
     deleteRawMarkdown(doc.id)
     deleteDocument(doc.id)
     return { success: true }

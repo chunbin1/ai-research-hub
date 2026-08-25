@@ -1,0 +1,220 @@
+{
+  "at": "2026-08-23T11:11:26.973Z",
+  "config": {
+    "maxK": 5,
+    "poolSize": 20,
+    "rrfK": 60
+  },
+  "summary": {
+    "total": 13,
+    "scored": 11,
+    "hits": 9,
+    "hitRate": 0.8181818181818182,
+    "mrr": 0.5757575757575757,
+    "violations": 0,
+    "byTag": {
+      "表格": {
+        "scored": 2,
+        "hits": 2,
+        "hitRate": 1
+      },
+      "精确词": {
+        "scored": 2,
+        "hits": 2,
+        "hitRate": 1
+      },
+      "短查询": {
+        "scored": 2,
+        "hits": 1,
+        "hitRate": 0.5
+      },
+      "同义表达": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "精确数字": {
+        "scored": 3,
+        "hits": 2,
+        "hitRate": 0.6666666666666666
+      },
+      "英文缩写": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "口语": {
+        "scored": 3,
+        "hits": 2,
+        "hitRate": 0.6666666666666666
+      },
+      "定性结论": {
+        "scored": 3,
+        "hits": 3,
+        "hitRate": 1
+      },
+      "跨表达": {
+        "scored": 1,
+        "hits": 0,
+        "hitRate": 0
+      },
+      "股票代码": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "列表": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "跨条目": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "规则": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "长文": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      }
+    }
+  },
+  "outcomes": [
+    {
+      "id": "margin-table-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "表格",
+        "精确词",
+        "短查询"
+      ]
+    },
+    {
+      "id": "margin-synonym-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "表格",
+        "同义表达"
+      ]
+    },
+    {
+      "id": "valuation-mktcap-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "valuation-roe-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "英文缩写"
+      ]
+    },
+    {
+      "id": "valuation-cheap-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "口语",
+        "定性结论"
+      ]
+    },
+    {
+      "id": "revenue-colloquial-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "口语",
+        "跨表达"
+      ]
+    },
+    {
+      "id": "ticker-lookup-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "精确词",
+        "股票代码"
+      ]
+    },
+    {
+      "id": "cloud-peers-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "列表",
+        "跨条目"
+      ]
+    },
+    {
+      "id": "sell-signal-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "定性结论",
+        "规则"
+      ]
+    },
+    {
+      "id": "position-limit-01",
+      "hit": true,
+      "rank": 3,
+      "violations": [],
+      "tags": [
+        "口语",
+        "精确数字"
+      ]
+    },
+    {
+      "id": "munger-risk-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "定性结论",
+        "长文"
+      ]
+    },
+    {
+      "id": "no-answer-headcount-01",
+      "hit": null,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "知识库无答案"
+      ]
+    },
+    {
+      "id": "no-answer-offtopic-01",
+      "hit": null,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "知识库无答案",
+        "跑题"
+      ]
+    }
+  ]
+}

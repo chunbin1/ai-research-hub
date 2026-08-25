@@ -22,7 +22,6 @@ services:
     environment:
       - CHROMA_URL=http://chroma:8000
       - PORT=3001
-      - RAG_MAX_K=10
     depends_on:
       - chroma
     volumes:

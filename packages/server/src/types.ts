@@ -49,7 +49,8 @@ export interface DocumentChunk {
   filename: string
   chunk_index: number
   content: string
-  distance: number
+  /** cosine 距离。仅 BM25 命中的块没有向量距离,为 null —— 不要用 0 或 NaN 代替。 */
+  distance: number | null
   section_title: string
   section_slug: string
 }
