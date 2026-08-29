@@ -5,7 +5,7 @@ import { parseMarkdown } from './markdownParser.js'
 import { throttledCompletion } from './llmThrottle.js'
 import { logLlmRequest } from '../llmLog.js'
 
-const MODEL = (process.env.ZHIPU_MODEL ?? 'glm-4.7').split(',')[0].trim()
+const MODEL = (process.env.ZHIPU_MODEL ?? 'glm-4.7-flash').split(',')[0].trim()
 
 function getClient(): OpenAI {
   return new OpenAI({ apiKey: process.env.ZHIPU_API_KEY, baseURL: 'https://open.bigmodel.cn/api/paas/v4/' })

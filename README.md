@@ -94,7 +94,7 @@ pnpm dev:client   # http://localhost:5173
   避免模型名填错把全站问答打挂
 - 这个页面**只改模型名**。服务商、baseURL、站长 API key 仍然只来自 `.env`,不进数据库,
   因此该功能不依赖 `LLM_KEY_SECRET`
-- `.env` 里可以配逗号分隔的降级链(如 `ZHIPU_MODEL=glm-4.7,glm-4-flash`),前一个报配额不足时
+- `.env` 里可以配逗号分隔的降级链(如 `ZHIPU_MODEL=glm-4.7-flash,glm-4.5-flash`),前一个报配额不足时
   自动切下一个;但一旦在 `/admin` 保存了单个模型名,降级链就不再生效
 - 自带 key(BYOK)的用户不受影响;评估模块有自己的模型常量,也不受影响
 

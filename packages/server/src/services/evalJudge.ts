@@ -4,10 +4,11 @@ import type { DocumentChunk } from '../types.js'
 import { throttledCompletion, isRetryable } from './llmThrottle.js'
 import { logLlmRequest } from '../llmLog.js'
 
-// Judge uses a separate (more capable) model — independent of ZHIPU_MODEL,
-// so the system being evaluated can stay on a cheaper model while scoring
-// stays accurate.
-const MODEL = process.env.ZHIPU_JUDGE_MODEL ?? 'glm-4.7'
+// Judge model is independent of ZHIPU_MODEL so the system under evaluation and
+// the scorer can be moved separately. The default is now the free tier — set
+// ZHIPU_JUDGE_MODEL to a stronger model when scoring accuracy matters more
+// than cost.
+const MODEL = process.env.ZHIPU_JUDGE_MODEL ?? 'glm-4.7-flash'
 
 function getClient(): OpenAI {
   return new OpenAI({
