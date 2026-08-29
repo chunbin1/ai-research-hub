@@ -14,7 +14,7 @@ import { getSetting, DEFAULT_MODEL_KEY } from './services/siteSettingsStore.js'
 const ZHIPU_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4/'
 
 /**
- * 逗号分隔的降级链解析。.env 里可以配 `glm-4.7,glm-4-flash` —— 前一个报配额
+ * 逗号分隔的降级链解析。.env 里可以配 `glm-4.7-flash,glm-4.5-flash` —— 前一个报配额
  * 错误时 withModelFallback 会切到后一个。解析结果为空时回落到内置默认,
  * 避免 `ZHIPU_MODEL=` 这种空值把 models 变成空数组。
  */
@@ -54,7 +54,7 @@ export function serverLLMConfig(): LLMConfig {
     kind: 'openai',
     providerId: 'zhipu',
     baseURL: ZHIPU_BASE_URL,
-    models: parseModels(override ?? process.env.ZHIPU_MODEL, 'glm-4-flash'),
+    models: parseModels(override ?? process.env.ZHIPU_MODEL, 'glm-4.7-flash'),
     apiKey: process.env.ZHIPU_API_KEY ?? '',
     source: 'server',
   }

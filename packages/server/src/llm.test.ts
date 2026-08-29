@@ -155,7 +155,7 @@ test('serverLLMConfig:ZHIPU_MODEL 是空串时回落到内置默认,不是空数
   siteDb()
   deleteSetting(DEFAULT_MODEL_KEY)
   process.env.ZHIPU_MODEL = ''
-  assert.deepEqual(serverLLMConfig().models, ['glm-4-flash'])
+  assert.deepEqual(serverLLMConfig().models, ['glm-4.7-flash'])
 })
 
 test('serverLLMConfig:anthropic 分支同样吃 override', () => {

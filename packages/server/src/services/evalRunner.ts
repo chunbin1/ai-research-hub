@@ -9,7 +9,7 @@ import { setQuestionCount, insertResult, finishRun, failRun } from './evalStore.
 import { logLlmRequest } from '../llmLog.js'
 
 export const EVAL_SAMPLE_SIZE = Number(process.env.EVAL_SAMPLE_SIZE) || 15
-const MODEL = (process.env.ZHIPU_MODEL ?? 'glm-4.7').split(',')[0].trim()
+const MODEL = (process.env.ZHIPU_MODEL ?? 'glm-4.7-flash').split(',')[0].trim()
 
 function getClient(): OpenAI {
   return new OpenAI({ apiKey: process.env.ZHIPU_API_KEY, baseURL: 'https://open.bigmodel.cn/api/paas/v4/' })
