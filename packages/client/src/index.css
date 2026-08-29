@@ -12,6 +12,27 @@
   /* 精确复刻迁移前的 @keyframes pulse:1.4s/ease-in-out/opacity 1→.45;
      Tailwind 内置 animate-pulse 是 2s/cubic-bezier(0.4,0,0.6,1)/opacity 1→.5,时长、缓动、透明度谷值都不同 */
   --animate-skeleton: skeleton 1.4s ease-in-out infinite;
+
+  /* ↓ 首页改版(design_handoff_homepage)的「财经出版物」色板与字体分工。
+     刻意与上面那套 paper/surface/gold 并存:旧的还在阅读页 / 问答面板用着,
+     这套目前只服务首页,等其余页面也改版后再收敛成一套,不做半途的全站替换。 */
+  --color-page: #FAF9F6;        /* 首页底色 */
+  --color-aside: #F5F3EE;       /* 右栏 / 次级区块底色 */
+  --color-ink: #14161A;         /* 主文字 */
+  --color-ink-soft: #4A4E55;    /* 次文字 */
+  --color-ink-mute: #6B6F76;    /* 弱文字 */
+  --color-ink-faint: #9A9EA5;   /* 最弱文字 / 数值 */
+  --color-navy: #1B3A5C;        /* 强调蓝:链接、按钮、头像 */
+  --color-navy-edge: #C9D3DC;   /* 描边按钮的边 */
+  --color-navy-wash: #F4F8FB;   /* 描边按钮 hover 底 */
+  --color-brick: #C4362F;       /* 强调红:当前栏目、链接 hover */
+  --color-rule: #E5E2DB;        /* 区块级分隔线 */
+  --color-row-rule: #E9E6E0;    /* 列表行分隔线 */
+  --color-edge: #DBD8D1;        /* 卡片、标签边框 */
+
+  --font-serif-sc: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  --font-sans-sc: "Noto Sans SC", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-numeral: "Source Serif 4", "Iowan Old Style", Georgia, serif;
 }
 
 @layer base {
@@ -85,6 +106,32 @@
      两者严丝合缝、不留缝也不重叠。 */
   .reader-chat-drawer .ant-drawer-content-wrapper {
     bottom: calc(2.75rem + env(safe-area-inset-bottom));
+  }
+
+  /* 移动端首页的两条横滑行(栏目导航 / 板块胶囊)。设计稿要求「横向可滑但不见滚动条」,
+     两处规则完全一致,写成一个类而不是两串 [&::-webkit-scrollbar]: 任意变体。 */
+  .hide-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* 移动端触控目标补足到 44px(响应式说明.md「触控与可点区域」):设计稿给的
+     上传按钮 / 头像 / 筛选胶囊视觉高度只有 26–29px,直接加 padding 会把这些
+     像素级还原的方框撑变形,所以用一个不占位、只扩热区的伪元素兜底。
+     桌面端有鼠标,不需要,也免得它盖住相邻元素。 */
+  .tap-44 { position: relative; }
+  .tap-44::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+  @media (min-width: 768px) {
+    .tap-44::after { content: none; }
   }
 }
 
