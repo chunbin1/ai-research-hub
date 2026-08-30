@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>研报站</title>
+    <!-- 站点图标:design_handoff_homepage/favicon 定稿的一套(深蓝底 + 三根递增柱,
+         最右一根用站内强调红,与顶栏当前项下划线同色)。SVG 给现代浏览器,PNG 兜底,
+         maskable 与 192/512 走 manifest 供 Android 主屏使用。 -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#1B3A5C" />
     <!-- 首页改版的视觉核心是「中文标题用衬线、界面文字用无衬线、数字用衬线」这套分工
          (见 design_handoff_homepage/README.md 的 Design Tokens)。系统里没有等价的中文
          衬线字重,只能从 Google Fonts 引;字重按设计稿实际用到的挑,不多取。 -->

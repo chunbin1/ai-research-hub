@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { DownOutlined, UploadOutlined } from '@ant-design/icons'
-import { Avatar, Dropdown, Modal, Upload } from 'antd'
-import type { MenuProps } from 'antd'
+import { Link } from 'react-router-dom'
+import { Modal } from 'antd'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
+import { SiteHeader } from '../components/SiteHeader'
 import type { Document } from '../types'
 
 /**
@@ -15,22 +14,9 @@ import type { Document } from '../types'
  * 不用 useIsMobile —— 那个 hook 按约定只服务行为差异,布局差异一律交给 md:/lg:。
  * 移动端与桌面端结构不同的几处(日期的位置、「阅读 ›」)用
  * hidden / md:hidden 切换同一份 DOM,display:none 的分支读屏不会重复播报。
+ *
+ * 顶栏(含栏目导航、上传入口、账号菜单)在 SiteHeader 里,与信号追踪页共用。
  */
-
-interface NavItem {
-  label: string
-  to: string
-  /** 与改版前一致:评估 / 站点模型 / trace 只对管理员开放 */
-  adminOnly: boolean
-}
-
-const NAV_ITEMS: readonly NavItem[] = [
-  { label: '研报', to: '/', adminOnly: false },
-  { label: '信号', to: '/signals', adminOnly: false },
-  { label: '评估', to: '/eval', adminOnly: true },
-  { label: '站点模型', to: '/admin', adminOnly: true },
-  { label: 'trace', to: '/traces', adminOnly: true },
-]
 
 /** 设计稿的日期格式:YYYY/M/D,不补零 */
 function formatDate(iso: string): string {
@@ -43,19 +29,11 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
-  const navigate = useNavigate()
-  const { user, login, logout } = useAuth()
+  const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
 
   const refresh = () => api.listDocuments().then(setDocs).catch(e => setError(String(e.message)))
   useEffect(() => { refresh().finally(() => setLoading(false)) }, [])
-
-  async function handleUpload(file: File) {
-    setUploading(true); setError('')
-    try { await api.uploadDocument(file); await refresh() }
-    catch (err) { setError(err instanceof Error ? err.message : '上传失败') }
-    finally { setUploading(false) }
-  }
 
   function onDelete(id: string) {
     Modal.confirm({
@@ -67,111 +45,19 @@ export default function HomePage() {
     })
   }
 
-  const menuItems: MenuProps['items'] = [
-    ...(user && !user.unlimited
-      ? [{ key: 'quota', label: `剩余 ${user.remaining} 次提问`, disabled: true }]
-      : []),
-    { key: 'settings', label: '模型设置', onClick: () => navigate('/settings') },
-    { type: 'divider' as const },
-    { key: 'logout', label: '登出', onClick: () => { void logout() } },
-  ]
-
   return (
     // 整页撑满视口高度、主体网格吃掉剩余空间:研报少的时候右栏底色和左列右边框
     // 才会一直落到窗口底部,而不是在内容末尾拦腰断开(设计稿的画布高度看不出这点)。
     <div className="flex min-h-screen flex-col bg-page font-sans-sc text-ink">
       <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
 
-        {/* 顶栏 */}
-        <header className="flex items-center justify-between gap-4 border-b border-rule px-[18px] py-3.5 md:px-7 md:py-5 lg:px-10">
-          <div className="flex items-baseline gap-7">
-            <Link
-              to="/"
-              className="font-serif-sc text-[18px] font-bold tracking-[0.02em] text-ink md:text-[21px]"
-            >
-              研报站
-            </Link>
-            <nav className="hidden gap-[22px] text-[14px] md:flex">
-              {NAV_ITEMS.map(item => (
-                (!item.adminOnly || isAdmin) && (
-                  item.to === '/'
-                    ? (
-                      <span key={item.to} className="border-b-2 border-brick pb-0.5 font-medium text-ink">
-                        {item.label}
-                      </span>
-                    )
-                    : (
-                      <Link key={item.to} to={item.to} className="text-ink-soft hover:text-brick">
-                        {item.label}
-                      </Link>
-                    )
-                )
-              ))}
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-3 md:gap-[18px]">
-            {isAdmin && (
-              <Upload
-                accept=".md,.markdown,.txt"
-                showUploadList={false}
-                beforeUpload={file => { void handleUpload(file); return false }}
-              >
-                <button
-                  type="button"
-                  disabled={uploading}
-                  className="tap-44 flex items-center gap-1.5 rounded-[4px] border border-navy-edge bg-white px-3 py-[7px] text-[12px] text-navy transition-[border-color,background] duration-150 hover:border-navy hover:bg-navy-wash md:gap-2 md:px-[15px] md:py-2 md:text-[13px]"
-                >
-                  <UploadOutlined className="text-[13px] md:text-[14px]" aria-hidden />
-                  <span className="md:hidden">{uploading ? '上传中' : '上传'}</span>
-                  <span className="hidden md:inline">{uploading ? '上传中…' : '上传研报'}</span>
-                </button>
-              </Upload>
-            )}
-            <span className="hidden h-[22px] w-px bg-rule md:block" aria-hidden />
-            {user ? (
-              <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
-                <button type="button" className="tap-44 flex items-center gap-[9px]" aria-label="账号菜单">
-                  {user.avatarUrl
-                    ? <Avatar size={26} src={user.avatarUrl} />
-                    : (
-                      <span className="flex size-[26px] items-center justify-center rounded-full bg-navy text-[12px] font-medium text-page">
-                        {user.username.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                  <span className="hidden text-[13px] text-ink-soft md:inline">{user.username}</span>
-                  <DownOutlined className="hidden text-[14px] text-ink-faint md:inline" aria-hidden />
-                </button>
-              </Dropdown>
-            ) : (
-              <button type="button" onClick={login} className="tap-44 text-[13px] text-navy hover:text-brick">
-                GitHub 登录
-              </button>
-            )}
-          </div>
-        </header>
-
-        {/* 栏目导航:移动端独立成行、横向可滑 */}
-        <nav className="hide-scrollbar flex gap-5 overflow-x-auto border-b border-rule px-[18px] text-[14px] md:hidden">
-          {NAV_ITEMS.map(item => (
-            (!item.adminOnly || isAdmin) && (
-              item.to === '/'
-                ? (
-                  <span
-                    key={item.to}
-                    className="whitespace-nowrap border-b-2 border-brick pb-2.5 pt-3 font-medium text-ink"
-                  >
-                    {item.label}
-                  </span>
-                )
-                : (
-                  <Link key={item.to} to={item.to} className="whitespace-nowrap py-3 text-ink-mute">
-                    {item.label}
-                  </Link>
-                )
-            )
-          ))}
-        </nav>
+        <SiteHeader
+          active="/"
+          uploading={uploading}
+          onUploadingChange={setUploading}
+          onUploaded={() => { setError(''); void refresh() }}
+          onUploadError={setError}
+        />
 
         {/* 设计稿这里是「列表 + 右栏」两列。右栏原本装「本周财报日历」和「按板块浏览」,
             两块都已下掉(前者无数据源、后者建在标题猜测上),右栏空了,竖分隔线和整片

@@ -30,6 +30,18 @@
   --color-row-rule: #E9E6E0;    /* 列表行分隔线 */
   --color-edge: #DBD8D1;        /* 卡片、标签边框 */
 
+  /* 信号页的方向色与预警色。红涨绿跌:多 = 红、空 = 绿,与站内涨跌规则一致;
+     「距止损」是安全垫不是涨跌,所以走中性灰,只有不足 6% 才转预警橙。 */
+  --color-long: #C4362F;        /* 多:文字(= brick,另起名字是为了按语义引用) */
+  --color-long-wash: #FBEFEE;   /* 多:底 */
+  --color-long-edge: #EFD4D2;   /* 多:边 */
+  --color-short: #2E7D5B;       /* 空:文字 */
+  --color-short-wash: #EDF4F0;  /* 空:底 */
+  --color-short-edge: #CFE2D8;  /* 空:边 */
+  --color-warn: #B4761E;        /* 临近止损:数值 */
+  --color-warn-bar: #D99A34;    /* 临近止损:进度条填充 */
+  --color-warn-edge: #EBD9BE;   /* 临近止损:边 */
+
   --font-serif-sc: "Noto Serif SC", "Songti SC", "SimSun", serif;
   --font-sans-sc: "Noto Sans SC", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-numeral: "Source Serif 4", "Iowan Old Style", Georgia, serif;
