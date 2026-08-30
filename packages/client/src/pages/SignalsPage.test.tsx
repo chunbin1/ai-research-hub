@@ -26,8 +26,9 @@ function stubRows(rows: SignalRow[]) {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     // 按 URL 返回对应形状。一律返回 {rows} 会让横幅与展开行拿到 undefined ——
     // 那是 stub 在说谎,不该让生产代码加兜底去迁就它。
-    // /api/auth/me 落进这个默认分支,拿到的是 {rows},没有 isAdmin 字段 ——
-    // 等价于「未登录」,这个文件里默认场景的 admin 列因此不出现。
+    // /api/auth/me 单独给 401:顶栏要按 user 画头像和用户名,拿一个没有 username
+    // 的对象冒充「未登录」就是在说谎(改版前信号页没有顶栏,才一直没暴露)。
+    if (url.includes('/auth/me')) return { ok: false, json: async () => null } as Response
     const body = url.includes('/events') ? { events: [] }
       : url.includes('/log') ? { states: [] }
       : { rows }
@@ -58,8 +59,9 @@ test('渲染标的、现价与日周趋势', async () => {
   await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
   expect(screen.getByText('Albemarle Corporation')).toBeTruthy()
   expect(screen.getByText(/134\.19/)).toBeTruthy()
-  expect(screen.getByText(/2026-08-07/)).toBeTruthy()
-  expect(screen.getByText(/2026-06-26/)).toBeTruthy()
+  // 翻转日期与所在周期的最新 bar 同年,按设计稿省去年份
+  expect(screen.getByText(/08-07 起 13 天/)).toBeTruthy()
+  expect(screen.getByText(/06-26 起 49 天/)).toBeTruthy()
 })
 
 test('挂载只拉一次 /events —— version 不应该在首次 refresh 后又自增一次', async () => {
@@ -67,6 +69,7 @@ test('挂载只拉一次 /events —— version 不应该在首次 refresh 后�
   // 这条路,导致横幅在挂载阶段就多打一次 /events。version 现在只在
   // scan/extract/setEnabled 成功后才自增,挂载本身不应该触发第二次请求。
   const fetchMock = vi.fn(async (url: string) => {
+    if (url.includes('/auth/me')) return { ok: false, json: async () => null } as Response
     const body = url.includes('/events') ? { events: [] }
       : url.includes('/log') ? { states: [] }
       : { rows: [ALB] }
@@ -90,9 +93,13 @@ test('近 90 天翻转过多时标出 whipsaw 警示,未超阈值的不标', asy
   // 阈值两侧都要有样本 —— 只放一个超阈值的行,「永远显示震荡」的回归也能蒙混过关
   stubRows([ALB, CALM])
   renderPage()
-  await waitFor(() => expect(screen.getByText(/5 次 · 震荡/)).toBeTruthy())
-  expect(screen.getByText('1 次')).toBeTruthy()
-  expect(screen.queryAllByText(/震荡/)).toHaveLength(1)
+  // 行上只留「震荡」这个例外标记,具体次数收进展开区(设计稿的表格没有这一列)
+  await waitFor(() => expect(screen.getAllByText('震荡')).toHaveLength(1))
+  expect(screen.getByTitle('近 90 天翻转 5 次')).toBeTruthy()
+
+  await userEvent.click(screen.getByRole('button', { name: /展开 CALM/ }))
+  expect(await screen.findByText(/近 90 天翻转 1 次/)).toBeTruthy()
+  expect(screen.queryByText(/近 90 天翻转 1 次 · 震荡/)).toBeNull()
 })
 
 test('异常标的显示错误信息,不显示信号', async () => {
@@ -109,28 +116,35 @@ test('空列表给出引导文案', async () => {
   await waitFor(() => expect(screen.getByText(/还没有自选股/)).toBeTruthy())
 })
 
-test('非管理员看不到操作列与添加按钮', async () => {
+test('非管理员看不到添加按钮,展开区里也没有删除', async () => {
   stubRows([ALB])
   renderPage()
   await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
   expect(screen.queryByRole('button', { name: /添加标的/ })).toBeNull()
+
+  await userEvent.click(screen.getByRole('button', { name: /展开 ALB/ }))
+  await screen.findByText(/来源/)
   expect(screen.queryByRole('button', { name: /删除/ })).toBeNull()
 })
 
-test('管理员看得到「添加标的」与操作列的删除', async () => {
+test('管理员看得到「添加标的」,删除在展开区里', async () => {
   stubRowsAsAdmin([ALB])
   renderPage()
   await waitFor(() => expect(screen.getByRole('button', { name: /添加标的/ })).toBeTruthy())
-  expect(screen.getByRole('button', { name: /删除/ })).toBeTruthy()
+  // 删除是低频的管理动作,设计稿的七列里没有它的位置 —— 收进展开区
+  expect(screen.queryByRole('button', { name: /删除/ })).toBeNull()
+  await userEvent.click(screen.getByRole('button', { name: /展开 ALB/ }))
+  expect(await screen.findByRole('button', { name: /删除/ })).toBeTruthy()
 })
 
 test('删除要二次确认,确认后才发请求', async () => {
   let deleted = false
   stubRowsAsAdmin([ALB], () => { deleted = true })
   renderPage()
-  await waitFor(() => expect(screen.getByRole('button', { name: /删除/ })).toBeTruthy())
+  await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
+  await userEvent.click(screen.getByRole('button', { name: /展开 ALB/ }))
 
-  await userEvent.click(screen.getByRole('button', { name: /删除/ }))
+  await userEvent.click(await screen.findByRole('button', { name: /删除/ }))
   expect(deleted).toBe(false)   // 只是弹出确认,还没删
 
   await waitFor(() => expect(screen.getByText(/确定删除/)).toBeTruthy())
