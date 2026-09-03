@@ -97,6 +97,151 @@
         "跑题"
       ],
       "why": "腾讯的市值(4.08万亿)在库里另一篇报告存在。这条守着 doc_id 预过滤:如果检索跨文档串味,forbid 的数字会在这篇里冒出来。"
+    },
+    {
+      "id": "spacex-xai-acquisition-01",
+      "question": "SpaceX收购xAI合并估值是多少",
+      "expect": [
+        "$1.25万亿"
+      ],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-ipo-01",
+      "question": "SpaceX IPO募资多少",
+      "expect": [
+        "$857亿"
+      ],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-golden-dome-01",
+      "question": "SpaceX在Golden Dome项目里拿到多少合同",
+      "expect": [
+        "$64.5亿"
+      ],
+      "tags": [
+        "精确数字",
+        "英文缩写"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-rklb-iridium-01",
+      "question": "Rocket Lab收购Iridium花了多少钱",
+      "expect": [
+        "$80亿"
+      ],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-rklb-ps-after-01",
+      "question": "Rocket Lab收购Iridium后备考PS是多少倍",
+      "expect": [
+        "约 27x"
+      ],
+      "tags": [
+        "精确数字",
+        "英文缩写"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-karman-pe-01",
+      "question": "Karman的市盈率是多少",
+      "expect": [
+        "PE 224 倍"
+      ],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ],
+      "why": "实测未命中,向量单路第4名、BM25 完全不在候选池——与本篇 sell-signal-01/risk-01/position-limit-01 同一机制的第四次复现,这类'一路命中另一路挂零'的模式在这篇报告里已经不是个案。"
+    },
+    {
+      "id": "spacex-echostar-01",
+      "question": "EchoStar把频谱卖给了谁",
+      "expect": [
+        "SpaceX / AT&T"
+      ],
+      "tags": [
+        "精确词",
+        "跨条目"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-starship-flight13-01",
+      "question": "星舰第一次用来发射星链是什么时候",
+      "expect": [
+        "2026-07-24"
+      ],
+      "tags": [
+        "精确数字",
+        "口语"
+      ],
+      "why": "实测未命中。日期'2026-07-24'分散在两个块(chunk7/chunk23)里,向量各自第5、第7名(不够突出),BM25 两处都完全找不到——纯数字日期对 trigram 是天生的盲区(四个 3-gram 全是数字组合,原文里几乎不会重复出现)。双重打击:排名不够高 + 两处分散互相稀释,没有一个块能同时拿两路的分。"
+    },
+    {
+      "id": "spacex-amazon-globalstar-01",
+      "question": "亚马逊收购了哪家卫星公司",
+      "expect": [
+        "Globalstar"
+      ],
+      "tags": [
+        "精确词",
+        "短查询"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-etf-01",
+      "question": "太空主题ETF里近一年涨幅最高的是哪个",
+      "expect": [
+        "+122%"
+      ],
+      "tags": [
+        "精确数字",
+        "列表"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-core-position-01",
+      "question": "商业航天核心仓位配置了哪些标的",
+      "expect": [
+        "KRMN",
+        "RKLB"
+      ],
+      "tags": [
+        "列表",
+        "跨条目"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
+    },
+    {
+      "id": "spacex-arpu-risk-01",
+      "question": "星链ARPU下滑的风险概率是多少",
+      "expect": [
+        "高（60%）"
+      ],
+      "tags": [
+        "精确数字",
+        "规则"
+      ],
+      "why": "待跑真实检索后填写实测结果。"
     }
   ]
 }
