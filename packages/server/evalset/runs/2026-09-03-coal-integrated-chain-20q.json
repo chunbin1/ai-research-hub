@@ -1,0 +1,270 @@
+{
+  "at": "2026-09-03T15:27:07.903Z",
+  "config": {
+    "maxK": 5,
+    "poolSize": 20,
+    "rrfK": 60
+  },
+  "summary": {
+    "total": 20,
+    "scored": 19,
+    "hits": 14,
+    "hitRate": 0.7368421052631579,
+    "mrr": 0.3982456140350877,
+    "violations": 0,
+    "byTag": {
+      "表格": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "精确数字": {
+        "scored": 15,
+        "hits": 12,
+        "hitRate": 0.8
+      },
+      "短查询": {
+        "scored": 6,
+        "hits": 3,
+        "hitRate": 0.5
+      },
+      "口语": {
+        "scored": 3,
+        "hits": 2,
+        "hitRate": 0.6666666666666666
+      },
+      "定性结论": {
+        "scored": 4,
+        "hits": 2,
+        "hitRate": 0.5
+      },
+      "规则": {
+        "scored": 2,
+        "hits": 2,
+        "hitRate": 1
+      },
+      "列表": {
+        "scored": 2,
+        "hits": 1,
+        "hitRate": 0.5
+      },
+      "跨条目": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "长文": {
+        "scored": 2,
+        "hits": 2,
+        "hitRate": 1
+      },
+      "英文缩写": {
+        "scored": 2,
+        "hits": 2,
+        "hitRate": 1
+      }
+    }
+  },
+  "outcomes": [
+    {
+      "id": "coal-margin-rail-01",
+      "hit": true,
+      "rank": 5,
+      "violations": [],
+      "tags": [
+        "表格",
+        "精确数字"
+      ]
+    },
+    {
+      "id": "coal-dividend-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "coal-position-limit-01",
+      "hit": true,
+      "rank": 5,
+      "violations": [],
+      "tags": [
+        "口语",
+        "精确数字"
+      ]
+    },
+    {
+      "id": "coal-sell-signal-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "定性结论",
+        "规则"
+      ]
+    },
+    {
+      "id": "coal-comparable-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "列表",
+        "跨条目"
+      ]
+    },
+    {
+      "id": "coal-h-vs-a-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "口语",
+        "定性结论"
+      ]
+    },
+    {
+      "id": "coal-no-answer-01",
+      "hit": null,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "知识库无答案",
+        "跑题"
+      ]
+    },
+    {
+      "id": "coal-acquisition-01",
+      "hit": true,
+      "rank": 4,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "长文"
+      ]
+    },
+    {
+      "id": "coal-capacity-price-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "规则"
+      ]
+    },
+    {
+      "id": "coal-2026forecast-01",
+      "hit": true,
+      "rank": 4,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "coal-半年报-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "coal-xinjie-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "口语"
+      ]
+    },
+    {
+      "id": "coal-shaanxi-roe-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "英文缩写"
+      ]
+    },
+    {
+      "id": "coal-shaanxi-revenue-01",
+      "hit": true,
+      "rank": 3,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "coal-zhongmei-payout-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "coal-zhongmei-hpb-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "英文缩写"
+      ]
+    },
+    {
+      "id": "coal-shaanxi-worst-01",
+      "hit": true,
+      "rank": 3,
+      "violations": [],
+      "tags": [
+        "定性结论",
+        "精确数字"
+      ]
+    },
+    {
+      "id": "coal-carbon-peak-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "长文"
+      ]
+    },
+    {
+      "id": "coal-dividend-record-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "coal-adaro-risk-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "定性结论",
+        "列表"
+      ]
+    }
+  ]
+}

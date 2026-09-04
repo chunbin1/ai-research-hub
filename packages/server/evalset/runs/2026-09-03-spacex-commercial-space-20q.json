@@ -1,0 +1,280 @@
+{
+  "at": "2026-09-03T15:26:55.412Z",
+  "config": {
+    "maxK": 5,
+    "poolSize": 20,
+    "rrfK": 60
+  },
+  "summary": {
+    "total": 20,
+    "scored": 19,
+    "hits": 14,
+    "hitRate": 0.7368421052631579,
+    "mrr": 0.3701754385964912,
+    "violations": 0,
+    "byTag": {
+      "表格": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "精确数字": {
+        "scored": 13,
+        "hits": 10,
+        "hitRate": 0.7692307692307693
+      },
+      "短查询": {
+        "scored": 6,
+        "hits": 5,
+        "hitRate": 0.8333333333333334
+      },
+      "英文缩写": {
+        "scored": 3,
+        "hits": 3,
+        "hitRate": 1
+      },
+      "口语": {
+        "scored": 2,
+        "hits": 0,
+        "hitRate": 0
+      },
+      "定性结论": {
+        "scored": 2,
+        "hits": 0,
+        "hitRate": 0
+      },
+      "规则": {
+        "scored": 2,
+        "hits": 1,
+        "hitRate": 0.5
+      },
+      "长文": {
+        "scored": 1,
+        "hits": 0,
+        "hitRate": 0
+      },
+      "精确词": {
+        "scored": 3,
+        "hits": 3,
+        "hitRate": 1
+      },
+      "股票代码": {
+        "scored": 1,
+        "hits": 1,
+        "hitRate": 1
+      },
+      "跨条目": {
+        "scored": 2,
+        "hits": 2,
+        "hitRate": 1
+      },
+      "列表": {
+        "scored": 2,
+        "hits": 2,
+        "hitRate": 1
+      }
+    }
+  },
+  "outcomes": [
+    {
+      "id": "spacex-margin-starlink-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "表格",
+        "精确数字"
+      ]
+    },
+    {
+      "id": "spacex-mktcap-01",
+      "hit": true,
+      "rank": 3,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "spacex-ps-01",
+      "hit": true,
+      "rank": 4,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "英文缩写"
+      ]
+    },
+    {
+      "id": "spacex-position-limit-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "口语",
+        "精确数字"
+      ]
+    },
+    {
+      "id": "spacex-sell-signal-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "定性结论",
+        "规则"
+      ]
+    },
+    {
+      "id": "spacex-risk-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "定性结论",
+        "长文"
+      ]
+    },
+    {
+      "id": "spacex-ticker-01",
+      "hit": true,
+      "rank": 3,
+      "violations": [],
+      "tags": [
+        "精确词",
+        "股票代码"
+      ]
+    },
+    {
+      "id": "spacex-no-answer-01",
+      "hit": null,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "知识库无答案",
+        "跑题"
+      ]
+    },
+    {
+      "id": "spacex-xai-acquisition-01",
+      "hit": true,
+      "rank": 3,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "spacex-ipo-01",
+      "hit": true,
+      "rank": 3,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "spacex-golden-dome-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "英文缩写"
+      ]
+    },
+    {
+      "id": "spacex-rklb-iridium-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "spacex-rklb-ps-after-01",
+      "hit": true,
+      "rank": 5,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "英文缩写"
+      ]
+    },
+    {
+      "id": "spacex-karman-pe-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "短查询"
+      ]
+    },
+    {
+      "id": "spacex-echostar-01",
+      "hit": true,
+      "rank": 4,
+      "violations": [],
+      "tags": [
+        "精确词",
+        "跨条目"
+      ]
+    },
+    {
+      "id": "spacex-starship-flight13-01",
+      "hit": false,
+      "rank": null,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "口语"
+      ]
+    },
+    {
+      "id": "spacex-amazon-globalstar-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "精确词",
+        "短查询"
+      ]
+    },
+    {
+      "id": "spacex-etf-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "列表"
+      ]
+    },
+    {
+      "id": "spacex-core-position-01",
+      "hit": true,
+      "rank": 2,
+      "violations": [],
+      "tags": [
+        "列表",
+        "跨条目"
+      ]
+    },
+    {
+      "id": "spacex-arpu-risk-01",
+      "hit": true,
+      "rank": 1,
+      "violations": [],
+      "tags": [
+        "精确数字",
+        "规则"
+      ]
+    }
+  ]
+}
