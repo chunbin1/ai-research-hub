@@ -178,3 +178,47 @@ test('扫描完成后页面显示本次扫描摘要', async () => {
   await userEvent.click(screen.getByRole('button', { name: /立即扫描/ }))
   await waitFor(() => expect(screen.getByText(/扫描完成:共 4,成功 4,失败 0,数据不足 0/)).toBeTruthy())
 })
+
+test('搜索按代码筛选,不匹配的标的从列表里消失', async () => {
+  stubRows([ALB, CALM])
+  renderPage()
+  await waitFor(() => expect(screen.getByText('CALM')).toBeTruthy())
+
+  await userEvent.type(screen.getByLabelText('搜索标的'), 'alb')
+  await waitFor(() => expect(screen.queryByText('CALM')).toBeNull())
+  expect(screen.getByText('ALB')).toBeTruthy()
+})
+
+test('搜索也认副标题 —— 记得住公司名、记不住代码的情况', async () => {
+  stubRows([ALB, CALM])
+  renderPage()
+  await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
+
+  await userEvent.type(screen.getByLabelText('搜索标的'), 'Albemarle')
+  await waitFor(() => expect(screen.queryByText('CALM')).toBeNull())
+  expect(screen.getByText('ALB')).toBeTruthy()
+})
+
+test('胶囊计数跟着搜索走 —— 搜出 1 个却写着「美股 2」就是在说谎', async () => {
+  stubRows([ALB, CALM])
+  renderPage()
+  await waitFor(() => expect(screen.getByRole('button', { name: '美股 2' })).toBeTruthy())
+
+  await userEvent.type(screen.getByLabelText('搜索标的'), 'alb')
+  await waitFor(() => expect(screen.getByRole('button', { name: '美股 1' })).toBeTruthy())
+  expect(screen.getByRole('button', { name: '全部 1' })).toBeTruthy()
+})
+
+test('搜不到时空态带上关键词,清空后列表回来', async () => {
+  stubRows([ALB, CALM])
+  renderPage()
+  await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
+
+  await userEvent.type(screen.getByLabelText('搜索标的'), 'RKLB')
+  await waitFor(() => expect(screen.getByText('没有匹配「RKLB」的标的')).toBeTruthy())
+
+  await userEvent.click(screen.getByRole('button', { name: '清空搜索' }))
+  await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
+  expect(screen.getByText('CALM')).toBeTruthy()
+})
+

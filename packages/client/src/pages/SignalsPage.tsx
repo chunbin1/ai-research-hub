@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Popconfirm } from 'antd'
 import {
-  LoadingOutlined, PlusOutlined, ReloadOutlined, RightOutlined, ThunderboltOutlined,
+  CloseOutlined, LoadingOutlined, PlusOutlined, ReloadOutlined, RightOutlined, SearchOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import { useSignals } from '../hooks/useSignals'
 import { useAuth } from '../hooks/useAuth'
@@ -15,7 +16,7 @@ import { AddSymbolModal } from '../components/AddSymbolModal'
 import { DirectionBadge } from '../components/DirectionBadge'
 import {
   SIGNAL_FILTERS, WHIPSAW_THRESHOLD, dataAsOf, filterCounts, formatFlipDate, isNearStop,
-  matchesFilter, shortDate, stopBarWidth, stopDistance,
+  matchesFilter, matchesQuery, shortDate, stopBarWidth, stopDistance,
 } from '../lib/signalView'
 import type { SignalFilterKey } from '../lib/signalView'
 import type { SignalRow, SignalSide } from '../types'
@@ -295,15 +296,21 @@ export default function SignalsPage() {
   const isMobile = useIsMobile()
   const [addOpen, setAddOpen] = useState(false)
   const [filter, setFilter] = useState<SignalFilterKey>('all')
+  const [query, setQuery] = useState('')
   /** 同时只展开一行 —— 展开区里是一张 60 行的日志表,多开几行就找不着北了 */
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const counts = useMemo(() => filterCounts(rows), [rows])
-  const visible = useMemo(() => rows.filter(r => matchesFilter(r, filter)), [rows, filter])
+  /** 搜索先于胶囊:胶囊的计数要落在搜索结果之内,否则计数和列表说的不是一回事 */
+  const searched = useMemo(() => rows.filter(r => matchesQuery(r, query)), [rows, query])
+  const counts = useMemo(() => filterCounts(searched), [searched])
+  const visible = useMemo(() => searched.filter(r => matchesFilter(r, filter)), [searched, filter])
   const asOf = useMemo(() => dataAsOf(rows), [rows])
+  /** 空态要分清是「一条都没有」「搜不着」还是「被胶囊筛掉了」—— 三种情况下一步该做的事不同 */
   const empty = rows.length === 0
     ? '还没有自选股 —— 上传一篇标题里带股票代码的研报,或点「重新抽取」'
-    : '没有符合这个筛选的标的'
+    : query.trim() !== '' && searched.length === 0
+      ? `没有匹配「${query.trim()}」的标的`
+      : '没有符合这个筛选的标的'
 
   const toggle = (symbol: string, expandable: boolean) => {
     if (expandable) setExpanded(cur => (cur === symbol ? null : symbol))
@@ -414,8 +421,44 @@ export default function SignalsPage() {
         </div>
 
         {/* 筛选胶囊行。市场与方向是两组,但只单选一项 —— 选中态只有一个填充胶囊,
-            与移动端首页的板块筛选保持同一套心智 */}
-        <div className={`flex items-center justify-between gap-4 pt-4 md:pb-6 md:pt-0 ${GUTTER}`}>
+            与移动端首页的板块筛选保持同一套心智。
+            搜索框在 DOM 里排在胶囊之前(移动端它就在上面一行),桌面端靠 order 挪到右侧
+            与「数据截至」同栏 —— 那一侧本来就是空的,不必为搜索再占一整行。 */}
+        <div className={`flex flex-col gap-3 pt-4 md:flex-row md:items-center md:justify-between md:gap-4 md:pb-6 md:pt-0 ${GUTTER}`}>
+          <div className="order-first flex items-center gap-4 md:order-last">
+            <div className="relative w-full md:w-[196px] lg:w-[220px]">
+              <SearchOutlined
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-ink-faint"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={query}
+                aria-label="搜索标的"
+                placeholder="搜索代码或名称"
+                onChange={e => setQuery(e.target.value)}
+                // Esc 清空:type=search 在 Safari / Chrome 里本来就这么做,Firefox 不会 —— 补齐
+                onKeyDown={e => { if (e.key === 'Escape') setQuery('') }}
+                className="h-11 w-full rounded-[4px] border border-edge bg-white pl-9 pr-9 text-[13px] text-ink placeholder:text-ink-faint focus:border-ink-faint focus:outline-none md:h-9"
+              />
+              {query !== '' && (
+                <button
+                  type="button"
+                  aria-label="清空搜索"
+                  onClick={() => setQuery('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-[11px] leading-none text-ink-faint hover:text-ink-soft"
+                >
+                  <CloseOutlined aria-hidden />
+                </button>
+              )}
+            </div>
+            {asOf && (
+              <span className="hidden shrink-0 whitespace-nowrap text-[12px] text-ink-faint md:block">
+                数据截至 {asOf} 收盘
+              </span>
+            )}
+          </div>
+
           <div className="hide-scrollbar -mx-[18px] flex items-center gap-[7px] overflow-x-auto px-[18px] md:mx-0 md:flex-wrap md:px-0">
             {SIGNAL_FILTERS.map((f, i) => (
               <span key={f.key} className="contents">
@@ -438,11 +481,6 @@ export default function SignalsPage() {
               </span>
             ))}
           </div>
-          {asOf && (
-            <span className="hidden shrink-0 whitespace-nowrap text-[12px] text-ink-faint md:block">
-              数据截至 {asOf} 收盘
-            </span>
-          )}
         </div>
 
         {/* 移动端的计数行(桌面版这两条信息在栏目头与筛选行里) */}

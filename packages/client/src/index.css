@@ -145,6 +145,10 @@
   @media (min-width: 768px) {
     .tap-44::after { content: none; }
   }
+
+  /* type=search 的好处是 Esc 能清空、语义是 searchbox;代价是 WebKit 自带一个清除叉。
+     我们自己画了一个(要和站内的描边、色板对得上),留着原生的就是并排两个叉。 */
+  input[type="search"]::-webkit-search-cancel-button { appearance: none; display: none; }
 }
 
 @keyframes flash {

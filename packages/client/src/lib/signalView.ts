@@ -48,6 +48,17 @@ export function isRowNearStop(row: SignalRow): boolean {
   return [row.daily, row.weekly].some(side => side != null && isNearStop(side))
 }
 
+/**
+ * 搜索:代码与名称都算命中,大小写不敏感。
+ * 两处都匹配是因为列表里这两行本来就是一组 —— 记得住 Albemarle 的人未必记得住 ALB,
+ * 反过来也一样。用子串而不是前缀:0700.HK 得能用「0700」找出来。
+ */
+export function matchesQuery(row: SignalRow, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (q === '') return true
+  return row.symbol.toLowerCase().includes(q) || (row.name?.toLowerCase().includes(q) ?? false)
+}
+
 export type SignalFilterKey = 'all' | 'HK' | 'US' | 'dailyLong' | 'dailyShort' | 'nearStop'
 
 export const SIGNAL_FILTERS: readonly { key: SignalFilterKey; label: string; group: 'market' | 'trend' }[] = [
@@ -70,7 +81,10 @@ export function matchesFilter(row: SignalRow, key: SignalFilterKey): boolean {
   }
 }
 
-/** 每个胶囊后面的计数 —— 计数始终按全量算,不受当前选中项影响 */
+/**
+ * 每个胶囊后面的计数 —— 不受当前选中项影响,但要受搜索影响:
+ * 页面传进来的是搜索之后的行。搜到 2 个标的却看见「港股 12」,那个 12 是另一个世界的数。
+ */
 export function filterCounts(rows: SignalRow[]): Record<SignalFilterKey, number> {
   const counts = {} as Record<SignalFilterKey, number>
   for (const { key } of SIGNAL_FILTERS) counts[key] = rows.filter(r => matchesFilter(r, key)).length

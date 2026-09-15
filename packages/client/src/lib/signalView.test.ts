@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest'
 import {
-  dataAsOf, filterCounts, formatFlipDate, isNearStop, isRowNearStop, matchesFilter,
+  dataAsOf, filterCounts, formatFlipDate, isNearStop, isRowNearStop, matchesFilter, matchesQuery,
   stopBarWidth, stopDistance,
 } from './signalView'
 import type { SignalRow, SignalSide } from '../types'
@@ -67,4 +67,29 @@ test('数据截至取所有行里最新的 bar 日期,全无信号时为 null', 
   const b = row({ daily: side({ barDate: '2026-08-28' }), weekly: side({ barDate: '2026-08-21' }) })
   expect(dataAsOf([a, b])).toBe('2026-08-28')
   expect(dataAsOf([row({ daily: null, weekly: null })])).toBeNull()
+})
+
+test('搜索:代码与名称都能命中,大小写不敏感', () => {
+  const alb = row({ symbol: 'ALB', name: 'Albemarle Corporation' })
+  expect(matchesQuery(alb, 'alb')).toBe(true)          // 代码
+  expect(matchesQuery(alb, 'ALBEMARLE')).toBe(true)    // 名称
+  expect(matchesQuery(alb, 'bemar')).toBe(true)        // 子串,不必从头match
+  expect(matchesQuery(alb, 'RKLB')).toBe(false)
+})
+
+test('搜索:港股代码能用数字部分找到', () => {
+  expect(matchesQuery(row({ symbol: '0700.HK', name: null }), '0700')).toBe(true)
+})
+
+test('搜索:空串与纯空白等于不筛 —— 没输入不该把列表清空', () => {
+  const alb = row({ symbol: 'ALB', name: 'Albemarle Corporation' })
+  expect(matchesQuery(alb, '')).toBe(true)
+  expect(matchesQuery(alb, '   ')).toBe(true)
+  expect(matchesQuery(alb, '  alb ')).toBe(true)
+})
+
+test('搜索:没有名称的行只按代码匹配,不报错', () => {
+  const noName = row({ symbol: 'NOPE', name: null })
+  expect(matchesQuery(noName, 'nope')).toBe(true)
+  expect(matchesQuery(noName, 'corp')).toBe(false)
 })
