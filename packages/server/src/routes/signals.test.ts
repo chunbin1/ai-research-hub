@@ -23,7 +23,7 @@ const { initSiteSettingsTable } = await import('../services/siteSettingsStore.ts
 const { initDocumentTable, saveRawMarkdown } = await import('../services/documentStore.ts')
 const { signalRoutes } = await import('./signals.ts')
 
-async function freshApp(probe?: unknown) {
+async function freshApp(probe?: unknown, search?: unknown) {
   const db = new Database(':memory:')
   initWatchlistTable(db); initSignalTables(db); initSiteSettingsTable(db); initDocumentTable(db)
   const app = fastify()
@@ -34,6 +34,10 @@ async function freshApp(probe?: unknown) {
       symbol: 'RKLB', market: 'US', name: 'Rocket Lab Corporation', currency: 'USD',
       exchange: 'NasdaqGS', bars: 1218, enough: true, alreadyListed: false, deleted: false,
     }))) as never,
+    search: (search ?? (async () => ([
+      { symbol: '3690.HK', name: 'Meituan', market: 'HK', exchange: 'Hong Kong' },
+      { symbol: '1357.HK', name: 'Meitu, Inc.', market: 'HK', exchange: 'Hong Kong' },
+    ]))) as never,
   })
   await app.ready()
   return { app, db }
@@ -113,11 +117,14 @@ test('GET /signals/:symbol/log 按周期与条数返回', async () => {
   assert.equal(bad.statusCode, 400)
 })
 
-test('GET /signals/events 返回近期事件', async () => {
+test('GET /signals/events 返回近期事件,并带上自选股公司名', async () => {
   const { app, db } = await freshApp(); seedALB(db)
   const res = await app.inject({ method: 'GET', url: '/api/signals/events?days=99999' })
   assert.equal(res.statusCode, 200)
   assert.equal(res.json().events.length, 3)
+  // 港股数字代码光看认不出公司 —— 横幅靠这个字段做副标题
+  assert.ok(res.json().events.every((e: { symbol: string; name: string | null }) =>
+    e.symbol !== 'ALB' || e.name === 'Albemarle Corporation'))
 })
 
 test('POST /signals/scan 调用注入的 scan', async () => {
@@ -241,4 +248,34 @@ test('DELETE 不存在的标的返回 404', async () => {
   const { app } = await freshApp()
   const res = await app.inject({ method: 'DELETE', url: '/api/signals/watchlist/NOPE' })
   assert.equal(res.statusCode, 404)
+})
+
+test('GET /signals/watchlist/search 返回候选列表', async () => {
+  const { app } = await freshApp()
+  const res = await app.inject({ method: 'GET', url: '/api/signals/watchlist/search?q=meitu' })
+  assert.equal(res.statusCode, 200)
+  const body = res.json()
+  assert.equal(body.results.length, 2)
+  assert.equal(body.results[0].symbol, '3690.HK')
+  assert.equal(body.results[0].market, 'HK')
+})
+
+test('搜索空 q 返回空列表,不调用注入的 search', async () => {
+  let called = false
+  const { app } = await freshApp(undefined, async () => { called = true; return [] })
+  for (const url of ['/api/signals/watchlist/search', '/api/signals/watchlist/search?q=', '/api/signals/watchlist/search?q=%20']) {
+    const res = await app.inject({ method: 'GET', url })
+    assert.equal(res.statusCode, 200, url)
+    assert.deepEqual(res.json().results, [])
+  }
+  assert.equal(called, false)
+})
+
+test('搜索上游失败返回 502 与中文文案', async () => {
+  const { YahooError } = await import('../services/market/yahooClient.ts')
+  const { app } = await freshApp(undefined, async () => { throw new YahooError('被限流', 'rate_limited') })
+  const res = await app.inject({ method: 'GET', url: '/api/signals/watchlist/search?q=alb' })
+  assert.equal(res.statusCode, 502)
+  assert.equal(res.json().error, 'rate_limited')
+  assert.match(res.json().message, /被限流/)
 })

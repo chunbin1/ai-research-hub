@@ -10,6 +10,10 @@ import type { SignalEventRow } from '../types'
  * 设计稿把改版前的蓝底 info 通知框换成了与研报列表同一套的纸感条:
  * 左边框 2px 墨黑,底 #F5F3EE(见「组件 3.2」)。外边距交给调用方,
  * 这样桌面端跟着主内容区的 40px 走、移动端跟着 18px 走。
+ *
+ * 代码下面跟一行公司名副标题 —— 与主列表 MetaLine 同一套心智。
+ * 港股数字代码(0100.HK / 1898.HK)光看代码认不出公司,没有 name 时
+ * 只显示代码,不硬凑占位。
  */
 export function RecentSignalEvents({ version }: { version: number }) {
   const [events, setEvents] = useState<SignalEventRow[]>([])
@@ -37,10 +41,16 @@ export function RecentSignalEvents({ version }: { version: number }) {
         {events.map(e => (
           <div
             key={`${e.symbol}-${e.timeframe}-${e.bar_date}`}
-            className="flex items-center gap-2 py-1 text-[11px] md:grid md:grid-cols-[104px_96px_60px_1fr] md:gap-5 md:border-b md:border-row-rule md:py-[7px] md:text-[12px] md:last:border-b-0"
+            className="flex items-center gap-2 py-1.5 text-[11px] md:grid md:grid-cols-[104px_minmax(120px,1.4fr)_60px_1fr] md:gap-5 md:border-b md:border-row-rule md:py-2 md:text-[12px] md:last:border-b-0"
           >
             <span className="hidden font-numeral text-[13px] text-ink-faint md:block">{e.bar_date}</span>
-            <span className="w-[74px] shrink-0 text-[13px] font-medium text-ink md:w-auto md:text-[14px]">{e.symbol}</span>
+            {/* 标的列两行:代码 + 公司名,与主列表 MetaLine 对齐 */}
+            <div className="min-w-0 w-[110px] shrink-0 md:w-auto">
+              <span className="block truncate text-[13px] font-medium text-ink md:text-[14px]">{e.symbol}</span>
+              {e.name && (
+                <span className="mt-0.5 block truncate text-[10px] text-ink-faint md:text-[11px]">{e.name}</span>
+              )}
+            </div>
             <span className="text-ink-mute">{e.timeframe === '1d' ? '日线' : '周线'}</span>
             {/* 移动端 contents 把徽章和价位摊回外层 flex,价位才能 ml-auto 靠右 */}
             <span className="contents md:flex md:items-center md:gap-3">

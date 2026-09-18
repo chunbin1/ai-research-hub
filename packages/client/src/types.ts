@@ -192,6 +192,8 @@ export interface SignalStateRow {
 
 export interface SignalEventRow {
   symbol: string
+  /** 自选股里的公司名;尚未扫到名称时为 null —— 只显示代码 */
+  name: string | null
   timeframe: '1d' | '1wk'
   bar_date: string
   direction: 1 | -1
@@ -211,4 +213,12 @@ export interface ProbeResult {
   alreadyListed: boolean
   /** 曾被删除。添加即复活 */
   deleted: boolean
+}
+
+/** GET /api/signals/watchlist/search 的一条候选 */
+export interface SymbolSearchHit {
+  symbol: string
+  name: string | null
+  market: 'US' | 'HK'
+  exchange: string | null
 }

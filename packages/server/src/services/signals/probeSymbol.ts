@@ -50,7 +50,15 @@ export async function probeSymbol(raw: string, deps: ProbeDeps = {}): Promise<Pr
   const fetchQuotes = deps.fetchQuotes ?? ((s: string) => fetchDailyQuotes(s))
   const findEntry = deps.findEntry ?? defaultFindEntry
 
-  const norm = normalizeSymbol(raw)
+  // 手动添加允许裸美股代码。normalizeSymbol 为了防研报标题把「ETF」「A」误当成代码,
+  // 故意拒了裸字母 —— 但弹窗里人自己打的 ALB / RKLB,以及模糊搜索点选回来的代码,就是要认的。
+  let norm = normalizeSymbol(raw)
+  if (!norm) {
+    const bare = raw.trim().toUpperCase()
+    if (/^[A-Z]{1,5}$/.test(bare)) {
+      norm = { symbol: bare, market: 'US' }
+    }
+  }
   if (!norm) {
     throw new ProbeError('只支持美股与港股。港股请写成 0700.HK,美股请写成 NASDAQ: RKLB 或 RKLB', 'unsupported_market')
   }

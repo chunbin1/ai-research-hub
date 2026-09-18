@@ -42,6 +42,11 @@ export const api = {
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '抽取失败')
     return r.json()
   },
+  async searchSymbols(q: string): Promise<import('./types').SymbolSearchHit[]> {
+    const r = await fetch(`/api/signals/watchlist/search?q=${encodeURIComponent(q)}`)
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message ?? '搜索失败')
+    return (await r.json()).results
+  },
   async probeSymbol(code: string): Promise<import('./types').ProbeResult> {
     const r = await fetch('/api/signals/watchlist/probe', {
       method: 'POST',
