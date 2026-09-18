@@ -30,22 +30,42 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [candidates, setCandidates] = useState<SymbolSearchHit[]>([])
   const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [searchEmpty, setSearchEmpty] = useState(false)
   // 每次「查询」和每次改动代码都自增。回调里比对它,就能把过期的那次请求整个丢掉。
   const reqId = useRef(0)
   // 搜索与探测各自一套序号 —— 点「查询」不该把还在飞的搜索结果误当成最新。
   const searchReqId = useRef(0)
   // 点选候选时会主动改 code 并立刻 probe;那一次不该再触发防抖搜索。
-  const skipSearch = useRef(false)
+  // 记 symbol 而非布尔:同名点选时 React 对相同 setState bail-out,effect 不跑,
+  // 布尔标志会卡死并吞掉下一次真正改动后的搜索。
+  const skipSearchFor = useRef<string | null>(null)
+  // doProbe 会绕过 effect cleanup,必须能主动清掉排队中的防抖计时器。
+  const searchTimer = useRef<number | null>(null)
+
+  const clearSearchTimer = () => {
+    if (searchTimer.current != null) {
+      window.clearTimeout(searchTimer.current)
+      searchTimer.current = null
+    }
+  }
 
   // 清空上一次探测的一切痕迹。**必须连 probing 一起清** —— 若此刻正有一个请求在飞,
   // 它的 finally 会因为 reqId 已经变了而跳过 setProbing(false),转圈就再也停不下来。
   const clearProbe = () => { setResult(null); setError(null); setProbing(false) }
 
-  const clearSearch = () => { setCandidates([]); setSearching(false) }
+  const clearSearch = () => {
+    setCandidates([])
+    setSearching(false)
+    setSearchError(null)
+    setSearchEmpty(false)
+  }
 
   const reset = () => {
     reqId.current++
     searchReqId.current++
+    skipSearchFor.current = null
+    clearSearchTimer()
     setCode('')
     clearProbe()
     clearSearch()
@@ -63,36 +83,52 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
     clearSearch()
   }
 
-  // 防抖模糊搜索。空串不打网络;点选候选触发的那次 setCode 用 skipSearch 跳过。
+  // 防抖模糊搜索。空串不打网络;点选候选触发的那次 setCode 用 skipSearchFor 跳过。
   useEffect(() => {
-    if (!open) return
-    if (skipSearch.current) {
-      skipSearch.current = false
+    // 关弹窗时必须清 skip 标志,否则会泄漏到下次打开。
+    // 比对也要在 !open 分支之前/之中处理,不能被 early return 挡住。
+    if (!open) {
+      skipSearchFor.current = null
+      clearSearchTimer()
       return
     }
+    if (skipSearchFor.current !== null && code === skipSearchFor.current) {
+      skipSearchFor.current = null
+      return
+    }
+    skipSearchFor.current = null
     const q = code.trim()
     if (!q) {
       clearSearch()
       return
     }
     const myId = ++searchReqId.current
-    const timer = window.setTimeout(() => {
-      setSearching(true)
+    clearSearchTimer()
+    searchTimer.current = window.setTimeout(() => {
+      searchTimer.current = null
       void (async () => {
+        // 计时器到点时若已被 doProbe 作废,连 searching 都不要置 true
+        if (myId !== searchReqId.current) return
+        setSearching(true)
+        setSearchError(null)
+        setSearchEmpty(false)
         try {
           const results = await api.searchSymbols(q)
           if (myId !== searchReqId.current) return
           setCandidates(results)
-        } catch {
-          // 搜索失败不挡「查询」主路径 —— 静默清空候选即可
+          setSearchEmpty(results.length === 0)
+        } catch (err) {
+          // 搜索失败不挡「查询」主路径 —— 在候选区显示灰字,不弹 Alert
           if (myId !== searchReqId.current) return
           setCandidates([])
+          setSearchEmpty(false)
+          setSearchError(err instanceof Error ? err.message : '搜索失败')
         } finally {
           if (myId === searchReqId.current) setSearching(false)
         }
       })()
     }, SEARCH_DEBOUNCE_MS)
-    return () => { window.clearTimeout(timer) }
+    return () => { clearSearchTimer() }
   }, [code, open])
 
   /** @param override 点选候选时 state 里的 code 可能还没 flush,用显式值探测 */
@@ -101,6 +137,7 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
     if (!raw) return
     const myId = ++reqId.current
     searchReqId.current++          // 探测开始后丢弃还在飞的搜索
+    clearSearchTimer()             // 连排队中的防抖也清掉,否则仍会白打一次 Yahoo
     setProbing(true); setError(null); setResult(null); clearSearch()
     try {
       const r = await api.probeSymbol(raw)
@@ -115,9 +152,10 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
   }
 
   const pickCandidate = (hit: SymbolSearchHit) => {
-    skipSearch.current = true
+    skipSearchFor.current = hit.symbol
     reqId.current++
     searchReqId.current++
+    clearSearchTimer()
     setCode(hit.symbol)
     clearProbe()
     clearSearch()
@@ -136,6 +174,7 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
 
   const canAdd = !!result && !result.alreadyListed
   const showCandidates = candidates.length > 0 && !result && !probing
+  const showSearchHint = !result && !probing && !searching && (searchError != null || searchEmpty)
 
   return (
     <Modal
@@ -199,6 +238,12 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
               </li>
             ))}
           </ul>
+        )}
+
+        {showSearchHint && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {searchError ?? '没有匹配的标的'}
+          </Typography.Text>
         )}
 
         {error && <Alert type="error" title={error} showIcon />}

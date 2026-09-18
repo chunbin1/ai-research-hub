@@ -281,3 +281,92 @@ test('Enter / 查询 精确探测路径仍然可用', async () => {
   await waitFor(() => expect(screen.getByText('Rocket Lab Corporation')).toBeTruthy())
   expect(confirmBtn().disabled).toBe(false)
 })
+
+test('点选同名候选后再输入字符,新查询仍会搜索', async () => {
+  // 复现: type ALB → pick ALB → type X。旧布尔 skipSearch 会卡死并吞掉 ALBX 搜索。
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  const searched: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (String(url).includes('/watchlist/search')) {
+      const q = new URL(String(url), 'http://x').searchParams.get('q') ?? ''
+      searched.push(q)
+      if (q.toUpperCase() === 'ALB') {
+        return { ok: true, json: async () => ({ results: [
+          { symbol: 'ALB', name: 'Albemarle Corporation', market: 'US', exchange: 'NYSE' },
+        ] }) } as Response
+      }
+      return { ok: true, json: async () => ({ results: [
+        { symbol: 'ALBX', name: 'Albemarle X', market: 'US', exchange: 'NYSE' },
+      ] }) } as Response
+    }
+    const code = JSON.parse(String(init?.body ?? '{}')).code
+    return { ok: true, json: async () => ({
+      ...RKLB, symbol: code, name: code === 'ALB' ? 'Albemarle Corporation' : 'Albemarle X',
+    }) } as Response
+  }))
+  render(<AddSymbolModal open onCancel={() => {}} onConfirm={noop} />)
+
+  await userEvent.type(screen.getByLabelText('代码或公司名'), 'ALB')
+  await vi.advanceTimersByTimeAsync(350)
+  await waitFor(() => expect(screen.getByText('ALB')).toBeTruthy())
+  await userEvent.click(screen.getByRole('button', { name: /选择 ALB/ }))
+  await waitFor(() => expect(confirmBtn().disabled).toBe(false))
+
+  const before = searched.length
+  await userEvent.type(screen.getByLabelText('代码或公司名'), 'X')
+  await vi.advanceTimersByTimeAsync(350)
+  await waitFor(() => expect(searched.slice(before)).toContain('ALBX'))
+  vi.useRealTimers()
+})
+
+test('防抖窗口内点查询不应再发搜索,searching 不卡住', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  const searched: string[] = []
+  let releaseProbe!: () => void
+  const probeGate = new Promise<void>(r => { releaseProbe = r })
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (String(url).includes('/watchlist/search')) {
+      const q = new URL(String(url), 'http://x').searchParams.get('q') ?? ''
+      searched.push(q)
+      return { ok: true, json: async () => ({ results: [] }) } as Response
+    }
+    await probeGate
+    const code = JSON.parse(String(init?.body ?? '{}')).code
+    return { ok: true, json: async () => ({ ...RKLB, symbol: code }) } as Response
+  }))
+  render(<AddSymbolModal open onCancel={() => {}} onConfirm={noop} />)
+
+  await userEvent.type(screen.getByLabelText('代码或公司名'), 'RKLB')
+  // 防抖未到就点查询 —— 旧实现会让计时器到点后白打一次搜索,并把 searching 卡在 true
+  await userEvent.click(screen.getByRole('button', { name: '查询' }))
+  await vi.advanceTimersByTimeAsync(400)
+  expect(searched).toEqual([])
+  expect(screen.queryByText('搜索中…')).toBeNull()
+
+  releaseProbe()
+  await waitFor(() => expect(screen.getByText('Rocket Lab Corporation')).toBeTruthy())
+  expect(screen.queryByText('搜索中…')).toBeNull()
+  vi.useRealTimers()
+})
+
+test('搜索 502 时显示中文错误灰字,不静默清空', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (String(url).includes('/watchlist/search')) {
+      return {
+        ok: false,
+        json: async () => ({ error: 'upstream', message: '搜索「meitu」: 被限流,重试后仍失败' }),
+      } as Response
+    }
+    return { ok: true, json: async () => RKLB } as Response
+  }))
+  render(<AddSymbolModal open onCancel={() => {}} onConfirm={noop} />)
+
+  await userEvent.type(screen.getByLabelText('代码或公司名'), 'meitu')
+  await vi.advanceTimersByTimeAsync(350)
+  await waitFor(() => expect(screen.getByText(/被限流,重试后仍失败/)).toBeTruthy())
+  expect(screen.queryByLabelText('搜索候选')).toBeNull()
+  // 精确「查询」路径仍可用,不被搜索错误挡住
+  expect((screen.getByRole('button', { name: '查询' }) as HTMLButtonElement).disabled).toBe(false)
+  vi.useRealTimers()
+})
