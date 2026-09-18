@@ -108,3 +108,16 @@ test('曾被删除:alreadyListed 为 false,deleted 为 true', async () => {
   assert.equal(r.alreadyListed, false, '墓碑不算「已在自选股中」——它应该能被添加(复活)')
   assert.equal(r.deleted, true)
 })
+
+test('手动添加允许裸美股代码(弹窗 / 模糊搜索点选)', async () => {
+  // normalizeSymbol 拒裸字母是为了防研报标题误伤;探测路径要认 ALB / RKLB。
+  const r = await probeSymbol('rklb', {
+    fetchQuotes: async (s) => {
+      assert.equal(s, 'RKLB')
+      return series('RKLB', 1218)
+    },
+    findEntry: noEntry,
+  })
+  assert.equal(r.symbol, 'RKLB')
+  assert.equal(r.market, 'US')
+})

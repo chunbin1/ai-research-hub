@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fetchDailyQuotes, YahooError } from './yahooClient.ts'
+import { fetchDailyQuotes, searchYahooSymbols, YahooError } from './yahooClient.ts'
 
 const DAY = 86400
 const SESSION_LEN = 6.5 * 3600
@@ -184,4 +184,67 @@ test('429 后重试成功', async () => {
   })
   assert.equal(calls, 2)
   assert.equal(s.bars.length, 2)
+})
+
+// ---------------------------------------------------------------------------
+// searchYahooSymbols
+// ---------------------------------------------------------------------------
+
+function searchPayload(quotes: unknown[]) {
+  return { quotes, news: [], count: quotes.length }
+}
+
+test('搜索空串不打网络', async () => {
+  let called = false
+  const hits = await searchYahooSymbols('  ', {
+    fetchImpl: (async () => { called = true; return new Response('{}') }) as unknown as typeof fetch,
+  })
+  assert.deepEqual(hits, [])
+  assert.equal(called, false)
+})
+
+test('只保留美股主板与港股正股,丢掉 OTC / 海外 / ETF', async () => {
+  const payload = searchPayload([
+    { symbol: '3690.HK', exchange: 'HKG', quoteType: 'EQUITY', longname: 'Meituan', shortname: 'MEITUAN-W', exchDisp: 'Hong Kong' },
+    { symbol: 'MPNGY', exchange: 'PNK', quoteType: 'EQUITY', longname: 'Meituan', shortname: 'MEITUAN', exchDisp: 'OTC Markets' },
+    { symbol: '1357.HK', exchange: 'HKG', quoteType: 'EQUITY', longname: 'Meitu, Inc.', shortname: 'MEITU', exchDisp: 'Hong Kong' },
+    { symbol: 'ALB', exchange: 'NYQ', quoteType: 'EQUITY', longname: 'Albemarle Corporation', shortname: 'Albemarle Corporation', exchDisp: 'NYSE' },
+    { symbol: '9405.SR', exchange: 'SAU', quoteType: 'ETF', longname: 'Albilad Gold ETF', shortname: 'Albilad Gold ETF' },
+    { symbol: 'MEITUAN80.BK', exchange: 'SET', quoteType: 'EQUITY', longname: 'Meituan', shortname: 'MEITUAN80' },
+    { symbol: 'QQQ', exchange: 'NMS', quoteType: 'ETF', longname: 'Invesco QQQ Trust', shortname: 'QQQ' },
+  ])
+  const hits = await searchYahooSymbols('meitu', {
+    fetchImpl: (async () => new Response(JSON.stringify(payload), { status: 200 })) as unknown as typeof fetch,
+  })
+  assert.deepEqual(hits.map(h => h.symbol), ['3690.HK', '1357.HK', 'ALB'])
+  assert.equal(hits[0].market, 'HK')
+  assert.equal(hits[0].name, 'Meituan')
+  assert.equal(hits[2].market, 'US')
+  assert.equal(hits[2].exchange, 'NYSE')
+})
+
+test('搜索结果去重,同代码只留第一次', async () => {
+  const payload = searchPayload([
+    { symbol: 'ALB', exchange: 'NYQ', quoteType: 'EQUITY', longname: 'Albemarle Corporation', exchDisp: 'NYSE' },
+    { symbol: 'alb', exchange: 'NYQ', quoteType: 'EQUITY', longname: 'Albemarle Dup', exchDisp: 'NYSE' },
+  ])
+  const hits = await searchYahooSymbols('alb', {
+    fetchImpl: (async () => new Response(JSON.stringify(payload), { status: 200 })) as unknown as typeof fetch,
+  })
+  assert.equal(hits.length, 1)
+  assert.equal(hits[0].symbol, 'ALB')
+})
+
+test('搜索 429 退避后仍失败抛 rate_limited', async () => {
+  let calls = 0
+  const slept: number[] = []
+  await assert.rejects(
+    () => searchYahooSymbols('alb', {
+      fetchImpl: (async () => { calls++; return new Response('', { status: 429 }) }) as unknown as typeof fetch,
+      sleep: async (ms) => { slept.push(ms) },
+    }),
+    (err: unknown) => err instanceof YahooError && err.kind === 'rate_limited',
+  )
+  assert.equal(calls, 3)
+  assert.deepEqual(slept, [1000, 2000])
 })

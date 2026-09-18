@@ -15,6 +15,7 @@ import {
 import { scanAll, isSignalsEnabled } from '../services/signals/scanner.js'
 import { syncWatchlistFromAllDocuments } from '../services/signals/watchlistSync.js'
 import { probeSymbol, ProbeError } from '../services/signals/probeSymbol.js'
+import { searchYahooSymbols, YahooError, type SymbolSearchHit } from '../services/market/yahooClient.js'
 import { getDocument } from '../services/documentStore.js'
 
 export interface SignalsRoutesOptions {
@@ -22,6 +23,8 @@ export interface SignalsRoutesOptions {
   scan?: typeof scanAll
   /** 同上 */
   probe?: typeof probeSymbol
+  /** 同上 —— 模糊搜索候选 */
+  search?: (query: string) => Promise<SymbolSearchHit[]>
 }
 
 const TIMEFRAMES: Timeframe[] = ['1d', '1wk']
@@ -81,6 +84,7 @@ function rowOf(entry: WatchlistEntry) {
 export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app, opts) => {
   const scan = opts.scan ?? scanAll
   const probe = opts.probe ?? probeSymbol
+  const search = opts.search ?? ((q: string) => searchYahooSymbols(q))
 
   app.addHook('onRequest', async (_request, reply) => {
     if (!isSignalsEnabled()) return reply.status(404).send({ error: 'signals_disabled' })
@@ -109,7 +113,15 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
 
   app.get<{ Querystring: { days?: string } }>('/signals/events', async (request) => {
     const days = Math.min(Math.max(Number(request.query.days) || 7, 1), 3650)
-    return { events: getRecentEvents(daysAgoIso(days)) }
+    // 事件表本身不存公司名 —— 港股代码(0100.HK)光看数字认不出是谁,
+    // 从自选股表补上 name,横幅才能和主列表一样带副标题。
+    const nameBy = new Map(listWatchlist().map(e => [e.symbol, e.name]))
+    return {
+      events: getRecentEvents(daysAgoIso(days)).map(e => ({
+        ...e,
+        name: nameBy.get(e.symbol) ?? null,
+      })),
+    }
   })
 
   app.post('/signals/scan', async (request, reply) => {
@@ -120,6 +132,22 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
   app.post('/signals/extract', async (request, reply) => {
     if (!requireAdmin(request, reply)) return
     return syncWatchlistFromAllDocuments()
+  })
+
+  // 模糊搜索候选。点选后再走 probe 确认身份 —— 搜索只给名单,不替代人工确认。
+  app.get<{ Querystring: { q?: string } }>('/signals/watchlist/search', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
+    const q = (request.query.q ?? '').trim()
+    if (!q) return { results: [] as SymbolSearchHit[] }
+    try {
+      return { results: await search(q) }
+    } catch (err) {
+      if (err instanceof YahooError) {
+        return reply.status(502).send({ error: err.kind, message: err.message })
+      }
+      // 非 YahooError 多半是网络层英文异常,文案一律中文
+      return reply.status(502).send({ error: 'upstream', message: '搜索失败,请检查网络后重试' })
+    }
   })
 
   app.post<{ Body: { code?: unknown } }>('/signals/watchlist/probe', async (request, reply) => {

@@ -48,17 +48,29 @@ test('没有日志时给出空态', async () => {
 })
 
 const events: SignalEventRow[] = [
-  { symbol: 'ALB', timeframe: '1d', bar_date: '2026-08-20', direction: 1, price: 134.19 },
-  { symbol: '9696.HK', timeframe: '1wk', bar_date: '2026-08-18', direction: -1, price: 33.74 },
+  { symbol: 'ALB', name: 'Albemarle Corporation', timeframe: '1d', bar_date: '2026-08-20', direction: 1, price: 134.19 },
+  { symbol: '9696.HK', name: 'Tianqi Lithium Corporation', timeframe: '1wk', bar_date: '2026-08-18', direction: -1, price: 33.74 },
 ]
 
-test('事件横幅列出最近信号', async () => {
+test('事件横幅列出最近信号,并带公司名副标题', async () => {
   stubFetch(() => ({ events }))
   render(<RecentSignalEvents version={0} />)
   await waitFor(() => expect(screen.getByText(/ALB/)).toBeTruthy())
   expect(screen.getByText(/9696\.HK/)).toBeTruthy()
+  expect(screen.getByText('Albemarle Corporation')).toBeTruthy()
+  expect(screen.getByText('Tianqi Lithium Corporation')).toBeTruthy()
   expect(screen.getByText(/翻多/)).toBeTruthy()
   expect(screen.getByText(/翻空/)).toBeTruthy()
+})
+
+test('事件没有公司名时只显示代码,不硬凑占位', async () => {
+  stubFetch(() => ({ events: [
+    { symbol: '0100.HK', name: null, timeframe: '1d', bar_date: '2026-09-14', direction: -1, price: 252.4 },
+  ] }))
+  render(<RecentSignalEvents version={0} />)
+  await waitFor(() => expect(screen.getByText('0100.HK')).toBeTruthy())
+  // 副标题节点不该出现空壳
+  expect(screen.queryByText('null')).toBeNull()
 })
 
 test('近 7 天没有事件时横幅整个不渲染', async () => {

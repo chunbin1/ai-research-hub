@@ -137,3 +137,105 @@ export async function fetchDailyQuotes(symbol: string, deps: YahooDeps = {}): Pr
     rawClose,
   }
 }
+
+// ---------------------------------------------------------------------------
+// 模糊搜索 —— 添加标的弹窗用。Yahoo /v1/finance/search 按公司名或代码子串返回候选。
+// ---------------------------------------------------------------------------
+
+export interface SymbolSearchHit {
+  symbol: string
+  name: string | null
+  market: 'US' | 'HK'
+  exchange: string | null
+}
+
+/** Yahoo 主板上的美股交易所代码。OTC(PNK)不进 —— 与 normalizeSymbol 只认 NYSE/NASDAQ/AMEX 对齐。 */
+const US_EXCHANGES = new Set([
+  'NYQ', 'NYS', 'NYSE',
+  'NMS', 'NGM', 'NCM', 'NAS', 'NASDAQ',
+  'ASE', 'AMEX', 'NYSEAMERICAN',
+  'PCX', 'ARCA',
+  'BATS', 'BTS',
+])
+
+/** 只保留美股主板与港股正股。ETF / 权证 / 海外存托都丢掉,避免候选列表噪音。 */
+function classifyQuote(q: {
+  symbol?: unknown
+  exchange?: unknown
+  quoteType?: unknown
+  shortname?: unknown
+  longname?: unknown
+  exchDisp?: unknown
+}): SymbolSearchHit | null {
+  if (typeof q.symbol !== 'string' || !q.symbol) return null
+  if (q.quoteType !== 'EQUITY') return null
+
+  const symbol = q.symbol
+  const exchange = typeof q.exchange === 'string' ? q.exchange : null
+  const name = (typeof q.longname === 'string' && q.longname)
+    || (typeof q.shortname === 'string' && q.shortname)
+    || null
+  const exchDisp = typeof q.exchDisp === 'string' ? q.exchDisp : null
+
+  // 港股:Yahoo 代码以 .HK 结尾,交易所 HKG
+  if (/\.HK$/i.test(symbol)) {
+    if (exchange && exchange !== 'HKG') return null
+    return { symbol: symbol.toUpperCase(), name, market: 'HK', exchange: exchDisp ?? exchange }
+  }
+
+  // 美股主板;带点号的通常是海外市场(如 .PA / .BK / .SI)
+  if (symbol.includes('.')) return null
+  if (!exchange || !US_EXCHANGES.has(exchange.toUpperCase())) return null
+  // 美股代码最长 5 个字母 —— 与 normalizeSymbol 的 US_TICKER 一致
+  if (!/^[A-Za-z]{1,5}$/.test(symbol)) return null
+  return { symbol: symbol.toUpperCase(), name, market: 'US', exchange: exchDisp ?? exchange }
+}
+
+/**
+ * 按公司名或代码模糊搜美股 / 港股候选。
+ * 空串直接返回 [],不打网络。
+ */
+export async function searchYahooSymbols(
+  query: string,
+  deps: YahooDeps = {},
+): Promise<SymbolSearchHit[]> {
+  const q = query.trim()
+  if (!q) return []
+
+  const doFetch = deps.fetchImpl ?? fetch
+  const sleep = deps.sleep ?? ((ms: number) => new Promise(r => setTimeout(r, ms)))
+  const url = 'https://query1.finance.yahoo.com/v1/finance/search'
+    + `?q=${encodeURIComponent(q)}&quotesCount=12&newsCount=0`
+
+  let res: Response | null = null
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    res = await doFetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+    if (res.status === 404) return []
+    if (res.status !== 429) break
+    if (attempt === RETRY_DELAYS.length) {
+      throw new YahooError(`搜索「${q}」: 被限流,重试后仍失败`, 'rate_limited')
+    }
+    await sleep(RETRY_DELAYS[attempt])
+  }
+  if (!res || !res.ok) {
+    throw new YahooError(`搜索「${q}」: HTTP ${res?.status ?? '无响应'}`, 'bad_response')
+  }
+
+  let payload: any
+  try {
+    payload = await res.json()
+  } catch {
+    throw new YahooError(`搜索「${q}」: 响应不是合法 JSON`, 'bad_response')
+  }
+
+  const quotes = Array.isArray(payload?.quotes) ? payload.quotes : []
+  const hits: SymbolSearchHit[] = []
+  const seen = new Set<string>()
+  for (const raw of quotes) {
+    const hit = classifyQuote(raw)
+    if (!hit || seen.has(hit.symbol)) continue
+    seen.add(hit.symbol)
+    hits.push(hit)
+  }
+  return hits
+}

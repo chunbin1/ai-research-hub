@@ -157,7 +157,7 @@ test('点「添加标的」弹出弹窗', async () => {
   renderPage()
   await waitFor(() => expect(screen.getByRole('button', { name: /添加标的/ })).toBeTruthy())
   await userEvent.click(screen.getByRole('button', { name: /添加标的/ }))
-  await waitFor(() => expect(screen.getByLabelText('代码')).toBeTruthy())
+  await waitFor(() => expect(screen.getByLabelText('代码或公司名')).toBeTruthy())
 })
 
 test('扫描完成后页面显示本次扫描摘要', async () => {
