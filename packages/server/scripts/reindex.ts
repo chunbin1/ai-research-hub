@@ -23,6 +23,7 @@ import 'dotenv/config'
 import { initDb } from '../src/services/db.js'
 import { initDocumentTable, getAllDocuments, readRawMarkdown } from '../src/services/documentStore.js'
 import { initChunkFtsTable } from '../src/services/chunkFts.js'
+import { initIndexStateTable } from '../src/services/indexState.js'
 import { reindexFts } from '../src/services/reindex.js'
 
 const args = process.argv.slice(2)
@@ -37,6 +38,7 @@ if (unknown.length) {
 const db = initDb()
 initDocumentTable(db)
 initChunkFtsTable(db)
+initIndexStateTable(db)
 
 const all = getAllDocuments()
 const targets = only ? all.filter(d => d.id === only) : all
@@ -63,7 +65,20 @@ for (const r of results) {
 }
 
 console.log(`\n完成:${ok} 篇 / ${chunks} 块${missing ? `,${missing} 篇原文缺失` : ''}`)
+
+// 只重建 FTS 会让两路代次错位。检索侧查得出来(会拒绝融合、退成纯向量并记进
+// trace),所以不会返回错块 —— 但那是降级,不是正常状态,必须说清楚。
+const mismatched = results.filter(r => r.status === 'ok' && r.mismatch)
+if (mismatched.length) {
+  console.log(`\n⚠️ ${mismatched.length} 篇的向量还停在旧切块代次:`)
+  for (const r of mismatched) console.log(`     ${nameOf.get(r.docId) ?? r.docId}`)
+  console.log('   这些文档的检索已降级为纯向量(不融合)—— 融合按 chunk_index 对齐,')
+  console.log('   两代编号指向的文字不同,融了就是静默返回错块。')
+  console.log('   用 `pnpm import:raw` 把两路推到同一代即可恢复(已完成的会跳过)。')
+}
+
 if (missing) {
   console.log('原文缺失的文档在关键词检索里将永远零召回 —— 重新上传可修复。')
   process.exit(1)
 }
+if (mismatched.length) process.exit(1)

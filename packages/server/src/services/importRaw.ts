@@ -9,12 +9,12 @@
 // doc_id 直接取文件名(`data/raw/<id>.md` 去掉后缀),不重新生成:
 // 原文和向量库都按这个 id 对应,重编号会让三者全部失联。
 //
-// 向量索引不在这里 —— 它要调 embedding API、要 ChromaDB 活着,属于另一个
-// 失败域。调用方拿到 outcome 后自己决定要不要补。
+// **建索引不在这里** —— 两路索引都归 indexRebuild 管,因为它们必须和代次一起
+// 翻转:FTS 换代和 active_gen 翻转要在同一个事务里,向量还要先写新代、验证过
+// 才算数。这里只负责「让库里有这一行」,拿到 outcome 后交给 rebuildDocs。
 
 import type { DB } from './db.js'
 import { parseMarkdown } from './markdownParser.js'
-import { upsertChunkFts } from './chunkFts.js'
 import type { MdChunk } from './markdownParser.js'
 
 export interface ImportOutcome {
@@ -24,7 +24,7 @@ export interface ImportOutcome {
   chunks: number
   /** missing:`data/raw/<id>.md` 取不到。 */
   status: 'ok' | 'missing'
-  /** 切好的块,调用方拿去建向量索引。missing 时为空数组。 */
+  /** 切好的块,调用方拿去建索引。missing 时为空数组。 */
   parsed: MdChunk[]
 }
 
@@ -60,11 +60,8 @@ export function importRawDocs(
     const { displayName, chunks } = parseMarkdown(md)
     const filename = displayName || docId
 
-    db.transaction(() => {
-      // 字节数而非字符数:中文一个字三字节,用 md.length 会把体积算少三分之二。
-      upsert.run(docId, filename, Buffer.byteLength(md, 'utf8'), chunks.length, new Date().toISOString())
-      upsertChunkFts(db, docId, chunks)
-    })()
+    // 字节数而非字符数:中文一个字三字节,用 md.length 会把体积算少三分之二。
+    upsert.run(docId, filename, Buffer.byteLength(md, 'utf8'), chunks.length, new Date().toISOString())
 
     return { docId, filename, chunks: chunks.length, status: 'ok' as const, parsed: chunks }
   })

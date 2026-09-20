@@ -56,10 +56,12 @@ test('没有 H1 时退回用 doc_id 当标题', () => {
   assert.equal(out[0].filename, 'doc_b')
 })
 
-test('同时写好 BM25 索引', () => {
+// 建索引归 indexRebuild:FTS 换代必须和 active_gen 翻转同事务,在这里提前写
+// 会让状态表说谎(记着旧代,表里已经是新切块)。
+test('只登记行,不碰 BM25 索引', () => {
   const db = freshDb()
   importRawDocs(db, ['doc_a'], reader({ doc_a: MD_A }))
-  assert.equal(searchBm25(db, 'doc_a', '毛利率', 10).length, 1)
+  assert.equal(searchBm25(db, 'doc_a', '毛利率', 10).length, 0)
 })
 
 // 这个脚本是要反复跑的(改了切块规则、换了原文),第二次跑不能变成两行。

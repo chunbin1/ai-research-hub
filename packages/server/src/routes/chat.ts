@@ -6,6 +6,7 @@ import { assertPublicBaseURL, getPreset, BaseURLRejectedError } from '../service
 import { searchChunks, isDocVectorAvailable } from '../services/documentVector.js'
 import { searchBm25 } from '../services/chunkFts.js'
 import { hybridRetrieve } from '../services/retrieval.js'
+import { getIndexState, planRetrieval } from '../services/indexState.js'
 import { RAG } from '../services/ragConfig.js'
 import { getDb } from '../services/db.js'
 import { getDocument } from '../services/documentStore.js'
@@ -101,17 +102,22 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       const chunks: DocumentChunk[] = await withSpan('doc_retrieval', async () => {
         spanInput(message)
         const db = getDb()
+        // 两路索引各自属于哪一代切块,决定了这次能不能融合:代次错位时按
+        // chunk_index 对齐会把两段不同的文字当成同一块,静默返回错块。
+        const plan = planRetrieval(getIndexState(db, docId))
         const { chunks: found, meta } = await hybridRetrieve(message, docId, {
           // 向量库不可用时这一路返回空而不是抛错 —— 那是「没配置」,
           // 不是「出故障」,不该被记成降级。
-          vectorSearch: (q, d) => (isDocVectorAvailable() ? searchChunks(q, d) : Promise.resolve([])),
+          vectorSearch: (q, d) =>
+            isDocVectorAvailable() ? searchChunks(q, d, RAG.poolSize, plan.gen) : Promise.resolve([]),
           keywordSearch: (q, d, limit) => searchBm25(db, d, q, limit),
-        }, { k: RAG.rrfK })
+        }, { k: RAG.rrfK, restrict: plan.restrict })
 
         // both_empty 沿用历史名字 doc_retrieval_empty,保持与旧 trace 可比。
         if (meta.degraded === 'both_empty') markDegraded('doc_retrieval_empty')
         else if (meta.degraded) markDegraded(`doc_retrieval_${meta.degraded}`)
 
+        spanMeta('gen', plan.gen ?? 'legacy')
         spanMeta('kept', found.length)
         spanMeta('retrieval', meta)
         spanMeta('sections', found.map(c => c.section_title))

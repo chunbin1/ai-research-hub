@@ -3,13 +3,21 @@ import { type EmbeddingFunction, type EmbeddingFunctionSpace } from 'chromadb'
 
 const BASE_URL = 'https://open.bigmodel.cn/api/paas/v4'
 
+/**
+ * 当前 embedding 模型名。索引代次要带上它 —— 换模型等于所有存量向量作废
+ * (维度都会变:embedding-3 是 2048 维,bge-m3 是 1024 维),必须能被检测到。
+ */
+export function embeddingModel(): string {
+  return process.env.ZHIPU_EMBEDDING_MODEL ?? 'embedding-3'
+}
+
 export function isEmbeddingAvailable(): boolean {
   if (process.env.DISABLE_EMBEDDING === 'true') return false
   return Boolean(process.env.ZHIPU_API_KEY)
 }
 
 async function callEmbeddingAPI(input: string | string[]): Promise<number[][]> {
-  const model = process.env.ZHIPU_EMBEDDING_MODEL ?? 'embedding-3'
+  const model = embeddingModel()
   const apiKey = process.env.ZHIPU_API_KEY
 
   const res = await fetch(`${BASE_URL}/embeddings`, {

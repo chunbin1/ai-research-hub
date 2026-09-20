@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { initChunkFtsTable, searchBm25 } from './chunkFts.ts'
+import { initIndexStateTable } from './indexState.ts'
 import { reindexFts } from './reindex.ts'
 
 const MD_A = `# 腾讯生态
@@ -23,6 +24,7 @@ const MD_B = `# 碳酸锂
 function freshDb() {
   const db = new Database(':memory:')
   initChunkFtsTable(db)
+  initIndexStateTable(db)
   return db
 }
 
@@ -50,7 +52,7 @@ test('返回每篇实际写入的块数', () => {
 test('原文缺失时标记 missing,不抛错', () => {
   const db = freshDb()
   const out = reindexFts(db, ['gone'], reader({}))
-  assert.deepEqual(out, [{ docId: 'gone', chunks: 0, status: 'missing' }])
+  assert.deepEqual(out, [{ docId: 'gone', chunks: 0, status: 'missing', gen: null, mismatch: false }])
 })
 
 test('一篇缺失不影响其他篇', () => {
