@@ -7,6 +7,9 @@ import {
 } from '../services/documentStore.js'
 import { upsertChunks, deleteByDocId, isDocVectorAvailable } from '../services/documentVector.js'
 import { upsertChunkFts, deleteChunkFts } from '../services/chunkFts.js'
+import { computeGen, NO_GEN } from '../services/indexGen.js'
+import { putIndexState, deleteIndexState } from '../services/indexState.js'
+import { embeddingModel } from '../services/embeddings.js'
 import { getDb } from '../services/db.js'
 import { syncWatchlistFromMarkdown } from '../services/signals/watchlistSync.js'
 import { requireAdmin } from './auth.js'
@@ -50,13 +53,37 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
 
     // 关键词索引:纯本地 SQLite,同步写。它不依赖任何外部服务,
     // 所以不像向量那样做成 fire-and-forget —— 失败就是真失败。
-    upsertChunkFts(getDb(), doc.id, chunks)
+    //
+    // 代次此刻只有 FTS 这一路就位,vec_gen 如实记成 none:在向量落库之前,
+    // 这篇的检索本来就只有 BM25,检索侧会据此降级并留下 trace。
+    const gen = computeGen(chunks)
+    const db = getDb()
+    db.transaction(() => {
+      upsertChunkFts(db, doc.id, chunks)
+      putIndexState(db, {
+        doc_id: doc.id,
+        active_gen: gen,
+        vec_gen: NO_GEN,
+        fts_gen: gen,
+        embed_model: embeddingModel(),
+      })
+    })()
 
     if (isDocVectorAvailable()) {
-      upsertChunks(doc.id, doc.filename, chunks).catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        app.log.warn(`[documents] upsertChunks failed for ${doc.id}: ${msg}`)
-      })
+      upsertChunks(doc.id, doc.filename, chunks, gen)
+        .then(() => {
+          putIndexState(db, {
+            doc_id: doc.id,
+            active_gen: gen,
+            vec_gen: gen,
+            fts_gen: gen,
+            embed_model: embeddingModel(),
+          })
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          app.log.warn(`[documents] upsertChunks failed for ${doc.id}: ${msg}`)
+        })
     }
     return { document: doc }
   })
@@ -67,6 +94,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     if (!doc) return reply.status(404).send({ error: 'not_found' })
     await deleteByDocId(doc.id)
     deleteChunkFts(getDb(), doc.id)
+    deleteIndexState(getDb(), doc.id)
     deleteRawMarkdown(doc.id)
     deleteDocument(doc.id)
     return { success: true }

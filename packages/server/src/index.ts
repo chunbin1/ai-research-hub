@@ -9,6 +9,7 @@ import 'dotenv/config'
 import { initDb } from './services/db.js'
 import { initDocumentTable, getAllDocuments, readRawMarkdown } from './services/documentStore.js'
 import { initChunkFtsTable, countChunkFts } from './services/chunkFts.js'
+import { initIndexStateTable } from './services/indexState.js'
 import { reindexFts } from './services/reindex.js'
 import { initDocCollection } from './services/documentVector.js'
 import { initTraceTables } from './services/traceStore.js'
@@ -44,6 +45,7 @@ await app.register(cookie, { secret: cookieSecret || randomBytes(32).toString('h
 const db = initDb()
 initDocumentTable(db)
 initChunkFtsTable(db)
+initIndexStateTable(db)
 initTraceTables(db)
 initUserTables(db)
 initUsageTable(db)

@@ -14,12 +14,24 @@
 import type { DB } from './db.js'
 import { parseMarkdown } from './markdownParser.js'
 import { upsertChunkFts } from './chunkFts.js'
+import { computeGen } from './indexGen.js'
+import { getIndexState, setFtsGen } from './indexState.js'
 
 export interface ReindexOutcome {
   docId: string
   chunks: number
   /** missing:原文文件取不到(被手工删过,或上传时写盘失败)。 */
   status: 'ok' | 'missing'
+  /** 这次写进 FTS 的切块代次;missing 时为 null。 */
+  gen: string | null
+  /**
+   * 写完之后 FTS 与向量是否错位了。
+   *
+   * 只重建 FTS 本来就会造成错位 —— 这里**如实返回**,由调用方警告。检索侧会
+   * 据此拒绝融合、退成单路。把它悄悄抹平才是危险的:那等于让两个索引对同一个
+   * chunk_index 指向不同的文字,而没有任何人知道。
+   */
+  mismatch: boolean
 }
 
 /**
@@ -38,10 +50,22 @@ export function reindexFts(
 ): ReindexOutcome[] {
   return docIds.map(docId => {
     const md = readMarkdown(docId)
-    if (md === null) return { docId, chunks: 0, status: 'missing' as const }
+    if (md === null) return { docId, chunks: 0, status: 'missing' as const, gen: null, mismatch: false }
     const { chunks } = parseMarkdown(md)
-    // upsert 是「先删后插」,所以原文改短后不会留下过时的旧块。
-    upsertChunkFts(db, docId, chunks)
-    return { docId, chunks: chunks.length, status: 'ok' as const }
+    const gen = computeGen(chunks)
+    db.transaction(() => {
+      // upsert 是「先删后插」,所以原文改短后不会留下过时的旧块。
+      upsertChunkFts(db, docId, chunks)
+      setFtsGen(db, docId, gen)
+    })()
+    const state = getIndexState(db, docId)
+    return {
+      docId,
+      chunks: chunks.length,
+      status: 'ok' as const,
+      gen,
+      // 没有状态行 = legacy,两路都还没代次化,谈不上错位。
+      mismatch: state !== null && state.active_gen !== gen,
+    }
   })
 }

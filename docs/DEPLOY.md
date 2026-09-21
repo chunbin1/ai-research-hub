@@ -73,6 +73,37 @@ docker --context ai-research-hub compose -f docker-compose.prod.yml exec server 
 ## 四、更新
 改完代码 `git pull` 后再 `./deploy.sh` 即可(增量重建)。数据在卷里不丢。
 
+### 改了切块规则之后:重建索引
+
+`deploy.sh` 只换代码,**不动索引**。改了 `markdownParser` 的切块行为后,库里的
+索引还是旧切块建的,新代码的收益拿不到 —— 需要跑一次:
+
+```bash
+docker --context ai-research-hub compose -f docker-compose.prod.yml exec server \
+  npx tsx scripts/import-raw.ts
+```
+
+它按篇把两路索引(BM25 + 向量)推到同一个切块代次:
+
+- **可续传**。已经是最新代次的直接跳过,不重新 embedding。跑到一半挂了,重跑
+  一次只补没做完的。
+- **失败不伤线上**。新代写完并验证过才翻转,中途失败的那篇完整地停在旧代继续
+  服务,不会出现「FTS 是新的、向量是旧的」这种静默返回错块的状态。
+- 跑完会自检一次真实检索,零召回会以非零码退出。
+
+不花钱的预演:加 `--no-vectors` 只重建 BM25(那些文档的检索会暂时降级为纯
+BM25,状态表如实记录,trace 里看得到)。
+
+### 为什么不能只跑 `reindex`
+
+`pnpm reindex` 只重建 BM25 一路。融合是按 `doc_id#chunk_index` 对齐两路的,
+切块一改编号整体平移(实测 CNOOC 47 个编号里只剩 27 个还指向同一段文字),
+只重建一路会让同一个键在两边指向不同的文字。
+
+现在这种错位会被代次机制**挡住**:检索侧发现两路代次不一致就拒绝融合、退成
+单路,并在 trace 里记 `gen_mismatch`;`reindex` 自己也会警告并以非零码退出。
+所以它不会返回错块 —— 但那是降级,不是正常状态。正确的收尾始终是 `import:raw`。
+
 ## 密钥怎么到服务器
 `deploy.sh` 用本地 docker CLI 通过 SSH 操作远程 daemon;compose 读本地 `.env.prod` 把值作为
 环境变量注入远程容器。`.env.prod` 文件本身不离开你的机器、不进镜像、不进 git。

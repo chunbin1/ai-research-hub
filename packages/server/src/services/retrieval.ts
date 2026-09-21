@@ -28,6 +28,7 @@ export type DegradeReason =
   | 'bm25_failed'     // BM25 路抛错,降级为纯向量
   | 'both_failed'     // 两路都挂
   | 'both_empty'      // 两路都正常但都没召回
+  | 'gen_mismatch'    // 两路索引代次不一致,不能按 chunk_index 融合,只走其中一路
   | null
 
 export interface RetrievalMeta {
@@ -65,17 +66,27 @@ export async function hybridRetrieve(
   query: string,
   docId: string,
   deps: RetrievalDeps,
-  opts: { maxK?: number; k?: number; poolSize?: number } = {},
+  opts: {
+    maxK?: number
+    k?: number
+    poolSize?: number
+    /**
+     * 只走这一路,不融合。给代次错位用 —— 两路编号对不上时融合会静默返回错块,
+     * 退成单路是唯一安全的选择。
+     */
+    restrict?: 'vector' | 'bm25' | null
+  } = {},
 ): Promise<HybridResult> {
   const maxK = opts.maxK ?? RAG.maxK
   const poolSize = opts.poolSize ?? RAG.poolSize
+  const restrict = opts.restrict ?? null
 
   // 两路独立成败:一条腿断了另一条要能继续走。向量路挂过一次真事故 ——
   // embedding 配额耗尽,searchChunks 静默返回空,整站每个回答都变成
   // 零依据生成且持续多日无人察觉。
   const [vecRes, bmRes] = await Promise.allSettled([
-    deps.vectorSearch(query, docId),
-    Promise.resolve().then(() => deps.keywordSearch(query, docId, poolSize)),
+    restrict === 'bm25' ? Promise.resolve([]) : deps.vectorSearch(query, docId),
+    restrict === 'vector' ? Promise.resolve([]) : Promise.resolve().then(() => deps.keywordSearch(query, docId, poolSize)),
   ])
 
   const vectorFailed = vecRes.status === 'rejected'
@@ -95,6 +106,8 @@ export async function hybridRetrieve(
     vectorFailed && bm25Failed ? 'both_failed'
     : vectorFailed ? 'vector_failed'
     : bm25Failed ? 'bm25_failed'
+    // 代次错位排在 both_empty 前面:空结果只是症状,错位才是原因。
+    : restrict !== null ? 'gen_mismatch'
     : fused.length === 0 ? 'both_empty'
     : null
 

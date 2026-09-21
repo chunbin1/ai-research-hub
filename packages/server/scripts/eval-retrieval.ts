@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path'
 import { initDb } from '../src/services/db.js'
 import { initDocumentTable, getAllDocuments } from '../src/services/documentStore.js'
 import { initChunkFtsTable, searchBm25 } from '../src/services/chunkFts.js'
+import { initIndexStateTable, getIndexState, planRetrieval } from '../src/services/indexState.js'
 import { initDocCollection, searchChunks, isDocVectorAvailable } from '../src/services/documentVector.js'
 import { hybridRetrieve } from '../src/services/retrieval.js'
 import { RAG } from '../src/services/ragConfig.js'
@@ -47,6 +48,7 @@ const file = JSON.parse(readFileSync(setPath, 'utf8')) as EvalFile
 const db = initDb()
 initDocumentTable(db)
 initChunkFtsTable(db)
+initIndexStateTable(db)
 await initDocCollection()
 
 const doc = getAllDocuments().find(d => d.filename.includes(file.doc))
@@ -61,15 +63,22 @@ if (!isDocVectorAvailable()) {
 
 console.log(`评测集: ${setPath}`)
 console.log(`文档:   ${doc.filename}(${doc.chunk_count} 块)`)
-console.log(`配置:   maxK=${RAG.maxK} poolSize=${RAG.poolSize} rrfK=${RAG.rrfK}\n`)
+// 与线上同一套代次逻辑 —— 否则评测测的不是生产实际在跑的检索。
+const plan = planRetrieval(getIndexState(db, doc.id))
+console.log(`配置:   maxK=${RAG.maxK} poolSize=${RAG.poolSize} rrfK=${RAG.rrfK}`)
+console.log(`代次:   ${plan.gen ?? 'legacy(未代次化)'}${plan.restrict ? ` —— 两路错位,只走 ${plan.restrict}` : ''}\n`)
+if (plan.restrict) {
+  console.error('⚠️ 两路索引代次不一致,本次评测跑的是降级后的单路,数字不能和基线比。')
+  console.error('   先跑 `pnpm import:raw` 把两路推到同一代。')
+}
 
 const outcomes: CaseOutcome[] = []
 const rows: string[] = []
 for (const c of file.cases) {
   const r = await hybridRetrieve(c.question, doc.id, {
-    vectorSearch: (q, d) => searchChunks(q, d),
+    vectorSearch: (q, d) => searchChunks(q, d, RAG.poolSize, plan.gen),
     keywordSearch: (q, d, limit) => searchBm25(db, d, q, limit),
-  }, { k: RAG.rrfK })
+  }, { k: RAG.rrfK, restrict: plan.restrict })
 
   const o = scoreCase(c, r.chunks)
   outcomes.push(o)
