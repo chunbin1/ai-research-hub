@@ -1,0 +1,36 @@
+name: CI
+
+# fork 的 PR 也跑,但用的是 pull_request(不是 pull_request_target),
+# 拿不到任何 secret —— 这个工作流也确实一个都不需要。
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  test:
+    name: 类型检查 + 测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 钉 9 而不是本地的 11:pnpm 11 要求 Node ≥ 22.13(它用了 node:sqlite),
+      # 而下面要跑的是 Node 20。lockfileVersion 是 '9.0',正是 pnpm 9 的原生格式,
+      # 配 --frozen-lockfile 结果是确定的。
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          # 与生产镜像的 node:20-alpine 对齐 —— 测试要跑在和线上同一个大版本上。
+          # 本地是 26,而 26 上 happy-dom 和 Node 抢 localStorage,
+          # ReaderPage 那几条会红;CI 不跟着本地走。
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test

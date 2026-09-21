@@ -1,0 +1,109 @@
+name: 部署生产
+
+# 只在 master 推送时触发。仓库是 public,所以这里**绝不能**用
+# pull_request_target —— 那会让 fork 的 PR 拿到生产密钥。
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# 两次部署不能并行操作同一台机器;进行中的也不取消,
+# 半途被砍的 docker compose 比慢一点危险得多。
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 部署
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 写出 .env.prod
+        env:
+          ENV_PROD: ${{ secrets.ENV_PROD }}
+        run: |
+          if [ -z "$ENV_PROD" ]; then
+            echo "::error::缺少 secret ENV_PROD —— 把本地 packages/server/.env.prod 整个文件内容存成这个 secret"
+            exit 1
+          fi
+          printf '%s\n' "$ENV_PROD" > packages/server/.env.prod
+
+          # 只校验键存在,绝不回显值。缺键的话站点会以一种很难查的方式坏掉
+          # (比如 COOKIE_SECRET 空 → 登录态全失效)。
+          missing=""
+          for k in ZHIPU_API_KEY GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET APP_URL COOKIE_SECRET LLM_KEY_SECRET; do
+            grep -qE "^${k}=.+" packages/server/.env.prod || missing="$missing $k"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::.env.prod 缺少这些键:$missing"
+            exit 1
+          fi
+
+          # DEPLOY.md 写着「生产严禁开 AUTH_DISABLED」。写成检查,别只写在文档里。
+          if grep -qE '^AUTH_DISABLED=true' packages/server/.env.prod; then
+            echo "::error::AUTH_DISABLED=true —— 生产严禁,会让站点完全不设防"
+            exit 1
+          fi
+
+      - uses: ./.github/actions/remote-docker
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          ssh-target: ${{ secrets.DEPLOY_SSH_TARGET }}
+
+      - name: 部署
+        env:
+          # 必须显式给 —— 本地靠仓库根的 .env 提供这个值,而那个文件是
+          # gitignore 的,runner 上没有。不给的话 compose 会退回它自己的默认
+          # 端口,可能和机器上别的服务撞上。这里不写死具体值,改成必填的
+          # repository variable,缺了就在动手部署之前失败。
+          CLIENT_PORT: ${{ vars.CLIENT_PORT }}
+        run: |
+          if [ -z "$CLIENT_PORT" ]; then
+            echo "::error::缺少 repository variable CLIENT_PORT —— 见 docs/DEPLOY.md"
+            exit 1
+          fi
+          ./deploy.sh
+
+      - name: 健康检查
+        run: |
+          url=$(grep -E '^APP_URL=' packages/server/.env.prod | cut -d= -f2-)
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/documents" || true)
+            if [ "$code" = "200" ]; then
+              echo "✓ $url 就绪(第 $i 次探测)"
+              exit 0
+            fi
+            echo "第 $i 次探测:HTTP $code,2 秒后重试"
+            sleep 2
+          done
+          echo "::error::站点在 20 秒内没有就绪"
+          exit 1
+
+  rebuild:
+    name: 重建索引
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/remote-docker
+        with:
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          ssh-target: ${{ secrets.DEPLOY_SSH_TARGET }}
+
+      # 切块规则和原文都没变时,这一步是 0.6 秒空转 —— 每篇的代次没变就跳过,
+      # 一次 embedding 都不会发。只有切块行为变了、原文变了或换了 embedding
+      # 模型才会真干活。
+      #
+      # 它是独立的 job:这一步红了不影响上面那个绿的「部署」,
+      # 说明代码已经上线、只是索引没跟上,重跑本 job 即可(已完成的会跳过)。
+      - name: import:raw(可续传,已是最新则跳过)
+        run: |
+          docker --context ai-research-hub compose -f docker-compose.prod.yml \
+            exec -T server npx tsx scripts/import-raw.ts
