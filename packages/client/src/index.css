@@ -49,6 +49,12 @@
 
 @layer base {
   :root { color-scheme: light; }
+  /* 预留滚动条槽。列表页在「骨架 / 缓存 → 真实数据」之间高度会变,不预留的话
+     滚动条一出现整页就横向缩一下(Windows / Linux,以及 macOS 开了「始终显示滚动条」)。 */
+  html { scrollbar-gutter: stable; }
+  /* 阅读页是 h-dvh 的应用外壳,整页本来就不滚动 —— 那条预留的槽在它右侧
+     只会留一道空白,这里收掉。类名挂在 ReaderPage 根节点上。 */
+  html:has(.reader-shell) { scrollbar-gutter: auto; }
   body {
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
     color: #1a1a1a;
