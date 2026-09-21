@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { readCache, writeCache } from '../lib/storage'
 import { shortDate } from '../lib/signalView'
 import { DirectionBadge } from './DirectionBadge'
 import type { SignalEventRow } from '../types'
+
+/**
+ * 上一次的翻转列表。这一块「有事件才渲染」,不缓存的话每次进页面都是
+ * 先没有、300ms 后凭空插进来,把下面的筛选行和整张表一起往下顶。
+ */
+const CACHE_KEY = 'arh.signalEvents'
 
 /**
  * 最近 7 天发生的信号翻转。没有事件时整个不渲染,不占版面。
@@ -16,14 +23,16 @@ import type { SignalEventRow } from '../types'
  * 只显示代码,不硬凑占位。
  */
 export function RecentSignalEvents({ version }: { version: number }) {
-  const [events, setEvents] = useState<SignalEventRow[]>([])
+  const [events, setEvents] = useState<SignalEventRow[]>(
+    () => readCache<SignalEventRow[]>(CACHE_KEY) ?? [],
+  )
 
   // version 由 useSignals 在每次成功 refresh 后自增 —— 单靠 [] 只在挂载时拉一次,
   // 扫描完横幅还是旧数据,得靠这个 dep 触发重新拉取
   useEffect(() => {
     let cancelled = false
     void api.listSignalEvents(7)
-      .then(rows => { if (!cancelled) setEvents(rows) })
+      .then(rows => { if (!cancelled) { setEvents(rows); writeCache(CACHE_KEY, rows) } })
       .catch(() => { if (!cancelled) setEvents([]) })
     return () => { cancelled = true }
   }, [version])

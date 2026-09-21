@@ -15,11 +15,18 @@
     <meta name="theme-color" content="#1B3A5C" />
     <!-- 首页改版的视觉核心是「中文标题用衬线、界面文字用无衬线、数字用衬线」这套分工
          (见 design_handoff_homepage/README.md 的 Design Tokens)。系统里没有等价的中文
-         衬线字重,只能从 Google Fonts 引;字重按设计稿实际用到的挑,不多取。 -->
+         衬线字重,只能从 Google Fonts 引;字重按设计稿实际用到的挑,不多取。
+
+         display=optional(不是 swap):中文字体按 unicode-range 被切成 300+ 个子集,
+         swap 意味着这几十个子集分几波到达、每到一波就把已经画好的文字重排一次 ——
+         这是首屏「抖动」最大的一块。optional 给字体一个 ~100ms 的窗口:
+         没赶上就整页沿用回退字体(Songti SC / PingFang)且**此后不再切换**,
+         字体照常在后台下好进缓存,下一次访问首帧即生效。代价是首次访问看到的是
+         系统字体;换来的是「进入 / 刷新都不重排」。 -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Noto+Serif+SC:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Noto+Serif+SC:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=optional"
       rel="stylesheet"
     />
   </head>

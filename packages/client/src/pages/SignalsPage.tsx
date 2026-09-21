@@ -194,11 +194,13 @@ function SignalTable({ rows, loading, empty, expanded, onToggle, renderDetail }:
         <span className="text-right">距周线止损</span>
       </div>
 
+      {/* 50px = 真实数据行的内容高度(量出来的:行外高 83 - py-4 的 32 - 1px 分隔线)。
+          骨架矮一截的话,数据一到整张表就往下弹一段 —— 骨架的意义就在于占准位置。 */}
       {loading && Array.from({ length: 5 }, (_, i) => (
         <div key={i} className={`${GRID} border-b border-row-rule py-4`} aria-hidden>
           <span />
           {Array.from({ length: 6 }, (_, c) => (
-            <span key={c} className="h-[34px] animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
+            <span key={c} className="h-[50px] animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
           ))}
         </div>
       ))}
@@ -252,10 +254,11 @@ function SignalTable({ rows, loading, empty, expanded, onToggle, renderDetail }:
 function SignalCards({ rows, loading, empty, expanded, onToggle, renderDetail }: ListProps) {
   return (
     <div className="border-t border-ink">
+      {/* 30 + 12(gap-3) + 116 = 158,与真实卡片的内容高度一致(卡片外高 189 - py-[15px] 的 30 - 1px) */}
       {loading && Array.from({ length: 3 }, (_, i) => (
         <div key={i} className="flex flex-col gap-3 border-b border-row-rule py-[15px]" aria-hidden>
           <span className="h-[30px] w-1/2 animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
-          <span className="h-[86px] animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
+          <span className="h-[116px] animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
         </div>
       ))}
 

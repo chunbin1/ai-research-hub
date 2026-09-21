@@ -47,7 +47,7 @@ export function SiteHeader({
   active, onUploaded, onUploadError, uploading = false, onUploadingChange, mobile,
 }: Props) {
   const navigate = useNavigate()
-  const { user, login, logout } = useAuth()
+  const { user, loading: authLoading, login, logout } = useAuth()
   const isAdmin = user?.isAdmin === true
 
   async function handleUpload(file: File) {
@@ -109,7 +109,10 @@ export function SiteHeader({
           </nav>
         </div>
 
-        <div className="flex items-center gap-3 md:gap-[18px]">
+        {/* 右侧操作区的高度锁死在「上传按钮」那一档(移动 34.5 / 桌面 37.5,量出来的
+            边框盒高度)。这一格的内容要等 /api/auth/me 回来才定型——不锁的话管理员
+            每次进站都是顶栏先 54.5/73px、拿到登录态后弹到 62.5/77.5px,整页跟着下移。 */}
+        <div className="flex min-h-[34.5px] items-center gap-3 md:min-h-[37.5px] md:gap-[18px]">
           {isAdmin && (
             // 移动端的信号追踪顶栏只留头像,上传入口在这一档不出现
             <span className={mobile ? 'hidden md:block' : ''}>
@@ -145,6 +148,10 @@ export function SiteHeader({
                 <DownOutlined className="hidden text-[14px] text-ink-faint md:inline" aria-hidden />
               </button>
             </Dropdown>
+          ) : authLoading ? (
+            // 登录态未知:先留白。抢先画「GitHub 登录」的话,已登录的人每次刷新都会
+            // 看见它闪一下再换成头像——宽度不同,右侧这一簇跟着横向跳。
+            null
           ) : (
             <button type="button" onClick={login} className="tap-44 text-[13px] text-navy hover:text-brick">
               GitHub 登录

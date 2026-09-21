@@ -103,7 +103,7 @@ export default function ReaderPage() {
 
   return (
     <div
-      className={`relative flex h-dvh flex-col md:grid md:h-screen md:transition-[grid-template-columns] md:duration-[240ms] md:ease-[ease] motion-reduce:md:transition-none ${
+      className={`reader-shell relative flex h-dvh flex-col md:grid md:h-screen md:transition-[grid-template-columns] md:duration-[240ms] md:ease-[ease] motion-reduce:md:transition-none ${
         chatOpen
           ? 'md:grid-cols-[240px_minmax(0,1fr)_360px]'
           : 'md:grid-cols-[240px_minmax(0,1fr)_0px]'

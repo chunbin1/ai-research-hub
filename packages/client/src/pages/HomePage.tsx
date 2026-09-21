@@ -4,6 +4,7 @@ import { Modal } from 'antd'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import { SiteHeader } from '../components/SiteHeader'
+import { readCache, writeCache } from '../lib/storage'
 import type { Document } from '../types'
 
 /**
@@ -24,16 +25,74 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
 }
 
+/**
+ * 上一次拿到的研报列表。只为「刷新不抖」:有缓存就首帧直接画出列表,
+ * 再拿服务端结果覆盖——列表一天也变不了几次,绝大多数刷新是零位移的。
+ * 读不到缓存(首次访问 / 无痕模式)才退回骨架。
+ */
+const DOCS_CACHE_KEY = 'arh.docs'
+
+/**
+ * 骨架里的一根灰条。**必须用 &nbsp; 撑行高、而不是给个 h-[Npx]**:
+ * 这样它的盒高完全由所在位置的 font-size / line-height 决定,和真实那一行
+ * 的文字一模一样。写死高度的老做法让骨架行是 82px、真实行是 93px,
+ * 数据一到整列往下跳 11px × 5 行。
+ */
+function Bar({ width }: { width: string }) {
+  return (
+    <span
+      className={`inline-block animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none ${width}`}
+    >
+      &nbsp;
+    </span>
+  )
+}
+
+/** 骨架行 —— 结构与下面的 <article> 逐格对应,列宽、间距、断点全部照抄 */
+function SkeletonRow() {
+  return (
+    <div
+      className="flex flex-col gap-[9px] border-t border-row-rule py-4 md:grid md:grid-cols-[76px_minmax(0,1fr)_auto] md:items-baseline md:gap-6 md:py-5 md:first:border-t-0 lg:grid-cols-[92px_minmax(0,1fr)_auto]"
+      aria-hidden
+    >
+      <span className="hidden font-numeral text-[14px] text-ink-faint md:block">
+        <Bar width="w-[52px]" />
+      </span>
+
+      <div className="flex min-w-0 flex-col gap-[9px] md:gap-2">
+        <h2 className="m-0 font-serif-sc text-[17px] font-semibold leading-[1.5] md:text-[19px] md:leading-[1.45]">
+          <Bar width="w-4/5" />
+        </h2>
+        <div className="flex items-center gap-2 text-[11px] md:gap-2.5 md:text-[12px]">
+          <Bar width="w-[38%]" />
+        </div>
+      </div>
+
+      {/* 第三列真实内容是「阅读 ›」;它参与 items-baseline 的基线对齐,
+          骨架里不占位的话桌面端行高会和真实行差一点 */}
+      <div className="hidden md:flex md:items-baseline md:gap-3">
+        <span className="text-[13px]">&nbsp;</span>
+      </div>
+    </div>
+  )
+}
+
 export default function HomePage() {
-  const [docs, setDocs] = useState<Document[]>([])
-  const [loading, setLoading] = useState(true)
+  /** null = 这台设备上还没缓存过列表(首次访问 / 无痕模式),此时才需要骨架 */
+  const [docs, setDocs] = useState<Document[] | null>(() => readCache<Document[]>(DOCS_CACHE_KEY))
+  const [loaded, setLoaded] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
 
-  const refresh = () => api.listDocuments().then(setDocs).catch(e => setError(String(e.message)))
-  useEffect(() => { refresh().finally(() => setLoading(false)) }, [])
+  const rows = docs ?? []
+  const showSkeleton = !loaded && docs === null
+
+  const refresh = () => api.listDocuments()
+    .then(list => { setDocs(list); writeCache(DOCS_CACHE_KEY, list) })
+    .catch(e => setError(String(e.message)))
+  useEffect(() => { refresh().finally(() => setLoaded(true)) }, [])
 
   function onDelete(id: string) {
     Modal.confirm({
@@ -69,25 +128,16 @@ export default function HomePage() {
             <div className="flex items-baseline justify-between border-b border-ink pb-2 pt-[18px] md:pb-2.5 md:pt-0">
               <h1 className="m-0 font-serif-sc text-[16px] font-semibold text-ink md:text-[17px]">最新研报</h1>
               <span className="text-[12px] text-ink-faint md:text-[13px] md:text-ink-mute">
-                共 {docs.length} 篇
+                共 {showSkeleton ? '—' : rows.length} 篇
               </span>
             </div>
 
             {error && <p className="pt-4 text-[13px] text-danger">{error}</p>}
 
             <div className="flex flex-col md:mt-6">
-              {loading && Array.from({ length: 5 }, (_, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col gap-[9px] border-t border-row-rule py-4 md:py-5 md:first:border-t-0"
-                  aria-hidden
-                >
-                  <div className="h-[19px] w-4/5 animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
-                  <div className="h-[13px] w-[38%] animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
-                </div>
-              ))}
+              {showSkeleton && Array.from({ length: 5 }, (_, i) => <SkeletonRow key={i} />)}
 
-              {!loading && docs.map(doc => (
+              {!showSkeleton && rows.map(doc => (
                 <article
                   key={doc.id}
                   className="group relative flex flex-col gap-[9px] border-t border-row-rule py-4 transition-colors md:grid md:grid-cols-[76px_minmax(0,1fr)_auto] md:items-baseline md:gap-6 md:py-5 md:first:border-t-0 md:hover:bg-aside lg:grid-cols-[92px_minmax(0,1fr)_auto]"
@@ -142,7 +192,7 @@ export default function HomePage() {
               ))}
 
               {/* 空态:保留栏目头与分隔线,正文区只给一行说明(设计稿的空态规范) */}
-              {!loading && docs.length === 0 && (
+              {loaded && rows.length === 0 && (
                 <p className="py-6 text-[13px] text-ink-faint">还没有研报</p>
               )}
             </div>
