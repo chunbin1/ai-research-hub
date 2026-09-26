@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import {
-  initDocumentTable, saveDocument, getAllDocuments, getDocument, deleteDocument, uploadedAtFromId,
+  initDocumentTable, saveDocument, getAllDocuments, getDocument, deleteDocument, uploadedAtFromId, fixCreatedAtFromIds,
 } from './documentStore.ts'
 import { insertVersion, getVersion } from './versionStore.ts'
 
@@ -25,7 +25,7 @@ test('上传时刻能从 id 里读回来,且和 created_at 一致', () => {
 })
 
 // import:raw 曾把老研报的 created_at 写成导入那一刻,它们就压在了之前上传的新研报上面。
-test('启动时把被导入时刻顶掉的 created_at 校正回上传时刻,新上传的排最前', () => {
+test('一次性迁移把被导入时刻顶掉的 created_at 校正回上传时刻,新上传的排最前', () => {
   const db = new Database(':memory:')
   initDocumentTable(db)
   const insert = db.prepare('INSERT INTO documents VALUES (?, ?, 1, 1, ?)')
@@ -34,7 +34,7 @@ test('启动时把被导入时刻顶掉的 created_at 校正回上传时刻,新�
   insert.run('doc_1787992051140_njd1', '8/29 上传', '2026-08-29T08:27:31.140Z')
   insert.run('doc_a', '非标准 id,不动', importedAt)
 
-  initDocumentTable(db)
+  fixCreatedAtFromIds(db)
 
   assert.deepEqual(getAllDocuments().map(d => d.id), [
     'doc_a', 'doc_1787992051140_njd1', 'doc_1785584414151_6vk8',
@@ -69,7 +69,7 @@ test('v1 的时间也校正回上传时刻,后续版本不动', () => {
   insertVersion(db, { doc_id: 'doc_1785584414151_6vk8', filename: 'x', size_bytes: 1, chunk_count: 1, created_at: importedAt })
   insertVersion(db, { doc_id: 'doc_1785584414151_6vk8', filename: 'x', size_bytes: 1, chunk_count: 1, created_at: '2026-09-20T00:00:00.000Z' })
 
-  initDocumentTable(db)
+  fixCreatedAtFromIds(db)
 
   assert.equal(getVersion(db, 'doc_1785584414151_6vk8', 1)?.created_at, '2026-08-01T11:40:14.151Z')
   assert.equal(getVersion(db, 'doc_1785584414151_6vk8', 2)?.created_at, '2026-09-20T00:00:00.000Z')
@@ -83,7 +83,24 @@ test('documents 行已经对了、只有 v1 错,也能校正', () => {
   db.prepare('INSERT INTO documents VALUES (?, ?, 1, 1, ?)').run('doc_1785584414151_6vk8', 'x', '2026-08-01T11:40:14.151Z')
   insertVersion(db, { doc_id: 'doc_1785584414151_6vk8', filename: 'x', size_bytes: 1, chunk_count: 1, created_at: '2026-09-03T14:24:59.600Z' })
 
-  initDocumentTable(db)
+  fixCreatedAtFromIds(db)
 
   assert.equal(getDocument('doc_1785584414151_6vk8')?.updated_at, '2026-08-01T11:40:14.151Z')
+})
+
+// 修历史数据,不是长期规则:跑过一次之后,created_at 和 id 对不上也不再改写。
+test('校正只跑一次:返回改了哪几篇,第二次返回 null 且不再改写', () => {
+  const db = new Database(':memory:')
+  initDocumentTable(db)
+  const insert = db.prepare('INSERT INTO documents VALUES (?, ?, 1, 1, ?)')
+  insert.run('doc_1785584414151_6vk8', 'x', '2026-09-03T14:24:59.600Z')
+  insert.run('doc_1787992051140_njd1', '本来就对', '2026-08-29T08:27:31.140Z')
+
+  assert.deepEqual(fixCreatedAtFromIds(db), ['doc_1785584414151_6vk8'])
+
+  // 之后有人有意把日期改成和 id 不一致,重启也不该被改回去
+  db.prepare('UPDATE documents SET created_at = ? WHERE id = ?').run('2026-07-01T00:00:00.000Z', 'doc_1785584414151_6vk8')
+  initDocumentTable(db)
+  assert.equal(fixCreatedAtFromIds(db), null)
+  assert.equal(getDocument('doc_1785584414151_6vk8')?.created_at, '2026-07-01T00:00:00.000Z')
 })

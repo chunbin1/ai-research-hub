@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto'
 import 'dotenv/config'
 
 import { initDb } from './services/db.js'
-import { initDocumentTable, getAllDocuments, readVersionMarkdown } from './services/documentStore.js'
+import { initDocumentTable, getAllDocuments, readVersionMarkdown, fixCreatedAtFromIds } from './services/documentStore.js'
 import { migrateLegacyVersions } from './services/documentVersion.js'
 import { initChunkFtsTable, countChunkFts } from './services/chunkFts.js'
 import { initIndexStateTable } from './services/indexState.js'
@@ -56,6 +56,13 @@ initSiteSettingsTable(db)
 initEvalTables(db)
 initWatchlistTable(db)
 initSignalTables(db)
+
+// 一次性:把 import:raw 写错的上传时间校正回 id 里的时刻。放在版本补登记之前,
+// 这样补登记出来的 v1 直接抄到对的时间。
+{
+  const fixed = fixCreatedAtFromIds(db)
+  if (fixed && fixed.length > 0) console.info(`[documents] 已把 ${fixed.length} 篇研报的上传时间校正回 id 里的时刻: ${fixed.join(', ')}`)
+}
 
 // 版本化之前的文档补登记成 v1。必须在 FTS 自愈之前:自愈按版本读原文。
 {

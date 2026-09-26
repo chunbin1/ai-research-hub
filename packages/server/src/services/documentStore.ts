@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { DB } from './db.js'
 import type { Document } from '../types.js'
 import { initVersionTable } from './versionStore.js'
+import { runOnce } from './migrations.js'
 
 const RAW_DIR = process.env.RAW_DIR ?? 'data/raw'
 let _db: DB | null = null
@@ -16,12 +17,15 @@ export function initDocumentTable(db: DB): void {
       filename    TEXT NOT NULL,
       size_bytes  INTEGER NOT NULL,
       chunk_count INTEGER NOT NULL,
+      -- 首次上传时间。新上传的行与 id 里编的时间戳同一刻(genId);
+      -- import:raw 导入的行也取 id 里的时间。这是写入时的约定,不是强制约束:
+      -- 历史上写错的一批由一次性迁移 fixCreatedAtFromIds 校正过,之后不再自动改写,
+      -- 以后如有正当理由让它和 id 不一致(比如允许编辑日期),不会被启动逻辑覆盖。
       created_at  TEXT NOT NULL
     );
   `)
   // 列表要带出最新版本号,两张表总是一起建。
   initVersionTable(db)
-  repairCreatedAt(db)
 }
 
 function db(): DB {
@@ -44,17 +48,24 @@ export function uploadedAtFromId(id: string): string | null {
 }
 
 /**
- * 把 created_at 校正回 id 里记的上传时刻。
+ * 一次性迁移:把被 import:raw 写错的 created_at 校正回 id 里记的上传时刻。
  *
  * 历史上 import:raw 登记新行时写的是「导入那一刻」,于是一批老研报全挤在同一个
  * 时间戳上,排到了之前上传的新研报前面,首页显示的日期也是错的。版本迁移又把这个
  * 错值原样抄成了 v1 的时间,而列表的「更新时间」取的是最新版的时间 —— 只有 v1 的
  * 文档,v1 错了排序就是错的。
  *
- * documents 行与 v1 都代表首次上传,都该等于 id 里的时刻,两处各自按这条校正。
- * 偏差在一分钟内的不动(正常上传只差几毫秒)。幂等,每次启动跑一遍,行数很少。
+ * documents 行与 v1 都代表首次上传,两处各自按 id 校正;偏差在一分钟内的不动
+ * (正常上传只差几毫秒)。经 runOnce 执行,每个库只跑一次 —— 这是修历史数据,
+ * 不是「created_at 必须等于 id 时间」的长期规则。
+ *
+ * 返回被校正的研报 id(documents 行或 v1 有一处改了就算);已经跑过返回 null。
  */
-function repairCreatedAt(db: DB): void {
+export function fixCreatedAtFromIds(db: DB): string[] | null {
+  return runOnce(db, 'fix_created_at_from_ids', () => fixCreatedAt(db))
+}
+
+function fixCreatedAt(db: DB): string[] {
   const targets = [
     { select: 'SELECT id, created_at FROM documents', fix: 'UPDATE documents SET created_at = ? WHERE id = ?' },
     {
@@ -62,18 +73,19 @@ function repairCreatedAt(db: DB): void {
       fix: 'UPDATE document_versions SET created_at = ? WHERE doc_id = ? AND version = 1',
     },
   ]
-  db.transaction(() => {
-    for (const t of targets) {
-      const rows = db.prepare(t.select).all() as { id: string; created_at: string }[]
-      const fix = db.prepare(t.fix)
-      for (const { id, created_at } of rows) {
-        const uploadedAt = uploadedAtFromId(id)
-        if (uploadedAt && Math.abs(Date.parse(created_at) - Date.parse(uploadedAt)) > 60_000) {
-          fix.run(uploadedAt, id)
-        }
+  const fixed = new Set<string>()
+  for (const t of targets) {
+    const rows = db.prepare(t.select).all() as { id: string; created_at: string }[]
+    const fix = db.prepare(t.fix)
+    for (const { id, created_at } of rows) {
+      const uploadedAt = uploadedAtFromId(id)
+      if (uploadedAt && Math.abs(Date.parse(created_at) - Date.parse(uploadedAt)) > 60_000) {
+        fix.run(uploadedAt, id)
+        fixed.add(id)
       }
     }
-  })()
+  }
+  return [...fixed]
 }
 
 type DocSummary = { filename: string; size_bytes: number; chunk_count: number }
