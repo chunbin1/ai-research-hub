@@ -2,7 +2,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeftOutlined, DownOutlined, UploadOutlined } from '@ant-design/icons'
 import { Avatar, Dropdown, Upload } from 'antd'
 import type { MenuProps } from 'antd'
-import { REPORT_ACCEPT, uploadReport } from '../lib/reportUpload'
+import { REPORT_ACCEPT, pickReportFile, uploadReport } from '../lib/reportUpload'
+import { useFileDrop, useWindowFileDrag } from '../hooks/useFileDrop'
 import { useAuth } from '../hooks/useAuth'
 
 /**
@@ -39,21 +40,34 @@ interface Props {
   /** 正在上传(由调用方持有,按钮据此置灰) */
   uploading?: boolean
   onUploadingChange?: (uploading: boolean) => void
+  /** 页面上有别的拖拽目标在前台时(如上传新版本弹窗)关掉按钮的拖拽 */
+  dropDisabled?: boolean
   /** 提供时移动端换成「返回 + 页面标题」形态 */
   mobile?: { backTo: string; title: string }
 }
 
 export function SiteHeader({
-  active, onUploaded, onUploadError, uploading = false, onUploadingChange, mobile,
+  active, onUploaded, onUploadError, uploading = false, onUploadingChange, dropDisabled = false, mobile,
 }: Props) {
   const navigate = useNavigate()
   const { user, loading: authLoading, login, logout } = useAuth()
   const isAdmin = user?.isAdmin === true
 
-  /** 与首页拖拽区同一条路径:先校验类型 / 大小,再上传 */
+  /** 点选与拖拽同一条路径:先校验类型 / 大小,再上传 */
   function handleUpload(file: File) {
     return uploadReport(file, { onUploaded, onUploadError, onUploadingChange })
   }
+
+  // 「上传研报」按钮本身也收拖拽:文件一拖进页面,按钮换成虚线边框提示「可以放这里」;
+  // 拖到按钮上加深高亮,松手即上传。多个文件 / 格式不对 / 超大都走 onUploadError。
+  // 文案不变 —— 换字会改按钮宽度,右侧一簇跟着横跳。
+  const canUpload = isAdmin && !uploading && !dropDisabled
+  const pageDragging = useWindowFileDrag(canUpload)
+  const { dragging: overUpload, dropProps: uploadDropProps } = useFileDrop(files => {
+    const picked = pickReportFile(files)
+    if (picked.error !== undefined) onUploadError?.(picked.error)
+    else void handleUpload(picked.file)
+  }, !canUpload)
 
   const menuItems: MenuProps['items'] = [
     ...(user && !user.unlimited
@@ -119,7 +133,17 @@ export function SiteHeader({
                   type="button"
                   disabled={uploading}
                   aria-label={uploading ? '上传中' : '上传研报'}
-                  className="flex size-11 items-center justify-center text-navy transition-[border-color,background] duration-150 disabled:opacity-50 md:size-auto md:gap-2 md:rounded-[4px] md:border md:border-navy-edge md:bg-white md:px-[15px] md:py-2 md:text-[13px] md:hover:border-navy md:hover:bg-navy-wash"
+                  title="点击选择文件,或把文件拖到这里上传"
+                  data-dragging={overUpload || undefined}
+                  data-drop-hint={(pageDragging && !overUpload) || undefined}
+                  {...uploadDropProps}
+                  className={`flex size-11 items-center justify-center text-navy transition-[border-color,background] duration-150 disabled:opacity-50 md:size-auto md:gap-2 md:rounded-[4px] md:border md:px-[15px] md:py-2 md:text-[13px] md:hover:border-navy md:hover:bg-navy-wash ${
+                    overUpload
+                      ? 'rounded-[4px] bg-navy-wash md:border-navy md:shadow-[0_0_0_3px_var(--color-navy-edge)]'
+                      : pageDragging
+                        ? 'md:border-dashed md:border-navy md:bg-navy-wash'
+                        : 'md:border-navy-edge md:bg-white'
+                  }`}
                 >
                   <UploadOutlined className="text-[20px] md:text-[14px]" aria-hidden />
                   <span className="hidden md:inline">{uploading ? '上传中…' : '上传研报'}</span>

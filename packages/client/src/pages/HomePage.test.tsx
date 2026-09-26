@@ -108,7 +108,6 @@ test('非管理员看不到上传入口、删除按钮和管理员栏目', async
   await screen.findByText('腾讯生态产业链投资研究报告')
 
   expect(screen.queryByText('上传研报')).toBeNull()
-  expect(screen.queryByText('拖拽文件到此处，或点击选择')).toBeNull()
   expect(screen.queryByRole('button', { name: /删除/ })).toBeNull()
   expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull()
   expect(screen.queryByText('评估')).toBeNull()
@@ -148,15 +147,15 @@ test('不渲染本周财报日历', async () => {
   expect(screen.queryByText('本周财报日历')).toBeNull()
 })
 
-// ---- 拖拽上传 ----
+// ---- 拖拽上传:扩展已有的「上传研报」按钮与「上传新版本」入口 ----
 
 /** 带上传的 fetch 桩:POST /api/documents 记下来并回一篇新文档,之后列表多出这篇 */
-function stubUploadFetch() {
+function stubUploadFetch(user: unknown = ADMIN) {
   const NEW_DOC = { id: 'd9', filename: '新拖进来的研报', size_bytes: 1, chunk_count: 3, created_at: '2026-09-26T00:00:00.000Z' }
   let uploaded = false
   const posts: FormData[] = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => user } as Response
     if (url === '/api/documents' && init?.method === 'POST') {
       posts.push(init.body as FormData)
       uploaded = true
@@ -170,19 +169,56 @@ function stubUploadFetch() {
   return posts
 }
 
+const md = (name = '新研报.md') => new File(['# 新研报\n'], name, { type: 'text/markdown' })
+const pdf = () => new File(['%PDF'], '研报.pdf', { type: 'application/pdf' })
+/** happy-dom 的 DataTransfer 塞不进文件,给事件挂一个同形对象 */
+const dt = (files: File[]) => ({ dataTransfer: { files, types: ['Files'], dropEffect: 'none' } })
+
 function dropOn(el: Element, files: File[]) {
-  const dataTransfer = { files, types: ['Files'], dropEffect: 'none' }
-  fireEvent.dragEnter(el, { dataTransfer })
-  fireEvent.dragOver(el, { dataTransfer })
-  fireEvent.drop(el, { dataTransfer })
+  fireEvent.dragEnter(el, dt(files))
+  fireEvent.dragOver(el, dt(files))
+  fireEvent.drop(el, dt(files))
 }
 
-test('管理员:拖入 .md 走与点选相同的上传接口,完成后列表刷新', async () => {
+const uploadButton = () => screen.findByRole('button', { name: '上传研报' })
+
+test('「上传研报」按钮:文件拖到按钮上高亮,离开熄灭,经过按钮里的文字不闪', async () => {
+  stubUploadFetch()
+  renderHome()
+  const btn = await uploadButton()
+  // 用文案那一格当子元素(图标在测试里是每次渲染都换新组件的替身,会被重新挂载)
+  const icon = within(btn).getByText('上传研报')
+
+  fireEvent.dragEnter(btn, dt([]))
+  expect(btn.dataset.dragging).toBe('true')
+
+  fireEvent.dragEnter(icon, dt([]))
+  fireEvent.dragLeave(btn, dt([]))
+  expect(btn.dataset.dragging).toBe('true')
+
+  fireEvent.dragLeave(icon, dt([]))
+  expect(btn.dataset.dragging).toBeUndefined()
+})
+
+test('文件刚拖进页面:「上传研报」按钮换成可放置提示,文案不变', async () => {
+  stubUploadFetch()
+  renderHome()
+  const btn = await uploadButton()
+
+  expect(btn.dataset.dropHint).toBeUndefined()
+  fireEvent.dragEnter(document.body, dt([]))
+  await waitFor(() => expect(btn.dataset.dropHint).toBe('true'))
+  expect(btn.className).toContain('border-dashed')
+  expect(btn.textContent).toBe('上传研报')
+  fireEvent.dragLeave(document.body, dt([]))
+  await waitFor(() => expect(btn.dataset.dropHint).toBeUndefined())
+})
+
+test('「上传研报」按钮:拖入 .md 走与点选相同的上传接口,完成后列表刷新', async () => {
   const posts = stubUploadFetch()
   renderHome()
-  const zone = await screen.findByRole('button', { name: /拖拽文件到此处，或点击选择/ })
-  const f = new File(['# 新研报\n'], '新研报.md', { type: 'text/markdown' })
-  dropOn(zone, [f])
+  const f = md()
+  dropOn(await uploadButton(), [f])
 
   await waitFor(() => expect(posts).toHaveLength(1))
   expect(posts[0].get('file')).toBe(f)
@@ -190,12 +226,64 @@ test('管理员:拖入 .md 走与点选相同的上传接口,完成后列表刷�
   expect(screen.getByText('共 4 篇')).toBeTruthy()
 })
 
-test('管理员:拖入 PDF 被拒收,不发上传请求', async () => {
+test('「上传研报」按钮:拖入 PDF 被拒收并提示,不发请求', async () => {
   const posts = stubUploadFetch()
   renderHome()
-  const zone = await screen.findByRole('button', { name: /拖拽文件到此处，或点击选择/ })
-  dropOn(zone, [new File(['%PDF'], '研报.pdf', { type: 'application/pdf' })])
+  dropOn(await uploadButton(), [pdf()])
 
-  expect((await screen.findByRole('alert')).textContent).toContain('「研报.pdf」格式不支持')
+  expect(await screen.findByText(/「研报\.pdf」格式不支持,只支持 \.md/)).toBeTruthy()
   expect(posts).toHaveLength(0)
+})
+
+test('「上传研报」按钮:一次拖入多个文件被拒收', async () => {
+  const posts = stubUploadFetch()
+  renderHome()
+  dropOn(await uploadButton(), [md('a.md'), md('b.md')])
+
+  expect(await screen.findByText('一次只能上传一个文件')).toBeTruthy()
+  expect(posts).toHaveLength(0)
+})
+
+test('更新研报:文件拖到研报行上高亮,松手后带着文件打开「上传新版本」弹窗', async () => {
+  const posts = stubUploadFetch()
+  renderHome()
+  const row = (await screen.findByText('腾讯生态产业链投资研究报告')).closest('article')!
+  // 等管理员身份回来,行才挂拖拽
+  await uploadButton()
+
+  fireEvent.dragEnter(row, dt([]))
+  expect(row.dataset.dragging).toBe('true')
+  expect(within(row).getByText('松开上传新版本')).toBeTruthy()
+
+  dropOn(row, [md('腾讯 v2.md')])
+  expect(row.dataset.dragging).toBeUndefined()
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByText('上传新版本 v2')).toBeTruthy()
+  expect(within(dialog).getByText('腾讯 v2.md')).toBeTruthy()
+  // 弹窗在前台时,顶栏按钮不再提示 / 接收拖拽
+  fireEvent.dragEnter(document.body, dt([]))
+  expect((await uploadButton()).dataset.dropHint).toBeUndefined()
+  // 只是选中,不直接提交 —— 还要写更新说明、点「上传」
+  expect(posts).toHaveLength(0)
+})
+
+test('更新研报:拖到行上的 PDF 被拒收,不打开弹窗', async () => {
+  stubUploadFetch()
+  renderHome()
+  const row = (await screen.findByText('腾讯生态产业链投资研究报告')).closest('article')!
+  await uploadButton()
+  dropOn(row, [pdf()])
+
+  expect(await screen.findByText(/「研报\.pdf」格式不支持/)).toBeTruthy()
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('非管理员:研报行和页面都不响应拖拽', async () => {
+  stubUploadFetch({ ...ADMIN, isAdmin: false })
+  renderHome()
+  const row = (await screen.findByText('腾讯生态产业链投资研究报告')).closest('article')!
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'GitHub 登录' })).toBeNull())
+  dropOn(row, [md()])
+  expect(row.dataset.dragging).toBeUndefined()
+  expect(screen.queryByRole('dialog')).toBeNull()
 })
