@@ -1,5 +1,5 @@
 import { test, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import HomePage from './HomePage'
 
@@ -145,4 +145,49 @@ test('不渲染本周财报日历', async () => {
   renderHome()
   await screen.findByText('腾讯生态产业链投资研究报告')
   expect(screen.queryByText('本周财报日历')).toBeNull()
+})
+
+// ---- 上传研报弹窗 ----
+
+test('管理员:点「上传研报」打开弹窗,拖入 .md 点「上传」→ 走上传接口,关弹窗并刷新列表', async () => {
+  const NEW_DOC = { id: 'd9', filename: '新拖进来的研报', size_bytes: 1, chunk_count: 3, created_at: '2026-09-26T00:00:00.000Z' }
+  let uploaded = false
+  const posts: FormData[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (url === '/api/documents' && init?.method === 'POST') {
+      posts.push(init.body as FormData)
+      uploaded = true
+      return { ok: true, json: async () => ({ document: NEW_DOC }) } as Response
+    }
+    if (url.startsWith('/api/documents')) {
+      return { ok: true, json: async () => ({ documents: uploaded ? [NEW_DOC, ...DOCS] : DOCS }) } as Response
+    }
+    throw new Error(`未桩的请求: ${url}`)
+  }))
+  renderHome()
+
+  fireEvent.click(await screen.findByRole('button', { name: '上传研报' }))
+  const dialog = await screen.findByRole('dialog')
+  const zone = within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ })
+  const f = new File(['# 新研报\n'], '新研报.md', { type: 'text/markdown' })
+  fireEvent.drop(zone, { dataTransfer: { files: [f], types: ['Files'] } })
+  fireEvent.click(within(dialog).getByRole('button', { name: '上传' }))
+
+  await waitFor(() => expect(posts).toHaveLength(1))
+  expect(posts[0].get('file')).toBe(f)
+  expect(await screen.findByText('新拖进来的研报')).toBeTruthy()
+  expect(screen.getByText('共 4 篇')).toBeTruthy()
+  // 弹窗关掉(antd 关闭动画在测试环境里不会跑完,认 dialog 不再可见)
+  // 弹窗进入关闭动画(测试环境里动画不会跑完,认 leave 状态)
+  await waitFor(() => expect(document.querySelector('.ant-modal')?.className).toContain('ant-zoom-leave'))
+})
+
+test('管理员:研报行上的「上传新版本」打开带大拖拽区的弹窗', async () => {
+  stubFetch({ user: ADMIN })
+  renderHome()
+  fireEvent.click(await screen.findByRole('button', { name: '给「腾讯生态产业链投资研究报告」上传新版本' }))
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByText('上传新版本 v2')).toBeTruthy()
+  expect(within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ })).toBeTruthy()
 })

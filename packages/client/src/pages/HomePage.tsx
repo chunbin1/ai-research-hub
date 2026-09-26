@@ -98,7 +98,6 @@ export default function HomePage() {
   /** null = 这台设备上还没缓存过列表(首次访问 / 无痕模式),此时才需要骨架 */
   const [docs, setDocs] = useState<Document[] | null>(() => readCache<Document[]>(DOCS_CACHE_KEY))
   const [loaded, setLoaded] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   /** 正在给哪篇上传新版本;null = 弹窗关着 */
   const [versionTarget, setVersionTarget] = useState<Document | null>(null)
@@ -132,10 +131,7 @@ export default function HomePage() {
     <div className="flex min-h-screen flex-col bg-page font-sans-sc text-ink">
       <SiteHeader
         active="/"
-        uploading={uploading}
-        onUploadingChange={setUploading}
         onUploaded={() => { setError(''); void refresh() }}
-        onUploadError={setError}
       />
 
       <main className="mx-auto flex w-full max-w-[1360px] flex-col px-[18px] pb-6 md:gap-5 md:px-7 md:pb-16 md:pt-9 lg:px-10">

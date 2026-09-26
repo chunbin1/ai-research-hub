@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import HomePage from './pages/HomePage'
+import { useWindowDropGuard } from './hooks/useFileDrop'
 
 /**
  * 首页之外的路由全部按需加载。
@@ -25,6 +26,8 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 
 export default function App() {
+  // 文件没拖到拖拽区就松手时,别让浏览器直接打开它、把整页换掉
+  useWindowDropGuard()
   return (
     <Suspense fallback={null}>
       <Routes>

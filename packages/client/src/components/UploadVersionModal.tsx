@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { Modal, Upload, Input, Alert } from 'antd'
-import { UploadOutlined } from '@ant-design/icons'
+import { Modal, Input, Alert } from 'antd'
+import { ReportDropZone } from './ReportDropZone'
 import { api } from '../api'
 import type { Document } from '../types'
 
 /**
  * 给一篇已有的研报上传新版本。旧版本原样保留,读者在阅读页可以切回去看、
  * 针对旧版本提问。更新说明会出现在阅读页的版本下拉里,帮读者判断该看哪一版。
+ *
+ * 文件在大拖拽区里选(拖入或点击),与「上传研报」弹窗同一个组件、同一套校验。
  */
 export function UploadVersionModal({ doc, onClose, onUploaded }: {
   /** null 时不显示 */
@@ -54,25 +56,18 @@ export function UploadVersionModal({ doc, onClose, onUploaded }: {
       onOk={() => void submit()}
       onCancel={() => { reset(); onClose() }}
       destroyOnHidden
+      width={640}
     >
       <p className="mb-4 text-[13px] leading-[1.7] text-[#777]">
         「{doc?.filename}」目前是 v{doc?.latest_version ?? 1}。新版本上传后成为默认显示的版本,
         旧版本保留,读者可以在阅读页切换。
       </p>
 
-      <Upload
-        accept=".md,.markdown,.txt"
-        showUploadList={false}
-        beforeUpload={f => { setFile(f); setError(''); return false }}
-      >
-        <button
-          type="button"
-          className="flex items-center gap-2 rounded-[4px] border border-[#d9d9d9] bg-white px-3 py-[7px] text-[13px] text-[#333] hover:border-[#999]"
-        >
-          <UploadOutlined aria-hidden />
-          {file ? file.name : '选择文件(.md / .markdown / .txt)'}
-        </button>
-      </Upload>
+      <ReportDropZone
+        selectedName={file?.name}
+        disabled={busy}
+        onFile={f => { setFile(f); setError('') }}
+      />
 
       <label className="mt-4 mb-1.5 block text-[13px] text-[#555]" htmlFor="version-note">
         更新说明(可选)

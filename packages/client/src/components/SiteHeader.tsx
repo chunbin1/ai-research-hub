@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeftOutlined, DownOutlined, UploadOutlined } from '@ant-design/icons'
-import { Avatar, Dropdown, Upload } from 'antd'
+import { useState } from 'react'
+import { Avatar, Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
-import { api } from '../api'
+import { UploadReportModal } from './UploadReportModal'
 import { useAuth } from '../hooks/useAuth'
 
 /**
@@ -35,32 +36,19 @@ interface Props {
   active: string
   /** 上传成功后通知调用方刷新自己的数据 */
   onUploaded?: () => void
-  onUploadError?: (message: string) => void
-  /** 正在上传(由调用方持有,按钮据此置灰) */
-  uploading?: boolean
-  onUploadingChange?: (uploading: boolean) => void
   /** 提供时移动端换成「返回 + 页面标题」形态 */
   mobile?: { backTo: string; title: string }
 }
 
 export function SiteHeader({
-  active, onUploaded, onUploadError, uploading = false, onUploadingChange, mobile,
+  active, onUploaded, mobile,
 }: Props) {
   const navigate = useNavigate()
   const { user, loading: authLoading, login, logout } = useAuth()
   const isAdmin = user?.isAdmin === true
 
-  async function handleUpload(file: File) {
-    onUploadingChange?.(true)
-    try {
-      await api.uploadDocument(file)
-      onUploaded?.()
-    } catch (err) {
-      onUploadError?.(err instanceof Error ? err.message : '上传失败')
-    } finally {
-      onUploadingChange?.(false)
-    }
-  }
+  /** 「上传研报」弹窗开关:点按钮打开,在弹窗里拖拽或点选文件再提交 */
+  const [uploadOpen, setUploadOpen] = useState(false)
 
   const menuItems: MenuProps['items'] = [
     ...(user && !user.unlimited
@@ -116,22 +104,16 @@ export function SiteHeader({
           {isAdmin && (
             // 移动端的信号追踪顶栏只留头像,上传入口在这一档不出现
             <span className={mobile ? 'hidden md:block' : ''}>
-              <Upload
-                accept=".md,.markdown,.txt"
-                showUploadList={false}
-                beforeUpload={file => { void handleUpload(file); return false }}
+              {/* 移动端只留图标(44×44 热区),桌面是带字的描边按钮 */}
+              <button
+                type="button"
+                aria-label="上传研报"
+                onClick={() => setUploadOpen(true)}
+                className="flex size-11 items-center justify-center text-navy transition-[border-color,background] duration-150 md:size-auto md:gap-2 md:rounded-[4px] md:border md:border-navy-edge md:bg-white md:px-[15px] md:py-2 md:text-[13px] md:hover:border-navy md:hover:bg-navy-wash"
               >
-                {/* 移动端只留图标(44×44 热区),桌面是带字的描边按钮 */}
-                <button
-                  type="button"
-                  disabled={uploading}
-                  aria-label={uploading ? '上传中' : '上传研报'}
-                  className="flex size-11 items-center justify-center text-navy transition-[border-color,background] duration-150 disabled:opacity-50 md:size-auto md:gap-2 md:rounded-[4px] md:border md:border-navy-edge md:bg-white md:px-[15px] md:py-2 md:text-[13px] md:hover:border-navy md:hover:bg-navy-wash"
-                >
-                  <UploadOutlined className="text-[20px] md:text-[14px]" aria-hidden />
-                  <span className="hidden md:inline">{uploading ? '上传中…' : '上传研报'}</span>
-                </button>
-              </Upload>
+                <UploadOutlined className="text-[20px] md:text-[14px]" aria-hidden />
+                <span className="hidden md:inline">上传研报</span>
+              </button>
             </span>
           )}
           <span className="hidden h-[22px] w-px bg-rule md:block" aria-hidden />
@@ -160,6 +142,14 @@ export function SiteHeader({
           )}
         </div>
       </header>
+
+      {isAdmin && (
+        <UploadReportModal
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          onUploaded={() => { setUploadOpen(false); onUploaded?.() }}
+        />
+      )}
 
       {/* 栏目导航:移动端独立成行、横向可滑 */}
       {!mobile && (
