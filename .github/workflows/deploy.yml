@@ -105,5 +105,10 @@ jobs:
       # 说明代码已经上线、只是索引没跟上,重跑本 job 即可(已完成的会跳过)。
       - name: import:raw(可续传,已是最新则跳过)
         run: |
+          # compose 哪怕只是 exec,也会先解析整个 compose 文件,并校验
+          # server 的 env_file 存在 —— 这个 job 是全新 runner,没有 .env.prod。
+          # exec 进的是已在跑的容器,环境变量取自容器本身,不读这个文件,
+          # 所以放个空占位即可,不必把生产密钥再写一遍到这台 runner 上。
+          touch packages/server/.env.prod
           docker --context ai-research-hub compose -f docker-compose.prod.yml \
             exec -T server npx tsx scripts/import-raw.ts
