@@ -103,3 +103,27 @@ test('当前版本里不存在的章节:来源渲染成普通文字,点不了', 
   fireEvent.click(alive)
   expect(onCite).toHaveBeenCalledWith('22-生意特征')
 })
+
+// 收起时面板是 display:none,历史记录常在这时加载进来、滚动位置停在顶部;
+// 打开那一刻要回到最新一条。happy-dom 不做布局,scrollHeight 恒为 0,这里桩一个值。
+test('面板打开时消息列表滚到最底', () => {
+  const heightSpy = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1200)
+  mockUseAuth.mockReturnValue({ user: { ...quotaExhaustedUser, remaining: 5 }, login: vi.fn() })
+  mockUseLLMConfig.mockReturnValue({ data: { available: true, presets: [], config: null, effective: null, configError: null } })
+  mockMessages.mockReturnValue([
+    { role: 'user', content: '毛利率是多少' },
+    { role: 'assistant', content: '游戏 61%' },
+  ])
+  const ui = (open: boolean) => (
+    <MemoryRouter><ChatPanel docId="doc-1" onCite={() => {}} open={open} /></MemoryRouter>
+  )
+  const { rerender } = render(ui(false))
+  const list = screen.getByText('毛利率是多少').closest('.overflow-y-auto') as HTMLElement
+  list.scrollTop = 0
+
+  rerender(ui(true))
+
+  expect(list.scrollTop).toBe(1200)
+  heightSpy.mockRestore()
+  mockMessages.mockReturnValue([])
+})
