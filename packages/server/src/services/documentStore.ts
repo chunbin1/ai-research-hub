@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { DB } from './db.js'
 import type { Document } from '../types.js'
 import { initVersionTable } from './versionStore.js'
+import { runOnce } from './migrations.js'
 
 const RAW_DIR = process.env.RAW_DIR ?? 'data/raw'
 let _db: DB | null = null
@@ -16,6 +17,10 @@ export function initDocumentTable(db: DB): void {
       filename    TEXT NOT NULL,
       size_bytes  INTEGER NOT NULL,
       chunk_count INTEGER NOT NULL,
+      -- 首次上传时间。新上传的行与 id 里编的时间戳同一刻(genId);
+      -- import:raw 导入的行也取 id 里的时间。这是写入时的约定,不是强制约束:
+      -- 历史上写错的一批由一次性迁移 fixCreatedAtFromIds 校正过,之后不再自动改写,
+      -- 以后如有正当理由让它和 id 不一致(比如允许编辑日期),不会被启动逻辑覆盖。
       created_at  TEXT NOT NULL
     );
   `)
@@ -28,16 +33,68 @@ function db(): DB {
   return _db
 }
 
-function genId(): string {
-  return `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+function genId(now = Date.now()): string {
+  return `doc_${now}_${Math.random().toString(36).slice(2, 6)}`
+}
+
+/**
+ * 从 doc_id 里读出上传时刻。genId 把毫秒时间戳编进了 id,所以 id 本身就是
+ * 「这篇是什么时候传上来的」最可靠的记录 —— 行会被 import:raw 重建,id 不会变。
+ * 不是这个格式(测试里的 doc_a、外来的 id)返回 null。
+ */
+export function uploadedAtFromId(id: string): string | null {
+  const m = /^doc_(\d{13})_/.exec(id)
+  return m ? new Date(Number(m[1])).toISOString() : null
+}
+
+/**
+ * 一次性迁移:把被 import:raw 写错的 created_at 校正回 id 里记的上传时刻。
+ *
+ * 历史上 import:raw 登记新行时写的是「导入那一刻」,于是一批老研报全挤在同一个
+ * 时间戳上,排到了之前上传的新研报前面,首页显示的日期也是错的。版本迁移又把这个
+ * 错值原样抄成了 v1 的时间,而列表的「更新时间」取的是最新版的时间 —— 只有 v1 的
+ * 文档,v1 错了排序就是错的。
+ *
+ * documents 行与 v1 都代表首次上传,两处各自按 id 校正;偏差在一分钟内的不动
+ * (正常上传只差几毫秒)。经 runOnce 执行,每个库只跑一次 —— 这是修历史数据,
+ * 不是「created_at 必须等于 id 时间」的长期规则。
+ *
+ * 返回被校正的研报 id(documents 行或 v1 有一处改了就算);已经跑过返回 null。
+ */
+export function fixCreatedAtFromIds(db: DB): string[] | null {
+  return runOnce(db, 'fix_created_at_from_ids', () => fixCreatedAt(db))
+}
+
+function fixCreatedAt(db: DB): string[] {
+  const targets = [
+    { select: 'SELECT id, created_at FROM documents', fix: 'UPDATE documents SET created_at = ? WHERE id = ?' },
+    {
+      select: 'SELECT doc_id AS id, created_at FROM document_versions WHERE version = 1',
+      fix: 'UPDATE document_versions SET created_at = ? WHERE doc_id = ? AND version = 1',
+    },
+  ]
+  const fixed = new Set<string>()
+  for (const t of targets) {
+    const rows = db.prepare(t.select).all() as { id: string; created_at: string }[]
+    const fix = db.prepare(t.fix)
+    for (const { id, created_at } of rows) {
+      const uploadedAt = uploadedAtFromId(id)
+      if (uploadedAt && Math.abs(Date.parse(created_at) - Date.parse(uploadedAt)) > 60_000) {
+        fix.run(uploadedAt, id)
+        fixed.add(id)
+      }
+    }
+  }
+  return [...fixed]
 }
 
 type DocSummary = { filename: string; size_bytes: number; chunk_count: number }
 
 /** 只建 documents 行。版本记录由 documentVersion.createVersion 负责。 */
 export function saveDocument(opts: DocSummary): Document {
-  const id = genId()
-  const created_at = new Date().toISOString()
+  const now = Date.now()
+  const id = genId(now)
+  const created_at = new Date(now).toISOString()
   db().prepare(
     'INSERT INTO documents (id, filename, size_bytes, chunk_count, created_at) VALUES (?, ?, ?, ?, ?)',
   ).run(id, opts.filename, opts.size_bytes, opts.chunk_count, created_at)
@@ -62,7 +119,8 @@ const SELECT_DOC = `
 `
 
 export function getAllDocuments(): Document[] {
-  return db().prepare(`${SELECT_DOC} ORDER BY d.created_at DESC`).all() as Document[]
+  // 按更新时间排:给老研报传了新版本,它也该回到最前面,而不是停在首次上传的位置。
+  return db().prepare(`${SELECT_DOC} ORDER BY updated_at DESC, d.id DESC`).all() as Document[]
 }
 
 export function getDocument(id: string): Document | null {

@@ -4,7 +4,7 @@ import { Drawer, Modal } from 'antd'
 import { DeleteOutlined, EllipsisOutlined, RightOutlined, UploadOutlined } from '@ant-design/icons'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
-import { SiteHeader } from '../components/SiteHeader'
+import { REPORT_UPLOADED_EVENT } from '../components/SiteHeader'
 import { UploadVersionModal } from '../components/UploadVersionModal'
 import { readCache, writeCache } from '../lib/storage'
 import type { Document } from '../types'
@@ -19,7 +19,8 @@ import type { Document } from '../types'
  *
  * 桌面 / 移动的布局差异全部走 Tailwind 断点(hidden / md:hidden 切换同一份 DOM,
  * display:none 的分支读屏不会重复播报),不用 useIsMobile。
- * 顶栏(含栏目导航、上传入口、账号菜单)在 SiteHeader 里,与信号追踪页共用。
+ * 顶栏(含栏目导航、上传入口、账号菜单)在 SiteLayout 里,全站共用一份;
+ * 顶栏上传成功会广播 REPORT_UPLOADED_EVENT,这里听到就刷新列表。
  */
 
 /** 设计稿的日期格式:YYYY/M/D,不补零 */
@@ -113,6 +114,11 @@ export default function HomePage() {
     .then(list => { setDocs(list); writeCache(DOCS_CACHE_KEY, list) })
     .catch(e => setError(String(e.message)))
   useEffect(() => { refresh().finally(() => setLoaded(true)) }, [])
+  useEffect(() => {
+    const onUploaded = () => { setError(''); void refresh() }
+    window.addEventListener(REPORT_UPLOADED_EVENT, onUploaded)
+    return () => window.removeEventListener(REPORT_UPLOADED_EVENT, onUploaded)
+  }, [])
 
   function onDelete(doc: Document) {
     Modal.confirm({
@@ -128,12 +134,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-page font-sans-sc text-ink">
-      <SiteHeader
-        active="/"
-        onUploaded={() => { setError(''); void refresh() }}
-      />
-
+    <div className="flex flex-1 flex-col">
       <main className="mx-auto flex w-full max-w-[1360px] flex-col px-[18px] pb-6 md:gap-5 md:px-7 md:pb-16 md:pt-9 lg:px-10">
         <div className="flex items-baseline justify-between border-b border-ink pb-2.5 pt-5 md:justify-start md:gap-3.5 md:border-b-0 md:p-0">
           <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[20px]">最新研报</h1>

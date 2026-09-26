@@ -16,6 +16,7 @@
 import type { DB } from './db.js'
 import { parseMarkdown } from './markdownParser.js'
 import type { MdChunk } from './markdownParser.js'
+import { uploadedAtFromId } from './documentStore.js'
 
 export interface ImportOutcome {
   docId: string
@@ -36,6 +37,9 @@ export interface ImportOutcome {
  *
  * 可重复执行:同一个 id 再导一次是就地更新,不会变成两行,也不会把
  * created_at 刷成今天(那会让文档列表的顺序每次重导都乱一次)。
+ *
+ * 新登记的行也不写「导入那一刻」:id 里编着当初的上传时刻,用它。否则一批老研报
+ * 会整体排到导入前上传的新研报前面,首页日期也全是导入那天。
  */
 export function importRawDocs(
   db: DB,
@@ -61,7 +65,8 @@ export function importRawDocs(
     const filename = displayName || docId
 
     // 字节数而非字符数:中文一个字三字节,用 md.length 会把体积算少三分之二。
-    upsert.run(docId, filename, Buffer.byteLength(md, 'utf8'), chunks.length, new Date().toISOString())
+    const createdAt = uploadedAtFromId(docId) ?? new Date().toISOString()
+    upsert.run(docId, filename, Buffer.byteLength(md, 'utf8'), chunks.length, createdAt)
 
     return { docId, filename, chunks: chunks.length, status: 'ok' as const, parsed: chunks }
   })

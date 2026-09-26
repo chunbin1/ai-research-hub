@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Form, Input, Button, Alert } from 'antd'
 import { useSiteModel } from '../hooks/useSiteModel'
 import { useAuth } from '../hooks/useAuth'
-import { BackLink } from '../components/BackLink'
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth()
@@ -36,9 +35,6 @@ export default function AdminPage() {
     <div className="mx-auto max-w-[720px] px-4 py-5 md:px-6 md:py-8">
       <header className="mb-7 flex items-center justify-between gap-3">
         <h1 className="m-0 text-[24px] font-bold tracking-[2px]">站点默认模型</h1>
-        <BackLink to="/" className="rounded-lg border border-[#e0e0e0] px-3 py-2 text-[14px] text-[#555] hover:bg-[#f3f3f0] hover:text-black">
-          返回
-        </BackLink>
       </header>
 
       {data?.configError && (

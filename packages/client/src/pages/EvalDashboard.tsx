@@ -3,7 +3,6 @@ import { BarChartOutlined } from '@ant-design/icons'
 import { Card, Statistic, Table, Tag, Button } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useEval } from '../hooks/useEval'
-import { BackLink } from '../components/BackLink'
 import type { EvalReportRow, EvalStatus } from '../types'
 
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`)
@@ -75,7 +74,6 @@ export default function EvalDashboard() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-5 md:px-6 md:py-7">
       <header className="mb-5 flex flex-wrap items-center gap-4">
-        <BackLink to="/" className="text-[14px] text-[#555] hover:text-black">全部报告</BackLink>
         <h1 className="m-0 text-[22px] font-bold"><BarChartOutlined aria-hidden /> 检索质量评估</h1>
       </header>
 

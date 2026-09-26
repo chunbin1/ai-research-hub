@@ -1,7 +1,8 @@
 import { test, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import HomePage from './HomePage'
+import { SiteLayout } from '../components/SiteLayout'
 
 const DOCS = [
   { id: 'd1', filename: '腾讯生态产业链投资研究报告', size_bytes: 1, chunk_count: 47, created_at: '2026-08-01T00:00:00.000Z' },
@@ -29,8 +30,17 @@ function stubFetch(opts: { user?: unknown; docs?: unknown[] } = {}) {
 
 afterEach(() => { vi.unstubAllGlobals() })
 
+// 顶栏(上传入口、管理员栏目)挂在 SiteLayout 上,和线上一样套着渲染
 function renderHome() {
-  return render(<MemoryRouter><HomePage /></MemoryRouter>)
+  return render(
+    <MemoryRouter>
+      <Routes>
+        <Route element={<SiteLayout />}>
+          <Route path="/" element={<HomePage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  )
 }
 
 test('研报行渲染标题、日期、段数', async () => {

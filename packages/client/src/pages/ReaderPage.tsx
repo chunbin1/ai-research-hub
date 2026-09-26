@@ -8,7 +8,6 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import ReportMarkdown from '../components/ReportMarkdown'
 import ChatPanel from '../components/ChatPanel'
 import { BackLink } from '../components/BackLink'
-import { SiteHeader } from '../components/SiteHeader'
 import type { DocumentVersion } from '../types'
 
 /**
@@ -158,7 +157,7 @@ export default function ReaderPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-page p-10 font-sans-sc text-ink">
+      <div className="p-10">
         <BackLink to="/" className="mb-4 block text-[14px] text-ink-soft hover:text-navy">全部报告</BackLink>
         <p>{error}</p>
       </div>
@@ -192,11 +191,8 @@ export default function ReaderPage() {
   )
 
   return (
-    <div className="reader-shell flex h-dvh flex-col bg-page font-sans-sc text-ink">
-      {/* 桌面:全站顶栏 */}
-      <div className="hidden flex-none md:block">
-        <SiteHeader active="/" />
-      </div>
+    // 外壳由 SiteLayout 锁成视口高(桌面在全站顶栏下面),这里吃掉剩余高度
+    <div className="reader-shell flex min-h-0 flex-1 flex-col">
 
       {/* 移动顶栏:返回 + 标题 + 目录 */}
       <header className="flex h-[52px] flex-none items-center gap-1 border-b border-rule bg-page px-1.5 md:hidden">

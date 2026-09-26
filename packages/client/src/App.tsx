@@ -1,6 +1,7 @@
-import { Suspense, lazy } from 'react'
+import { lazy } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import HomePage from './pages/HomePage'
+import { SiteLayout } from './components/SiteLayout'
 import { useWindowDropGuard } from './hooks/useFileDrop'
 
 /**
@@ -12,8 +13,9 @@ import { useWindowDropGuard } from './hooks/useFileDrop'
  *
  * 路由切换不会闪白:react-router v7 默认用 startTransition 做导航,
  * 旧页面会一直留在屏幕上直到新 chunk 到位。只有**直接打开**某个非首页路由时
- * 才会多一次同源请求,这期间 fallback 是 null —— body 已经有纸感底色,
- * 看到的是底色而不是白屏。
+ * 才会多一次同源请求,这期间顶栏照常画出、内容区的 fallback 是 null(见 SiteLayout)。
+ *
+ * 所有页面都挂在 SiteLayout 下,共用同一条顶栏。
  */
 
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
@@ -29,8 +31,8 @@ export default function App() {
   // 文件没拖到拖拽区就松手时,别让浏览器直接打开它、把整页换掉
   useWindowDropGuard()
   return (
-    <Suspense fallback={null}>
-      <Routes>
+    <Routes>
+      <Route element={<SiteLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/reports/:id" element={<ReaderPage />} />
         <Route path="/signals" element={<SignalsPage />} />
@@ -40,7 +42,7 @@ export default function App() {
         <Route path="/eval/:docId" element={<EvalDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/admin" element={<AdminPage />} />
-      </Routes>
-    </Suspense>
+      </Route>
+    </Routes>
   )
 }
