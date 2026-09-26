@@ -5,7 +5,10 @@ services:
     expose:
       - "8000"
     volumes:
-      - chroma_data:/chroma/chroma
+      # chromadb/chroma 1.x 的持久化目录是 /data(0.x 才是 /chroma/chroma)。
+      # 挂错目录时数据写进容器可写层,容器一重建向量全丢 —— 线上真的发生过。
+      # 与 docker-compose.dev.yml 保持一致。
+      - chroma_data:/data
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
