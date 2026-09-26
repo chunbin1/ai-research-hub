@@ -7,8 +7,11 @@ import ReaderPage from './ReaderPage'
 // ChatPanel 真身依赖 SSE / fetch,这里换成只暴露一个「来源」按钮的替身,
 // 测的是 ReaderPage 自己的溯源回链行为,不是 ChatPanel 内部。
 vi.mock('../components/ChatPanel', () => ({
-  default: ({ onCite }: { onCite: (slug: string) => void }) => (
-    <button onClick={() => onCite('第一节')}>来源 §第一节</button>
+  default: ({ onCite, onClose }: { onCite: (slug: string) => void; onClose?: () => void }) => (
+    <>
+      <button onClick={() => onCite('第一节')}>来源 §第一节</button>
+      <button onClick={onClose}>收起问答</button>
+    </>
   ),
 }))
 
@@ -31,10 +34,14 @@ function renderReader() {
   )
 }
 
-/** toggle 按钮的展开态:靠 aria-controls 定位,不依赖文案 */
+/**
+ * 移动端底部的「问这篇报告… 提问」条。它在桌面上是 display:none,但一直挂在 DOM 里、
+ * aria-expanded 始终反映问答是否打开 —— 桌面 / 移动两边都拿它读状态。
+ * (桌面工具栏上的「问这篇报告」按钮在面板打开后就不渲染了,读不了状态。)
+ */
 function chatToggle(): HTMLElement {
-  const btn = document.querySelector('button[aria-controls="chat-panel"]')
-  if (!btn) throw new Error('找不到问答栏 toggle 按钮')
+  const btn = document.querySelector('button[aria-label="打开问答"]')
+  if (!btn) throw new Error('找不到打开问答的按钮')
   return btn as HTMLElement
 }
 function chatExpanded(): string | null {
@@ -145,9 +152,12 @@ describe('ReaderPage — 点来源 chip 的溯源回链', () => {
     renderReader()
     await waitFor(() => expect(chatExpanded()).toBe('true'))
 
-    chatToggle().click()
+    screen.getByText('收起问答').click()
 
     await waitFor(() => expect(localStorage.getItem('reader.chatOpen')).toBe('0'))
+    expect(chatExpanded()).toBe('false')
+    // 收起后工具栏上重新出现「问这篇报告」入口
+    expect(screen.getByRole('button', { name: '问这篇报告' })).toBeTruthy()
   })
 })
 

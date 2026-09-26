@@ -28,3 +28,30 @@ describe('ReportMarkdown', () => {
     expect(container.querySelector('code')).not.toBeNull()
   })
 })
+
+describe('ReportMarkdown — 移动端表格卡片', () => {
+  const wide = `| 偏见类型 | 表现 | 应对 | 置信度 |
+| --- | --- | --- | --- |
+| 叙事偏好 | 故事**顺滑** | 用行业增速校准 | A |
+| 龙头偏好 | 资料多 | 引入对照线 | B |
+`
+
+  it('≥4 列:表格之外再出一份卡片,首列作标题、其余列「表头 值」', () => {
+    const { container } = render(<ReportMarkdown markdown={wide} />)
+    expect(container.querySelector('table')).not.toBeNull()
+    const cards = container.querySelectorAll('.md-card')
+    expect(cards).toHaveLength(2)
+    expect(cards[0].querySelector('.md-card-title')?.textContent).toBe('叙事偏好')
+    const rows = [...cards[0].querySelectorAll('.md-card-row')].map(r => [
+      r.querySelector('dt')?.textContent, r.querySelector('dd')?.textContent,
+    ])
+    expect(rows).toEqual([['表现', '故事顺滑'], ['应对', '用行业增速校准'], ['置信度', 'A']])
+    // 单元格里的行内格式原样保留
+    expect(cards[0].querySelector('dd strong')?.textContent).toBe('顺滑')
+  })
+
+  it('3 列及以下只出表格', () => {
+    const { container } = render(<ReportMarkdown markdown={fixture} />)
+    expect(container.querySelector('.md-cards')).toBeNull()
+  })
+})
