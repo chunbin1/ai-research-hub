@@ -109,8 +109,14 @@
   .report-body td { padding: 12px; text-align: left; vertical-align: top;
                     border-bottom: 1px solid var(--color-row-rule); }
   .report-body th:first-child, .report-body td:first-child { padding-left: 0; }
-  .report-body th:last-child, .report-body td:last-child { padding-right: 0; }
+  /* 末列留 4px 而不是 0:行末的全角「）」按避头规则挂在行尾,会伸出单元格一两个像素,
+     没余量的话外层 overflow-x:auto 就多出一截能横滚的宽度(Windows 上还会冒出滚动条) */
+  .report-body th:last-child, .report-body td:last-child { padding-right: 4px; }
   .report-body td:first-child { font-weight: 500; color: var(--color-ink); }
+  /* 数字列(ReportMarkdown 按单元格内容判定):右对齐、不折行、等宽数字 ——
+     「$0.85亿」折成三行、上下行的小数点对不齐,就没法一眼比大小了 */
+  .report-body th.num, .report-body td.num { text-align: right; white-space: nowrap;
+                                             font-variant-numeric: tabular-nums; }
   /* 移动端卡片排版(≥4 列的表,见 ReportMarkdown):一行一张,首列作标题,
      其余列「表头 值」两栏对齐 —— 移动稿「偏见自觉」那一节的样子。 */
   .report-body .md-cards { margin: 18px 0; border-top: 1px solid var(--color-ink); }

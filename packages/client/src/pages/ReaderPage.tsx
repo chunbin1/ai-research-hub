@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Drawer } from 'antd'
-import { CloseOutlined, DownOutlined, LeftOutlined, MessageOutlined } from '@ant-design/icons'
+import { CloseOutlined, DownOutlined, LeftOutlined, MessageOutlined, RightOutlined } from '@ant-design/icons'
 import { api } from '../api'
-import { extractToc } from '../lib/toc'
+import { extractToc, outlineOf, outlineOwner, visibleOutline } from '../lib/toc'
 import { useIsMobile } from '../hooks/useIsMobile'
 import ReportMarkdown from '../components/ReportMarkdown'
 import ChatPanel from '../components/ChatPanel'
@@ -13,8 +13,11 @@ import type { DocumentVersion } from '../types'
 /**
  * 阅读页 —— 按「报告详情」「报告详情 移动端」两份设计稿重建。
  *
- * 桌面(≥768):全站顶栏 + [目录 264 | 正文(吸顶工具栏)],问答是浮在右侧的
- *   卡片(距边 12px、圆角、投影),不占栏宽 —— 打开问答时目录和正文都不挪位置。
+ * 桌面(≥768):全站顶栏 + [目录 232 | 正文(吸顶工具栏)],问答是浮在右侧的
+ *   卡片(距上下 12px、距右 16px,圆角、投影),不占栏宽 —— 打开问答时目录和正文
+ *   都不挪位置,卡片直接盖在正文上。
+ *   正文吃满内容区(不再给问答留右侧空白,那块平时空着太浪费),表格和正文同宽;
+ *   超宽屏上限 1120 居中,免得一行长到读不下去。
  * 移动(<768):返回 + 标题 + 目录按钮的顶栏,底部常驻「问这篇报告」条;
  *   目录、版本、问答都是弹层(antd Drawer:自带遮罩、滚动锁、焦点管理)。
  *
@@ -76,23 +79,33 @@ export default function ReaderPage() {
   const latest = versions.length ? versions[versions.length - 1] : null
   const viewing = versions.find(v => v.version === version) ?? null
   const isOld = latest !== null && viewing !== null && viewing.version !== latest.version
-  // 目录只列两层(章 + 节):研报的 h1 是标题本身,不进目录;更深的多是表格前的
-  // 小标题,列进来目录长得没法扫。有的报告整篇只用 h1,那就从 h1 起算。
-  const tocItems = useMemo(() => {
-    const body = toc.some(t => t.level > 1) ? toc.filter(t => t.level > 1) : toc
-    const base = Math.min(...body.map(t => t.level))
-    return body.filter(t => t.level <= base + 1).map(t => ({ ...t, top: t.level === base }))
-  }, [toc])
+  // 目录两层(章 + 节),规则见 lib/toc 的 outlineOf
+  const tocItems = useMemo(() => outlineOf(toc), [toc])
+  /** 有下属小节的章:目录里给它画个展开 / 收起的箭头 */
+  const chaptersWithSubs = useMemo(() => new Set(tocItems.filter(t => !t.top).map(t => t.chapter)), [tocItems])
   const [activeSlug, setActiveSlug] = useState('')
+  // 目录只展开当前读到的那一章(visibleOutline)
+  const shownToc = visibleOutline(tocItems, activeSlug)
+  const activeChapter = tocItems.find(t => t.slug === activeSlug)?.chapter ?? ''
+
+  /**
+   * 点目录跳过去的那一条,在用户自己动手滚动之前一直保持高亮。
+   * 不锁的话,跳转本身触发的 scroll 会按位置重算高亮:末尾的短章滚不到让标题到达
+   * 阅读线的位置,高亮退回上一章,刚展开的小节也跟着收起来。
+   */
+  const pinnedSlug = useRef<string | null>(null)
 
   // 目录高亮跟着阅读位置走:取「顶到工具栏下沿以上」的最后一个章节标题。
   // 滚动事件用 rAF 合并,一帧最多量一次。
   useEffect(() => {
     const container = document.getElementById('report-content')
     if (!container || tocItems.length === 0) return
+    // 换了一篇 / 换了版本,目录都变了,上一次点的那条不作数
+    pinnedSlug.current = null
     let frame = 0
     const measure = () => {
       frame = 0
+      if (pinnedSlug.current) return
       const line = container.getBoundingClientRect().top + (toolbarRef.current?.offsetHeight ?? 0) + 24
       let current = ''
       for (const t of tocItems) {
@@ -104,10 +117,15 @@ export default function ReaderPage() {
       setActiveSlug(current)
     }
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(measure) }
+    // 用户自己的滚动手势:解开点目录时锁住的高亮,之后照常跟着位置走
+    const release = () => { pinnedSlug.current = null }
+    const gestures = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const
     container.addEventListener('scroll', onScroll, { passive: true })
+    for (const g of gestures) container.addEventListener(g, release, { passive: true })
     measure()
     return () => {
       container.removeEventListener('scroll', onScroll)
+      for (const g of gestures) container.removeEventListener(g, release)
       if (frame) cancelAnimationFrame(frame)
     }
   }, [tocItems])
@@ -132,7 +150,11 @@ export default function ReaderPage() {
       setChatOpen(false)
       setSheet(null)
     }
-    setActiveSlug(slug)
+    // 问答引用可能指向目录里没有的深层标题(四级标题等):高亮 / 锁定它所属的那条目录项,
+    // 页面仍然滚到这个标题本身。为空(标题在第一条目录项之前)就不锁,交给滚动重算。
+    const owner = outlineOwner(toc, tocItems, slug)
+    setActiveSlug(owner)
+    pinnedSlug.current = owner || null
     const el = document.getElementById(slug)
     const container = document.getElementById('report-content')
     if (!el || !container) return
@@ -167,23 +189,35 @@ export default function ReaderPage() {
   const chatProps = { docId: id, onCite: jump, version, slugs }
   const segments = viewing?.chunk_count
 
-  /** 目录条目:桌面侧栏和移动端抽屉共用,只是字号 / 行距不同 */
+  /**
+   * 目录条目:桌面侧栏和移动端抽屉共用,只是字号 / 行距不同。
+   * 章全部列出,节只列当前章的;点别的章会跳过去,它的节随之展开。
+   * key 用 slug:折叠后下标会变,用下标当 key 会让条目错位复用。
+   */
   const tocList = (mobile: boolean) => (
     <nav className="flex flex-col" aria-label="目录">
-      {tocItems.map((t, i) => {
+      {shownToc.map(t => {
         const { top } = t
+        const open = t.slug === activeChapter
         return (
           <a
-            key={i}
+            key={t.slug}
             href={`#${t.slug}`}
             onClick={e => { e.preventDefault(); jump(t.slug) }}
+            aria-expanded={top && chaptersWithSubs.has(t.slug) ? open : undefined}
             className={`cursor-pointer leading-[1.55] hover:text-navy ${mobile ? 'text-[14px]' : 'text-[13px]'} ${
               top
-                ? `font-medium text-ink ${mobile ? 'py-[11px] pl-2.5' : 'py-1.5 pl-2.5'}`
-                : `text-ink-soft ${mobile ? 'py-[9px] pl-[22px]' : 'py-1 pl-[22px]'}`
+                ? `flex items-start justify-between gap-2 font-medium text-ink ${mobile ? 'py-[11px] pl-2.5' : 'py-1.5 pl-2.5'}`
+                : `block text-ink-soft ${mobile ? 'py-[9px] pl-[22px]' : 'py-1 pl-[22px]'}`
             } ${t.slug === activeSlug ? 'shadow-[inset_2px_0_0_var(--color-brick)]' : ''}`}
           >
             {t.title}
+            {top && chaptersWithSubs.has(t.slug) && (
+              <RightOutlined
+                aria-hidden
+                className={`mt-[0.45em] flex-none text-[9px] text-ink-faint transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+              />
+            )}
           </a>
         )
       })}
@@ -216,7 +250,7 @@ export default function ReaderPage() {
 
       <div className="relative flex min-h-0 flex-1">
         {/* 桌面目录栏 */}
-        <aside className="hidden w-[264px] flex-none overflow-y-auto border-r border-rule bg-aside px-6 pb-10 pt-7 md:block">
+        <aside className="hidden w-[232px] flex-none overflow-y-auto border-r border-rule bg-aside px-5 pb-10 pt-7 md:block">
           <div className="mb-2 border-b border-ink pb-2 text-[12px] tracking-[0.08em] text-ink-mute">目录</div>
           {tocList(false)}
         </aside>
@@ -274,7 +308,8 @@ export default function ReaderPage() {
             </div>
           )}
 
-          <div className="mx-auto max-w-[820px] px-5 pb-10 pt-6 md:px-12 md:pb-24 md:pt-11">
+          {/* 桌面:正文吃满内容区,上限 1120(+ 两侧各 48 内边距)居中 */}
+          <div className="mx-auto max-w-[1216px] px-5 pb-10 pt-6 md:px-12 md:pb-24 md:pt-11">
             {/* 移动端版本行(桌面的在工具栏里) */}
             {viewing && latest && (
               <div className="mb-3 flex flex-wrap items-center gap-2.5 md:hidden">
@@ -303,11 +338,11 @@ export default function ReaderPage() {
           id={isMobile ? undefined : 'chat-panel'}
           aria-label="问这篇报告"
           inert={!chatOpen}
-          className={`absolute inset-y-3 right-3 z-[6] hidden w-[384px] max-w-[calc(100%-24px)] flex-col overflow-hidden rounded-lg border border-edge bg-white shadow-[0_16px_48px_-12px_rgba(20,22,26,0.28)] ${
+          className={`absolute inset-y-3 right-4 z-[6] hidden w-[368px] max-w-[calc(100%-32px)] flex-col overflow-hidden rounded-lg border border-edge bg-white shadow-[0_16px_48px_-12px_rgba(20,22,26,0.28)] ${
             chatOpen ? 'md:flex' : ''
           }`}
         >
-          {!isMobile && <ChatPanel {...chatProps} onClose={() => setChat(false)} />}
+          {!isMobile && <ChatPanel {...chatProps} open={chatOpen} onClose={() => setChat(false)} />}
         </aside>
       </div>
 
@@ -388,7 +423,7 @@ export default function ReaderPage() {
             rootClassName="reader-chat-drawer"
             styles={{ body: { padding: 0, overflow: 'hidden' }, section: { borderRadius: '14px 14px 0 0' } }}
           >
-            <ChatPanel {...chatProps} variant="sheet" onClose={() => setChatOpen(false)} />
+            <ChatPanel {...chatProps} variant="sheet" open={chatOpen} onClose={() => setChatOpen(false)} />
           </Drawer>
         </>
       )}

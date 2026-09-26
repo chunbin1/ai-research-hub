@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { stubMatchMedia } from '../test/matchMedia'
 import ReaderPage from './ReaderPage'
+import { api } from '../api'
 
 // ChatPanel 真身依赖 SSE / fetch,这里换成只暴露一个「来源」按钮的替身,
 // 测的是 ReaderPage 自己的溯源回链行为,不是 ChatPanel 内部。
@@ -207,3 +208,33 @@ describe('ReaderPage — 目录抽屉', () => {
     await waitFor(() => expect(tocDrawerOpen()).toBe(false))
   })
 })
+
+describe('ReaderPage — 点目录后高亮不被跳转覆盖', () => {
+  // 末尾的短章滚不到让标题到达阅读线的位置,跳转触发的 scroll 若按位置重算,
+  // 高亮会退回上一章、刚展开的小节又收起来。happy-dom 不做布局(标题位置都是 0),
+  // 按位置算永远得出「最后一章」—— 正好拿来区分「锁住了」和「重算了」。
+  it('点了哪章就保持哪章,直到用户自己滚动', async () => {
+    stubMatchMedia(true)
+    vi.mocked(api.getDocument).mockResolvedValueOnce({
+      document: { filename: '某公司深度报告.md' },
+      markdown: '# 标题\n\n## 第一章\n\n### 1.1 小节\n\n正文\n\n## 第二章\n\n### 2.1 小节\n\n正文',
+    } as Awaited<ReturnType<typeof api.getDocument>>)
+    renderReader()
+    const toc = await screen.findByRole('navigation', { name: '目录' })
+    const expanded = () => [...toc.querySelectorAll('a[aria-expanded="true"]')].map(a => a.textContent)
+    const container = document.getElementById('report-content')!
+    // 先等页面按位置算出一次高亮(happy-dom 下是最后一章)
+    await waitFor(() => expect(expanded()).toEqual(['第二章']))
+
+    ;[...toc.querySelectorAll('a')].find(a => a.textContent === '第一章')!.click()
+    fireEvent.scroll(container)
+    await new Promise(r => setTimeout(r, 50))
+    expect(expanded()).toEqual(['第一章'])
+
+    // 用户自己滚:解锁,照常按位置算
+    fireEvent.wheel(container)
+    fireEvent.scroll(container)
+    await waitFor(() => expect(expanded()).toEqual(['第二章']))
+  })
+})
+

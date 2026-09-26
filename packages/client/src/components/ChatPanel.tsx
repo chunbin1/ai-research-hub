@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowUpOutlined, CloseOutlined, RightOutlined } from '@ant-design/icons'
 import { useDocChat } from '../hooks/useDocChat'
@@ -21,9 +21,14 @@ interface Props {
   variant?: 'panel' | 'sheet'
   /** 收起 / 关闭;不传就不出这个按钮 */
   onClose?: () => void
+  /**
+   * 面板当前是否可见。收起时面板是 display:none(不卸载,保留对话),
+   * 这时设不了 scrollTop,只能在重新可见的那一刻滚到底。默认可见。
+   */
+  open?: boolean
 }
 
-export default function ChatPanel({ docId, onCite, version, slugs, variant = 'panel', onClose }: Props) {
+export default function ChatPanel({ docId, onCite, version, slugs, variant = 'panel', onClose, open = true }: Props) {
   const { messages, send, streaming } = useDocChat(docId, version)
   const { user, login } = useAuth()
   const [input, setInput] = useState('')
@@ -31,11 +36,45 @@ export default function ChatPanel({ docId, onCite, version, slugs, variant = 'pa
   const effective = llm?.effective ?? null
   const sheet = variant === 'sheet'
 
+  // 消息列表停在最底部(最新一条)。stick = 用户当前是否贴着底:
+  // 贴着底时,历史加载 / 新消息 / 流式输出都跟着滚到底;往上翻着看旧消息时不打扰。
+  const listRef = useRef<HTMLDivElement>(null)
+  const stick = useRef(true)
+  const scrollToBottom = () => {
+    const el = listRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }
+  // 每次打开都回到底部 —— 历史记录常常是在面板隐藏时加载进来的
+  useLayoutEffect(() => {
+    if (!open) return
+    stick.current = true
+    scrollToBottom()
+  }, [open])
+  useLayoutEffect(() => {
+    if (stick.current) scrollToBottom()
+  }, [messages])
+  // 上面那次滚动可能落空:移动端抽屉第二次打开时,open 变 true 的那一刻内容还是
+  // display:none、高度为 0,scrollTop 设不上。列表尺寸一变(从隐藏变可见、抽屉展开、
+  // 窗口缩放)就按「贴底」再滚一次 —— 不依赖外层容器什么时候真正可见。
+  useEffect(() => {
+    const el = listRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => { if (stick.current) scrollToBottom() })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  function onListScroll() {
+    const el = listRef.current
+    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault()
     const text = input.trim()
     if (!text) return
     setInput('')
+    // 自己刚问的,一定要看到回答
+    stick.current = true
     void send(text).then(() => window.dispatchEvent(new Event('auth:refresh')))
   }
 
@@ -95,7 +134,7 @@ export default function ChatPanel({ docId, onCite, version, slugs, variant = 'pa
           ))}
       </div>
 
-      <div className={`flex flex-1 flex-col gap-4 overflow-y-auto ${sheet ? 'p-5' : 'p-6'}`}>
+      <div ref={listRef} onScroll={onListScroll} className={`flex flex-1 flex-col gap-4 overflow-y-auto ${sheet ? 'p-5' : 'p-6'}`}>
         {messages.length === 0 && (
           <p className="m-0 text-[14px] leading-[1.7] text-ink-mute">就当前报告提问,答案会标注来源章节。</p>
         )}

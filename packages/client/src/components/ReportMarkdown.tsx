@@ -1,4 +1,4 @@
-import { Children, isValidElement } from 'react'
+import { Children, cloneElement, isValidElement } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
@@ -11,12 +11,59 @@ import rehypeSlug from 'rehype-slug'
  */
 const CARD_MIN_COLS = 4
 
-type CellElement = ReactElement<{ children?: ReactNode }>
+/**
+ * 数字单元格:可带正负号 / 约数符号 / 币种符号,紧跟着是数字。
+ * 「$114.53」「-$93.6亿」「290x」「30-45%(估计)」「2026-08-06」都算。
+ */
+const NUMERIC_CELL = /^[+\-−±~≈约]?\s*[$¥€£]?\s*\d/
+/** 太长的就不是「一个数」了,是一句带数字开头的话,该折行还得折 */
+const NUMERIC_MAX_LEN = 24
+/** 缺数据的占位写法:判定数字列时当空格跳过(未上市公司那几行股价、市值全是「—」) */
+const PLACEHOLDER_CELL = /^(?:[—–\-]+|n\/?a|未披露|暂无|无)$/i
+/**
+ * 以数字开头、但不是「用来比大小的数」:股票代码和日期。这种列右对齐反而难看,
+ * 一列里只要出现一个就整列不算数字列。
+ * - 代码:6 位 A 股代码(可带 .SH),4–5 位带交易所后缀(0700.HK),
+ *   以及用 / 连起来的多地上市代码(002460/01772.HK、0700.HK / TCEHY)
+ * - 日期:2026-08-06、2026/8/6、2026年8月、2026.8.6(「2949.16」这种小数不算)
+ */
+const TICKER = String.raw`(?:\d{6}(?:\.[A-Z]{2,3})?|\d{4,5}\.[A-Z]{2,3}|[A-Z]{1,6})`
+const TICKER_CELL = new RegExp(String.raw`^\d(?:\d{5}(?:\.[A-Z]{2,3})?|\d{3,4}\.[A-Z]{2,3})(?:\s*[/／]\s*${TICKER})*$`)
+const DATE_CELL = /^(?:19|20)\d{2}\s*(?:[-/]\s*\d{1,2}|年|\.\d{1,2}\.\d{1,2})/
+/** 表头直接说明不是数值的列 */
+const NON_NUMERIC_HEADER = /代码|代號|日期|时间|ticker|symbol|date/i
+
+type CellElement = ReactElement<{ children?: ReactNode; className?: string }>
 
 /** 取一个 thead / tbody / tr 元素下的子元素,丢掉 react-markdown 留下的换行文本节点 */
 function elementChildren(node: ReactNode): CellElement[] {
   if (!isValidElement<{ children?: ReactNode }>(node)) return []
   return Children.toArray(node.props.children).filter(isValidElement) as CellElement[]
+}
+
+/** 单元格的纯文本(加粗、链接等行内格式里的字也算上) */
+function textOf(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(textOf).join('')
+  if (isValidElement<{ children?: ReactNode }>(node)) return textOf(node.props.children)
+  return ''
+}
+
+/**
+ * 哪几列是数字列:这一列所有有值的单元格都是「一个数」(占位的「—」不算),
+ * 而且不是股票代码 / 日期列。首列是行名,不算。
+ * 数字列右对齐、不折行、用等宽数字(td.num / th.num),上下行好比大小。
+ */
+function numericColumns(headers: ReactNode[], rows: ReactNode[][]): Set<number> {
+  const out = new Set<number>()
+  for (let c = 1; c < headers.length; c++) {
+    if (NON_NUMERIC_HEADER.test(textOf(headers[c]))) continue
+    const values = rows.map(r => textOf(r[c]).trim()).filter(v => v && !PLACEHOLDER_CELL.test(v))
+    if (values.length === 0) continue
+    if (values.some(v => TICKER_CELL.test(v) || DATE_CELL.test(v))) continue
+    if (values.every(v => v.length <= NUMERIC_MAX_LEN && NUMERIC_CELL.test(v))) out.add(c)
+  }
+  return out
 }
 
 /**
@@ -35,7 +82,16 @@ const Table: Components['table'] = ({ children }) => {
   const headers = headRow ? elementChildren(headRow).map(th => th.props.children) : []
   const rows = tbody ? elementChildren(tbody).map(tr => elementChildren(tr).map(td => td.props.children)) : []
 
-  const table = <div className="md-table-scroll"><table>{children}</table></div>
+  // 数字列给表头和单元格都挂上 num:在已经渲染好的 th / td 上补 className,
+  // 单元格里的行内格式不受影响
+  const numCols = numericColumns(headers, rows)
+  const markRow = (tr: CellElement) => cloneElement(tr, undefined, elementChildren(tr).map((cell, i) =>
+    numCols.has(i) ? cloneElement(cell, { className: 'num' }) : cell))
+  const body = numCols.size === 0
+    ? children
+    : sections.map(s => cloneElement(s, undefined, elementChildren(s).map(markRow)))
+
+  const table = <div className="md-table-scroll"><table>{body}</table></div>
   if (headers.length < CARD_MIN_COLS || rows.length === 0) return table
 
   return (
