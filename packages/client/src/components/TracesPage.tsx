@@ -5,7 +5,6 @@ import { Select, Button, Alert } from 'antd'
 import { useTraces } from '../hooks/useTraces'
 import { TraceList } from './TraceList'
 import { TraceStats } from './TraceStats'
-import { BackLink } from './BackLink'
 
 export function TracesPage() {
   const { traces, stats, loading, error, fetchList, fetchStats } = useTraces()
@@ -22,7 +21,6 @@ export function TracesPage() {
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-5 md:p-6">
       <header className="mb-5 flex flex-wrap items-center gap-4">
-        <BackLink to="/" className="text-[13px] text-violet-600 no-underline hover:underline">返回首页</BackLink>
         <h1 className="m-0 text-[20px] font-bold text-gray-900"><NodeIndexOutlined aria-hidden /> Traces</h1>
         <div className="ml-auto flex gap-2">
           <Select

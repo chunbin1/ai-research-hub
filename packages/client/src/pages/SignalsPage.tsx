@@ -9,7 +9,6 @@ import {
 import { useSignals } from '../hooks/useSignals'
 import { useAuth } from '../hooks/useAuth'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { SiteHeader } from '../components/SiteHeader'
 import { SignalLog } from '../components/SignalLog'
 import { RecentSignalEvents } from '../components/RecentSignalEvents'
 import { AddSymbolModal } from '../components/AddSymbolModal'
@@ -357,14 +356,11 @@ export default function SignalsPage() {
   )
 
   return (
-    <div className="flex min-h-screen flex-col bg-page font-sans-sc text-ink">
-      <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
-        <SiteHeader active="/signals" mobile={{ backTo: '/', title: '信号追踪' }} />
-
-        {/* 标题区。移动端标题已经在顶栏里,这里只剩口径说明和操作按钮 */}
+    <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
+        {/* 标题区:标题、口径说明和操作按钮。顶栏在 SiteLayout 里 */}
         <div className={`flex flex-col gap-3.5 border-b border-rule pb-4 pt-3.5 md:flex-row md:items-end md:justify-between md:gap-10 md:border-b-0 md:pb-6 md:pt-8 ${GUTTER}`}>
           <div className="flex flex-col gap-2">
-            <h1 className="m-0 hidden font-serif-sc text-[26px] font-semibold text-ink md:block">信号追踪</h1>
+            <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">信号追踪</h1>
             <p className="m-0 max-w-[640px] text-[12px] leading-[1.65] text-ink-mute md:text-[13px] md:leading-[1.6]">
               {CAPTION}
             </p>
@@ -534,7 +530,6 @@ export default function SignalsPage() {
             onConfirm={add}
           />
         )}
-      </div>
     </div>
   )
 }

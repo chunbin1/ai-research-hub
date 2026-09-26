@@ -1,5 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeftOutlined, DownOutlined, UploadOutlined } from '@ant-design/icons'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { DownOutlined, UploadOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import { Avatar, Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
@@ -7,13 +7,11 @@ import { UploadReportModal } from './UploadReportModal'
 import { useAuth } from '../hooks/useAuth'
 
 /**
- * 全站顶栏 —— 设计稿里首页与信号追踪共用同一条(见 design_handoff_homepage,
- * 「组件 1.1 顶栏」与「信号追踪 · 顶栏同首页,当前项为信号」)。
+ * 全站顶栏 —— 只由 SiteLayout 挂一份,所有页面共用(见 SiteLayout 的说明)。
  *
- * 移动端有两种形态:
- * - 默认(首页):logo + 上传/头像,栏目导航独立成一行横向可滑;
- * - 传了 mobile 时(信号追踪):返回箭头 + 页面标题 + 头像,不出栏目行 ——
- *   移动稿把层级交给返回箭头,主导航不重复占一行。
+ * 当前栏目从路由推出来,不靠页面传:详情页归到所属栏目(/reports/x → 研报)。
+ * 移动端:logo + 上传/头像,栏目导航独立成一行横向可滑。每个页面都是这一个形态 ——
+ * 以前信号页移动端换成「返回 + 标题」、不出栏目行,切过去顶栏整个变样。
  */
 
 interface NavItem {
@@ -31,19 +29,21 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: 'trace', to: '/traces', adminOnly: true },
 ]
 
-interface Props {
-  /** 当前栏目的 to,命中项以 2px 红色下边框标出 */
-  active: string
-  /** 上传成功后通知调用方刷新自己的数据 */
-  onUploaded?: () => void
-  /** 提供时移动端换成「返回 + 页面标题」形态 */
-  mobile?: { backTo: string; title: string }
+/**
+ * 上传成功后在 window 上广播。顶栏是布局级的,不知道当前是哪个页面、该刷新什么,
+ * 由关心的页面(首页列表)自己监听。与 useAuth 的 auth:refresh 同一个套路。
+ */
+export const REPORT_UPLOADED_EVENT = 'report:uploaded'
+
+/** 当前栏目的 to;不属于任何栏目(如 /settings)时为 null */
+function activeTab(pathname: string): string | null {
+  if (pathname === '/' || pathname.startsWith('/reports/')) return '/'
+  return NAV_ITEMS.find(item => item.to !== '/' && (pathname === item.to || pathname.startsWith(`${item.to}/`)))?.to ?? null
 }
 
-export function SiteHeader({
-  active, onUploaded, mobile,
-}: Props) {
+export function SiteHeader() {
   const navigate = useNavigate()
+  const active = activeTab(useLocation().pathname)
   const { user, loading: authLoading, login, logout } = useAuth()
   const isAdmin = user?.isAdmin === true
 
@@ -64,16 +64,7 @@ export function SiteHeader({
   return (
     <>
       <header className="flex items-center justify-between gap-4 border-b border-rule py-2.5 pl-[18px] pr-3 md:px-7 md:py-5 lg:px-10">
-        {mobile && (
-          <div className="flex min-w-0 items-center gap-2.5 md:hidden">
-            <Link to={mobile.backTo} aria-label="返回" className="tap-44 text-[18px] leading-none text-ink">
-              <ArrowLeftOutlined aria-hidden />
-            </Link>
-            <span className="truncate font-serif-sc text-[17px] font-semibold text-ink">{mobile.title}</span>
-          </div>
-        )}
-
-        <div className={`items-baseline gap-7 ${mobile ? 'hidden md:flex' : 'flex'}`}>
+        <div className="flex items-baseline gap-7">
           <Link
             to="/"
             className="font-serif-sc text-[18px] font-bold tracking-[0.02em] text-ink md:text-[21px]"
@@ -81,18 +72,18 @@ export function SiteHeader({
             研报站
           </Link>
           <nav className="hidden gap-[22px] text-[14px] md:flex">
+            {/* 当前项也是链接:在详情页(阅读页、评估明细)上点它就回到栏目首页 */}
             {navLinks.map(item => (
-              item.to === active
-                ? (
-                  <span key={item.to} className="border-b-2 border-brick pb-0.5 font-medium text-ink">
-                    {item.label}
-                  </span>
-                )
-                : (
-                  <Link key={item.to} to={item.to} className="text-ink-soft hover:text-brick">
-                    {item.label}
-                  </Link>
-                )
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={item.to === active ? 'page' : undefined}
+                className={item.to === active
+                  ? 'border-b-2 border-brick pb-0.5 font-medium text-ink'
+                  : 'text-ink-soft hover:text-brick'}
+              >
+                {item.label}
+              </Link>
             ))}
           </nav>
         </div>
@@ -102,8 +93,7 @@ export function SiteHeader({
             每次进站都是顶栏先 54.5/73px、拿到登录态后弹到 62.5/77.5px,整页跟着下移。 */}
         <div className="flex min-h-11 items-center gap-1 md:min-h-[37.5px] md:gap-[18px]">
           {isAdmin && (
-            // 移动端的信号追踪顶栏只留头像,上传入口在这一档不出现
-            <span className={mobile ? 'hidden md:block' : ''}>
+            <span>
               {/* 移动端只留图标(44×44 热区),桌面是带字的描边按钮 */}
               <button
                 type="button"
@@ -147,31 +137,25 @@ export function SiteHeader({
         <UploadReportModal
           open={uploadOpen}
           onClose={() => setUploadOpen(false)}
-          onUploaded={() => { setUploadOpen(false); onUploaded?.() }}
+          onUploaded={() => { setUploadOpen(false); window.dispatchEvent(new Event(REPORT_UPLOADED_EVENT)) }}
         />
       )}
 
       {/* 栏目导航:移动端独立成行、横向可滑 */}
-      {!mobile && (
-        <nav className="hide-scrollbar flex gap-5 overflow-x-auto border-b border-rule px-[18px] text-[14px] md:hidden">
-          {navLinks.map(item => (
-            item.to === active
-              ? (
-                <span
-                  key={item.to}
-                  className="whitespace-nowrap border-b-2 border-brick pb-2.5 pt-3 font-medium text-ink"
-                >
-                  {item.label}
-                </span>
-              )
-              : (
-                <Link key={item.to} to={item.to} className="whitespace-nowrap py-3 text-ink-mute">
-                  {item.label}
-                </Link>
-              )
-          ))}
-        </nav>
-      )}
+      <nav className="hide-scrollbar flex gap-5 overflow-x-auto border-b border-rule px-[18px] text-[14px] md:hidden">
+        {navLinks.map(item => (
+          <Link
+            key={item.to}
+            to={item.to}
+            aria-current={item.to === active ? 'page' : undefined}
+            className={item.to === active
+              ? 'whitespace-nowrap border-b-2 border-brick pb-2.5 pt-3 font-medium text-ink'
+              : 'whitespace-nowrap py-3 text-ink-mute'}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
     </>
   )
 }
