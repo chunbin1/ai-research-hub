@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowUpOutlined, CloseOutlined, RightOutlined } from '@ant-design/icons'
 import { useDocChat } from '../hooks/useDocChat'
@@ -53,6 +53,16 @@ export default function ChatPanel({ docId, onCite, version, slugs, variant = 'pa
   useLayoutEffect(() => {
     if (stick.current) scrollToBottom()
   }, [messages])
+  // 上面那次滚动可能落空:移动端抽屉第二次打开时,open 变 true 的那一刻内容还是
+  // display:none、高度为 0,scrollTop 设不上。列表尺寸一变(从隐藏变可见、抽屉展开、
+  // 窗口缩放)就按「贴底」再滚一次 —— 不依赖外层容器什么时候真正可见。
+  useEffect(() => {
+    const el = listRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => { if (stick.current) scrollToBottom() })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   function onListScroll() {
     const el = listRef.current
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48

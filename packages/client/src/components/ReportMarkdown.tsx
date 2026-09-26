@@ -20,6 +20,18 @@ const NUMERIC_CELL = /^[+\-−±~≈约]?\s*[$¥€£]?\s*\d/
 const NUMERIC_MAX_LEN = 24
 /** 缺数据的占位写法:判定数字列时当空格跳过(未上市公司那几行股价、市值全是「—」) */
 const PLACEHOLDER_CELL = /^(?:[—–\-]+|n\/?a|未披露|暂无|无)$/i
+/**
+ * 以数字开头、但不是「用来比大小的数」:股票代码和日期。这种列右对齐反而难看,
+ * 一列里只要出现一个就整列不算数字列。
+ * - 代码:6 位 A 股代码(可带 .SH),4–5 位带交易所后缀(0700.HK),
+ *   以及用 / 连起来的多地上市代码(002460/01772.HK、0700.HK / TCEHY)
+ * - 日期:2026-08-06、2026/8/6、2026年8月、2026.8.6(「2949.16」这种小数不算)
+ */
+const TICKER = String.raw`(?:\d{6}(?:\.[A-Z]{2,3})?|\d{4,5}\.[A-Z]{2,3}|[A-Z]{1,6})`
+const TICKER_CELL = new RegExp(String.raw`^\d(?:\d{5}(?:\.[A-Z]{2,3})?|\d{3,4}\.[A-Z]{2,3})(?:\s*[/／]\s*${TICKER})*$`)
+const DATE_CELL = /^(?:19|20)\d{2}\s*(?:[-/]\s*\d{1,2}|年|\.\d{1,2}\.\d{1,2})/
+/** 表头直接说明不是数值的列 */
+const NON_NUMERIC_HEADER = /代码|代號|日期|时间|ticker|symbol|date/i
 
 type CellElement = ReactElement<{ children?: ReactNode; className?: string }>
 
@@ -38,14 +50,18 @@ function textOf(node: ReactNode): string {
 }
 
 /**
- * 哪几列是数字列:这一列所有有值的单元格都是「一个数」(占位的「—」不算)。首列是行名,不算。
+ * 哪几列是数字列:这一列所有有值的单元格都是「一个数」(占位的「—」不算),
+ * 而且不是股票代码 / 日期列。首列是行名,不算。
  * 数字列右对齐、不折行、用等宽数字(td.num / th.num),上下行好比大小。
  */
-function numericColumns(rows: ReactNode[][], cols: number): Set<number> {
+function numericColumns(headers: ReactNode[], rows: ReactNode[][]): Set<number> {
   const out = new Set<number>()
-  for (let c = 1; c < cols; c++) {
+  for (let c = 1; c < headers.length; c++) {
+    if (NON_NUMERIC_HEADER.test(textOf(headers[c]))) continue
     const values = rows.map(r => textOf(r[c]).trim()).filter(v => v && !PLACEHOLDER_CELL.test(v))
-    if (values.length > 0 && values.every(v => v.length <= NUMERIC_MAX_LEN && NUMERIC_CELL.test(v))) out.add(c)
+    if (values.length === 0) continue
+    if (values.some(v => TICKER_CELL.test(v) || DATE_CELL.test(v))) continue
+    if (values.every(v => v.length <= NUMERIC_MAX_LEN && NUMERIC_CELL.test(v))) out.add(c)
   }
   return out
 }
@@ -68,7 +84,7 @@ const Table: Components['table'] = ({ children }) => {
 
   // 数字列给表头和单元格都挂上 num:在已经渲染好的 th / td 上补 className,
   // 单元格里的行内格式不受影响
-  const numCols = numericColumns(rows, headers.length)
+  const numCols = numericColumns(headers, rows)
   const markRow = (tr: CellElement) => cloneElement(tr, undefined, elementChildren(tr).map((cell, i) =>
     numCols.has(i) ? cloneElement(cell, { className: 'num' }) : cell))
   const body = numCols.size === 0

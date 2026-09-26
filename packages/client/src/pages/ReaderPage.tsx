@@ -88,14 +88,24 @@ export default function ReaderPage() {
   const shownToc = visibleOutline(tocItems, activeSlug)
   const activeChapter = tocItems.find(t => t.slug === activeSlug)?.chapter ?? ''
 
+  /**
+   * 点目录跳过去的那一条,在用户自己动手滚动之前一直保持高亮。
+   * 不锁的话,跳转本身触发的 scroll 会按位置重算高亮:末尾的短章滚不到让标题到达
+   * 阅读线的位置,高亮退回上一章,刚展开的小节也跟着收起来。
+   */
+  const pinnedSlug = useRef<string | null>(null)
+
   // 目录高亮跟着阅读位置走:取「顶到工具栏下沿以上」的最后一个章节标题。
   // 滚动事件用 rAF 合并,一帧最多量一次。
   useEffect(() => {
     const container = document.getElementById('report-content')
     if (!container || tocItems.length === 0) return
+    // 换了一篇 / 换了版本,目录都变了,上一次点的那条不作数
+    pinnedSlug.current = null
     let frame = 0
     const measure = () => {
       frame = 0
+      if (pinnedSlug.current) return
       const line = container.getBoundingClientRect().top + (toolbarRef.current?.offsetHeight ?? 0) + 24
       let current = ''
       for (const t of tocItems) {
@@ -107,10 +117,15 @@ export default function ReaderPage() {
       setActiveSlug(current)
     }
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(measure) }
+    // 用户自己的滚动手势:解开点目录时锁住的高亮,之后照常跟着位置走
+    const release = () => { pinnedSlug.current = null }
+    const gestures = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const
     container.addEventListener('scroll', onScroll, { passive: true })
+    for (const g of gestures) container.addEventListener(g, release, { passive: true })
     measure()
     return () => {
       container.removeEventListener('scroll', onScroll)
+      for (const g of gestures) container.removeEventListener(g, release)
       if (frame) cancelAnimationFrame(frame)
     }
   }, [tocItems])
@@ -136,6 +151,7 @@ export default function ReaderPage() {
       setSheet(null)
     }
     setActiveSlug(slug)
+    pinnedSlug.current = slug
     const el = document.getElementById(slug)
     const container = document.getElementById('report-content')
     if (!el || !container) return

@@ -74,4 +74,38 @@ describe('ReportMarkdown — 数字列', () => {
     // 单元格里的加粗原样保留
     expect(container.querySelector('tbody td.num strong')?.textContent).toBe('62x')
   })
+
+  // 股票代码、日期以数字开头,但不是用来比大小的数
+  it('A 股 / 港股代码列、日期列不算数字列', () => {
+    const md = `| 公司 | 代码 | 两地代码 | 披露日 | 现价 | PE |
+| --- | --- | --- | --- | --- | --- |
+| 中国神华 | 601088.SH | 601088/01088.HK | 2026-08-04 | 45.69 | 18.75× |
+| 赣锋锂业 | 002460 | 002460/01772.HK | 2026/8/6 | 43.46 | 16.42 |
+| 腾讯 | 0700.HK | 0700.HK / TCEHY | 2026年8月 | 520.0 | 22x |
+`
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    const header = [...container.querySelectorAll('thead th')].map(th => th.classList.contains('num'))
+    // 公司 代码 两地代码 披露日 现价 PE
+    expect(header).toEqual([false, false, false, false, true, true])
+  })
+
+  it('表头写明是代码 / 日期的列,即使内容像数字也不算', () => {
+    const md = `| 名称 | 证券代码 | 日期 | 金额 |
+| --- | --- | --- | --- |
+| A | 510300 | 20260804 | 1,203 |
+`
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    const header = [...container.querySelectorAll('thead th')].map(th => th.classList.contains('num'))
+    expect(header).toEqual([false, false, false, true])
+  })
+
+  it('不带千分位的小数(2949.16)不会被当成日期', () => {
+    const md = `| 公司 | 营收(亿元) |
+| --- | --- |
+| 腾讯 | 2949.16 |
+| 网易 | 1052.34 |
+`
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    expect(container.querySelector('thead th:nth-child(2)')?.classList.contains('num')).toBe(true)
+  })
 })
