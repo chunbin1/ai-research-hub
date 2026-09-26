@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
 import type { ChatMessage, Source } from '../types'
 
-export function useDocChat(docId: string) {
+/**
+ * 一篇文档一条对话,不随版本切换。`version` 是当前正在看的版本,
+ * 发出的问题针对它检索,并把版本号记在消息上。
+ */
+export function useDocChat(docId: string, version?: number) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState(false)
 
@@ -22,13 +26,13 @@ export function useDocChat(docId: string) {
 
   async function send(text: string) {
     if (!text.trim() || streaming) return
-    setMessages(m => [...m, { role: 'user', content: text }, { role: 'assistant', content: '' }])
+    setMessages(m => [...m, { role: 'user', content: text, version }, { role: 'assistant', content: '', version }])
     setStreaming(true)
     try {
       const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ docId, message: text }),
+        body: JSON.stringify({ docId, message: text, version }),
       })
       if (!res.ok) {
         // /chat/stream 有几种错误在 SSE 流开始前就以普通 JSON 400/403 返回

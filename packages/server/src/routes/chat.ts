@@ -10,6 +10,7 @@ import { getIndexState, planRetrieval } from '../services/indexState.js'
 import { RAG } from '../services/ragConfig.js'
 import { getDb } from '../services/db.js'
 import { getDocument } from '../services/documentStore.js'
+import { getVersion, latestVersion } from '../services/versionStore.js'
 import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } from '../services/tracing.js'
 import { requireUser } from './auth.js'
 import { tryReserveMessage, refundMessage, MESSAGE_LIMIT } from '../services/userStore.js'
@@ -22,6 +23,8 @@ import type { LLMMessage, DocumentChunk } from '../types.js'
 interface StreamBody {
   docId: string
   message: string
+  /** 针对哪个版本提问;不传就是最新版 */
+  version?: number
 }
 
 type SSE =
@@ -46,15 +49,20 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
       role: r.role,
       content: r.content,
       sources: r.sources_json ? JSON.parse(r.sources_json) : undefined,
+      version: r.version ?? undefined,
     }))
     return { messages }
   })
 
   app.post<{ Body: StreamBody }>('/chat/stream', async (request, reply) => {
-    const { docId, message } = request.body ?? ({} as StreamBody)
+    const { docId, message, version: askedVersion } = request.body ?? ({} as StreamBody)
     if (!docId) return reply.status(400).send({ error: 'docId is required' })
     if (!message?.trim()) return reply.status(400).send({ error: 'message is required' })
     if (!getDocument(docId)) return reply.status(404).send({ error: 'document not found' })
+    const version = askedVersion ?? latestVersion(getDb(), docId) ?? 1
+    if (askedVersion !== undefined && !getVersion(getDb(), docId, askedVersion)) {
+      return reply.status(404).send({ error: 'version not found' })
+    }
 
     const user = requireUser(request, reply)
     if (!user) return
@@ -104,19 +112,21 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
         const db = getDb()
         // 两路索引各自属于哪一代切块,决定了这次能不能融合:代次错位时按
         // chunk_index 对齐会把两段不同的文字当成同一块,静默返回错块。
-        const plan = planRetrieval(getIndexState(db, docId))
+        // 每个版本各有一代索引,按所查版本的代次过滤两路。
+        const plan = planRetrieval(getIndexState(db, docId, version))
         const { chunks: found, meta } = await hybridRetrieve(message, docId, {
           // 向量库不可用时这一路返回空而不是抛错 —— 那是「没配置」,
           // 不是「出故障」,不该被记成降级。
           vectorSearch: (q, d) =>
             isDocVectorAvailable() ? searchChunks(q, d, RAG.poolSize, plan.gen) : Promise.resolve([]),
-          keywordSearch: (q, d, limit) => searchBm25(db, d, q, limit),
+          keywordSearch: (q, d, limit) => searchBm25(db, d, q, limit, plan.gen),
         }, { k: RAG.rrfK, restrict: plan.restrict })
 
         // both_empty 沿用历史名字 doc_retrieval_empty,保持与旧 trace 可比。
         if (meta.degraded === 'both_empty') markDegraded('doc_retrieval_empty')
         else if (meta.degraded) markDegraded(`doc_retrieval_${meta.degraded}`)
 
+        spanMeta('version', version)
         spanMeta('gen', plan.gen ?? 'legacy')
         spanMeta('kept', found.length)
         spanMeta('retrieval', meta)
@@ -139,7 +149,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
         .filter(c => (seen.has(c.section_slug) ? false : (seen.add(c.section_slug), true)))
         .map(c => ({ section_title: c.section_title, section_slug: c.section_slug, chunk_index: c.chunk_index }))
       send({ sources })
-      appendMessage(user.id, docId, { role: 'user', content: message })
+      appendMessage(user.id, docId, { role: 'user', content: message, version })
 
       // 2) 组装 prompt
       const system = await withSpan('prompt_assembly', async () => {
@@ -170,7 +180,7 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
           // 引用覆盖率:塞了几块 vs 模型点名用了几块。纯字符串统计,不额外调用任何 API。
           spanMeta('citation', analyzeCitations(out, chunks))
           spanOutput(out)
-          appendMessage(user.id, docId, { role: 'assistant', content: out, sources })
+          appendMessage(user.id, docId, { role: 'assistant', content: out, sources, version })
           send({ done: true })
         } catch (err) {
           app.log.error(err)

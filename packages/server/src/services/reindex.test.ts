@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { initChunkFtsTable, searchBm25 } from './chunkFts.ts'
 import { initIndexStateTable } from './indexState.ts'
+import { initVersionTable, insertVersion } from './versionStore.ts'
 import { reindexFts } from './reindex.ts'
 
 const MD_A = `# 腾讯生态
@@ -25,6 +26,7 @@ function freshDb() {
   const db = new Database(':memory:')
   initChunkFtsTable(db)
   initIndexStateTable(db)
+  initVersionTable(db)
   return db
 }
 
@@ -52,7 +54,7 @@ test('返回每篇实际写入的块数', () => {
 test('原文缺失时标记 missing,不抛错', () => {
   const db = freshDb()
   const out = reindexFts(db, ['gone'], reader({}))
-  assert.deepEqual(out, [{ docId: 'gone', chunks: 0, status: 'missing', gen: null, mismatch: false }])
+  assert.deepEqual(out, [{ docId: 'gone', version: 1, chunks: 0, status: 'missing', gen: null, mismatch: false }])
 })
 
 test('一篇缺失不影响其他篇', () => {
@@ -81,4 +83,15 @@ test('重建会清掉该文档过时的旧块', () => {
 
 test('空文档列表返回空结果', () => {
   assert.deepEqual(reindexFts(freshDb(), [], reader({})), [])
+})
+
+test('逐个版本重建,各版本的块互不覆盖', () => {
+  const db = freshDb()
+  for (let i = 0; i < 2; i++) insertVersion(db, { doc_id: 'a', filename: 'a', size_bytes: 1, chunk_count: 1 })
+  const byVersion = (id: string, v: number) => (v === 1 ? MD_A : MD_A + '\n## 3.1 新增\n\n补充的正文内容。\n')
+  const out = reindexFts(db, ['a'], byVersion)
+  assert.deepEqual(out.map(o => o.version), [1, 2])
+  assert.notEqual(out[0].gen, out[1].gen)
+  assert.equal(searchBm25(db, 'a', '补充的正文内容', 10, out[0].gen).length, 0)
+  assert.equal(searchBm25(db, 'a', '补充的正文内容', 10, out[1].gen).length, 1)
 })

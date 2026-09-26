@@ -22,7 +22,9 @@
 import 'dotenv/config'
 import { readdirSync } from 'node:fs'
 import { initDb } from '../src/services/db.js'
-import { initDocumentTable, readRawMarkdown } from '../src/services/documentStore.js'
+import { initDocumentTable, readRawMarkdown, readVersionMarkdown } from '../src/services/documentStore.js'
+import { migrateLegacyVersions } from '../src/services/documentVersion.js'
+import { latestVersion } from '../src/services/versionStore.js'
 import { initChunkFtsTable } from '../src/services/chunkFts.js'
 import { initIndexStateTable } from '../src/services/indexState.js'
 import { importRawDocs } from '../src/services/importRaw.js'
@@ -75,6 +77,19 @@ const registered = importRawDocs(db, targets, readRawMarkdown)
 const missingAtRegister = registered.filter(r => r.status === 'missing')
 for (const r of missingAtRegister) console.log(`  ✗ 原文读不到  ${r.filename}`)
 
+// 版本化之前的文档登记成 v1;拷来的 data/raw 里带了 versions/ 就按文件登记。
+const migrated = migrateLegacyVersions(db)
+if (migrated) console.log(`  为 ${migrated} 篇登记了版本记录`)
+
+// 索引按版本文件建,{id}.md 只是最新版镜像。有人直接改了镜像想「更新」一篇,
+// 这里建出来的仍是旧版本的索引 —— 说清楚,别让人以为改动生效了。
+for (const r of registered.filter(r => r.status === 'ok')) {
+  const v = latestVersion(db, r.docId)
+  if (v !== null && readRawMarkdown(r.docId) !== readVersionMarkdown(r.docId, v)) {
+    console.log(`  ⚠️ ${r.filename}:${r.docId}.md 和最新版 v${v} 不一致 —— 索引按 v${v} 建。更新文档请在管理页「上传新版本」。`)
+  }
+}
+
 if (withVectors) {
   await initDocCollection()
   if (!isDocVectorAvailable()) {
@@ -96,7 +111,7 @@ const results = await rebuildDocs(
   db,
   registered.filter(r => r.status === 'ok').map(r => r.docId),
   {
-    readMarkdown: readRawMarkdown,
+    readMarkdown: readVersionMarkdown,
     stampLegacy,
     writeVectors: upsertChunks,
     countVectors: countChunks,
@@ -108,7 +123,7 @@ const results = await rebuildDocs(
     onDone: o => {
       const mark = o.status === 'rebuilt' ? '✓' : o.status === 'skipped' ? '·' : '✗'
       const detail = o.status === 'failed' ? `${label[o.status]}:${o.error}` : label[o.status]
-      console.log(`  ${mark} ${String(o.chunks).padStart(4)} 块  ${o.filename.slice(0, 28).padEnd(30)} ${detail}`)
+      console.log(`  ${mark} ${String(o.chunks).padStart(4)} 块  ${o.filename.slice(0, 28).padEnd(30)} v${o.version}  ${detail}`)
     },
   },
 )
@@ -116,8 +131,8 @@ const results = await rebuildDocs(
 const by = (s: RebuildOutcome['status']) => results.filter(r => r.status === s)
 const failed = [...by('failed'), ...by('missing')]
 console.log(
-  `\n重建 ${by('rebuilt').length} 篇,跳过 ${by('skipped').length} 篇` +
-  `${failed.length ? `,失败 ${failed.length} 篇` : ''}。`,
+  `\n重建 ${by('rebuilt').length} 个版本,跳过 ${by('skipped').length} 个` +
+  `${failed.length ? `,失败 ${failed.length} 个` : ''}。`,
 )
 
 if (!withVectors) {

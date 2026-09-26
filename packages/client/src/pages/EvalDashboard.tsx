@@ -46,7 +46,17 @@ export default function EvalDashboard() {
     {
       title: '状态',
       dataIndex: 'status',
-      render: (s: EvalStatus) => <Tag color={statusTag[s].color}>{statusTag[s].label}</Tag>,
+      render: (s: EvalStatus, r) => (
+        <>
+          <Tag color={statusTag[s].color}>{statusTag[s].label}</Tag>
+          {/* 分数只对当时那一版成立;文档更新后提醒重跑 */}
+          {s === 'done' && r.run_version !== null && r.run_version !== r.latest_version && (
+            <Tag title={`这份分数是 v${r.run_version} 的,文档已更新到 v${r.latest_version}`}>
+              v{r.run_version} · 已过期
+            </Tag>
+          )}
+        </>
+      ),
     },
     {
       title: '',

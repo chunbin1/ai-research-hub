@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { Drawer } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { Drawer, Select } from 'antd'
 import { MenuOutlined } from '@ant-design/icons'
 import { api } from '../api'
 import { extractToc } from '../lib/toc'
@@ -8,14 +8,21 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import ReportMarkdown from '../components/ReportMarkdown'
 import ChatPanel from '../components/ChatPanel'
 import { BackLink } from '../components/BackLink'
+import type { DocumentVersion } from '../types'
 
 const CHAT_OPEN_KEY = 'reader.chatOpen'
 
 export default function ReaderPage() {
   const { id = '' } = useParams()
+  // 所选版本放在 URL 里(?v=2):能分享、刷新不丢。不带就是最新版。
+  const [searchParams, setSearchParams] = useSearchParams()
+  const vParam = searchParams.get('v')
+  const requestedVersion = vParam === null ? undefined : Number(vParam)
   const isMobile = useIsMobile()
   const [markdown, setMarkdown] = useState('')
   const [filename, setFilename] = useState('')
+  const [version, setVersion] = useState<number | undefined>(undefined)
+  const [versions, setVersions] = useState<DocumentVersion[]>([])
   const [error, setError] = useState('')
   const [tocOpen, setTocOpen] = useState(false)
   // 桌面:沿用 localStorage 记忆,默认展开。
@@ -26,16 +33,38 @@ export default function ReaderPage() {
   )
 
   useEffect(() => {
-    api.getDocument(id)
-      .then(({ document: doc, markdown }) => {
+    setError('')
+    api.getDocument(id, requestedVersion)
+      .then(({ document: doc, markdown, version, versions }) => {
         setMarkdown(markdown)
-        setFilename(doc.filename)
-        document.title = `${doc.filename} — 研报站`
+        setVersion(version)
+        setVersions(versions ?? [])
+        // 看旧版本时标题也用那一版的 —— 研报更新后标题可能变了
+        const title = versions?.find(v => v.version === version)?.filename ?? doc.filename
+        setFilename(title)
+        document.title = `${title} — 研报站`
+        // 换版本是换了一篇正文,回到顶部
+        document.getElementById('report-content')?.scrollTo({ top: 0 })
       })
       .catch(e => setError(String(e.message)))
-  }, [id])
+  }, [id, requestedVersion])
 
   const toc = extractToc(markdown)
+  // 当前版本里有哪些章节锚点 —— 问答里引用的章节在这一版没有的话,来源就不能点
+  const slugs = useMemo(() => new Set(extractToc(markdown).map(t => t.slug)), [markdown])
+  const latest = versions.length ? versions[versions.length - 1] : null
+  const viewing = versions.find(v => v.version === version) ?? null
+  const isOld = latest !== null && viewing !== null && viewing.version !== latest.version
+
+  function switchVersion(v: number) {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      // 最新版不写进 URL:这样分享出去的「最新」链接永远指向最新
+      if (latest && v === latest.version) next.delete('v')
+      else next.set('v', String(v))
+      return next
+    })
+  }
 
   // 溯源回链:滚动到章节标题并临时高亮。
   // 注:显式滚动 #report-content 容器,而非 el.scrollIntoView()——后者对
@@ -159,6 +188,15 @@ export default function ReaderPage() {
       )}
 
       <main id="report-content" className="report-body flex-1 overflow-y-auto px-5 py-6 md:px-14 md:py-10">
+        {versions.length > 1 && (
+          <VersionBar
+            versions={versions}
+            current={version}
+            isOld={isOld}
+            latest={latest}
+            onSwitch={switchVersion}
+          />
+        )}
         <ReportMarkdown markdown={markdown} />
       </main>
 
@@ -197,7 +235,7 @@ export default function ReaderPage() {
           chatOpen ? 'md:border-l md:border-l-[#eee]' : ''
         }`}
       >
-        {!isMobile && <ChatPanel docId={id} onCite={jump} />}
+        {!isMobile && <ChatPanel docId={id} onCite={jump} version={version} slugs={slugs} />}
       </aside>
 
       {/*
@@ -216,8 +254,69 @@ export default function ReaderPage() {
           styles={{ body: { padding: 0, overflow: 'hidden' } }}
           rootClassName="reader-chat-drawer"
         >
-          <ChatPanel docId={id} onCite={jump} />
+          <ChatPanel docId={id} onCite={jump} version={version} slugs={slugs} />
         </Drawer>
+      )}
+    </div>
+  )
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** 正文顶部的版本条。只有一个版本时不渲染 —— 没得选的时候不该占地方。 */
+function VersionBar({ versions, current, isOld, latest, onSwitch }: {
+  versions: DocumentVersion[]
+  current: number | undefined
+  isOld: boolean
+  latest: DocumentVersion | null
+  onSwitch: (v: number) => void
+}) {
+  const viewing = versions.find(v => v.version === current)
+  return (
+    <div className="mb-6 flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2 text-[13px] text-[#777]">
+        <span>版本</span>
+        <Select
+          size="small"
+          value={current}
+          onChange={onSwitch}
+          popupMatchSelectWidth={false}
+          aria-label="选择版本"
+          // 下拉里从新到旧:最常切的是最近几版
+          options={[...versions].reverse().map(v => ({
+            value: v.version,
+            label: (
+              <span>
+                v{v.version} · {formatDate(v.created_at)}
+                {v.version === latest?.version && <span className="ml-1.5 text-[#999]">最新</span>}
+                {v.note && <span className="ml-1.5 text-[#999]">— {v.note}</span>}
+              </span>
+            ),
+          }))}
+          labelRender={() => (viewing ? `v${viewing.version} · ${formatDate(viewing.created_at)}` : '')}
+        />
+        {!isOld && viewing?.note && <span className="text-[#999]">{viewing.note}</span>}
+      </div>
+      {isOld && latest && viewing && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-gold-edge bg-gold-wash px-3 py-2 text-[13px] text-gold-ink"
+        >
+          <span>
+            正在查看 v{viewing.version}({formatDate(viewing.created_at)}),最新为 v{latest.version}
+            {latest.note ? `:${latest.note}` : ''}
+          </span>
+          <button
+            type="button"
+            className="cursor-pointer font-medium underline underline-offset-2"
+            onClick={() => onSwitch(latest.version)}
+          >
+            切到最新
+          </button>
+        </div>
       )}
     </div>
   )

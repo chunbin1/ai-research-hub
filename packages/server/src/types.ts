@@ -41,6 +41,23 @@ export interface Document {
   size_bytes: number
   chunk_count: number
   created_at: string
+  /** 最新版本号。还没有版本记录的旧文档记为 1。 */
+  latest_version: number
+  /** 最新版本的上传时间;没有版本记录时等于 created_at。 */
+  updated_at: string
+}
+
+/** 文档的一个版本。原文不可变,存在 data/raw/versions/{doc_id}/v{version}.md。 */
+export interface DocumentVersion {
+  doc_id: string
+  version: number
+  /** 这一版的展示名 —— 研报更新后标题可能变 */
+  filename: string
+  size_bytes: number
+  chunk_count: number
+  /** 上传时填的更新说明 */
+  note: string | null
+  created_at: string
 }
 
 /** 从 ChromaDB 检索出的一个块(含章节信息,用于溯源) */

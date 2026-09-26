@@ -2,6 +2,9 @@
 import OpenAI from 'openai'
 import { generateSampledCases } from './evalGenerator.js'
 import { searchChunks } from './documentVector.js'
+import { getDb } from './db.js'
+import { getIndexState, planRetrieval } from './indexState.js'
+import { latestVersion } from './versionStore.js'
 import { buildSystemPrompt } from './ragPrompt.js'
 import { scoreContextRecall, scoreLLMMetrics } from './evalJudge.js'
 import { throttledCompletion } from './llmThrottle.js'
@@ -42,9 +45,14 @@ export async function runEval(docId: string, runId: string): Promise<void> {
     if (cases.length === 0) { failRun(runId); return }
     setQuestionCount(runId, cases.length)
 
+    // 出题用的是最新版原文,检索也必须限定在最新版那一代 —— 各版本的向量都留在
+    // 库里,不加代次过滤会把旧版本的块一起捞回来。
+    const db = getDb()
+    const { gen } = planRetrieval(getIndexState(db, docId, latestVersion(db, docId) ?? 1))
+
     let cr = 0, cp = 0, f = 0, ar = 0
     for (const c of cases) {
-      const chunks = await searchChunks(c.question, docId)         // 同线上检索
+      const chunks = await searchChunks(c.question, docId, undefined, gen) // 同线上检索
       const retrievedIds = chunks.map(rc => `${docId}_chunk_${rc.chunk_index}`)
       const ans = await answer(c.question, buildSystemPrompt(chunks)) // 同线上 prompt
       const recall = scoreContextRecall(retrievedIds, c.ground_truth_chunk_id, c.expected_answer, chunks.map(rc => rc.content))

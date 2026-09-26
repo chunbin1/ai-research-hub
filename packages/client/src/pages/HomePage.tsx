@@ -4,6 +4,7 @@ import { Modal } from 'antd'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import { SiteHeader } from '../components/SiteHeader'
+import { UploadVersionModal } from '../components/UploadVersionModal'
 import { readCache, writeCache } from '../lib/storage'
 import type { Document } from '../types'
 
@@ -83,6 +84,8 @@ export default function HomePage() {
   const [loaded, setLoaded] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
+  /** 正在给哪篇上传新版本;null = 弹窗关着 */
+  const [versionTarget, setVersionTarget] = useState<Document | null>(null)
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
 
@@ -160,18 +163,34 @@ export default function HomePage() {
                     </h2>
                     <div className="flex items-center gap-2 text-[11px] text-ink-mute md:gap-2.5 md:text-[12px]">
                       <span className="hidden md:inline">{doc.chunk_count} 段</span>
+                      {/* 更新过的才标;缓存里的旧列表没有 latest_version,按 1 处理 */}
+                      {(doc.latest_version ?? 1) > 1 && (
+                        <span className="whitespace-nowrap font-numeral">
+                          v{doc.latest_version}
+                          {doc.updated_at && ` · ${formatDate(doc.updated_at)} 更新`}
+                        </span>
+                      )}
                       <span className="ml-auto whitespace-nowrap font-numeral text-ink-faint md:hidden">
                         {formatDate(doc.created_at)} · {doc.chunk_count} 段
                       </span>
                       {/* 触屏没有 hover:移动端把删除放进标签行常显,桌面端在第三列悬停才出现 */}
                       {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => onDelete(doc.id)}
-                          className="relative z-[1] text-[11px] text-danger md:hidden"
-                        >
-                          删除
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setVersionTarget(doc)}
+                            className="relative z-[1] text-[11px] text-navy md:hidden"
+                          >
+                            更新
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDelete(doc.id)}
+                            className="relative z-[1] text-[11px] text-danger md:hidden"
+                          >
+                            删除
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -179,13 +198,22 @@ export default function HomePage() {
                   <div className="hidden md:flex md:items-baseline md:gap-3">
                     <span className="text-[13px] text-navy">阅读 ›</span>
                     {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => onDelete(doc.id)}
-                        className="relative z-[1] text-[12px] text-danger opacity-0 group-hover:opacity-100"
-                      >
-                        删除
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setVersionTarget(doc)}
+                          className="relative z-[1] text-[12px] text-navy opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        >
+                          上传新版本
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(doc.id)}
+                          className="relative z-[1] text-[12px] text-danger opacity-0 group-hover:opacity-100"
+                        >
+                          删除
+                        </button>
+                      </>
                     )}
                   </div>
                 </article>
@@ -200,6 +228,12 @@ export default function HomePage() {
 
         </div>
       </div>
+
+      <UploadVersionModal
+        doc={versionTarget}
+        onClose={() => setVersionTarget(null)}
+        onUploaded={() => { setVersionTarget(null); setError(''); void refresh() }}
+      />
     </div>
   )
 }

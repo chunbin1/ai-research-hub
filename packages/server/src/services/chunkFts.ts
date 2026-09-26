@@ -12,6 +12,7 @@
 
 import type { DB } from './db.js'
 import type { MdChunk } from './markdownParser.js'
+import { LEGACY_GEN } from './indexGen.js'
 
 export interface Bm25Hit {
   doc_id: string
@@ -24,7 +25,10 @@ export interface Bm25Hit {
 }
 
 /** 建表时的列集合。改这里就要同步改 EXPECTED_COLUMNS —— 否则迁移检测失效。 */
-const EXPECTED_COLUMNS = ['doc_id', 'chunk_index', 'section_slug', 'section_title', 'content']
+const EXPECTED_COLUMNS = ['doc_id', 'gen', 'chunk_index', 'section_slug', 'section_title', 'content']
+
+/** 加 gen 列之前的列集合 —— 遇到它走数据迁移,不走删表。 */
+const PRE_GEN_COLUMNS = ['doc_id', 'chunk_index', 'section_slug', 'section_title', 'content']
 
 /**
  * 只负责建表;读写操作都显式收 db,避免隐式的模块级状态。
@@ -41,6 +45,10 @@ export function initChunkFtsTable(db: DB): void {
     const cols = (db.prepare('PRAGMA table_info(chunk_fts)').all() as Array<{ name: string }>).map(c => c.name)
     const stale = EXPECTED_COLUMNS.some(c => !cols.includes(c))
     if (!stale) return
+    if (PRE_GEN_COLUMNS.every(c => cols.includes(c)) && !cols.includes('gen')) {
+      migrateAddGen(db)
+      return
+    }
     console.warn('[chunkFts] 索引 schema 已过时,重建空表 —— 运行 `pnpm reindex` 回填')
     db.exec('DROP TABLE chunk_fts')
   }
@@ -52,9 +60,17 @@ export function initChunkFtsTable(db: DB): void {
   // 不该参与全文匹配,否则 id 和 slug 里的字符会污染打分。
   // section_slug 必须存 —— 它是前端溯源回链的锚点,BM25 单路命中的块
   // 没有它,那条来源链接就是死的。
+  //
+  // gen 是这批块所属的切块代次。一篇文档的多个版本各有各的代次,在表里并存,
+  // 查询按代次过滤 —— 和向量那一路的 `where: {gen}` 对称。
+  createTable(db, 'chunk_fts')
+}
+
+function createTable(db: DB, name: string): void {
   db.exec(`
-    CREATE VIRTUAL TABLE chunk_fts USING fts5(
+    CREATE VIRTUAL TABLE ${name} USING fts5(
       doc_id        UNINDEXED,
+      gen           UNINDEXED,
       chunk_index   UNINDEXED,
       section_slug  UNINDEXED,
       section_title,
@@ -62,6 +78,35 @@ export function initChunkFtsTable(db: DB): void {
       tokenize='trigram'
     );
   `)
+}
+
+/**
+ * 给存量行补上 gen。
+ *
+ * **不能删表等自愈回填**:回填会按当前切块重新算代次,legacy 文档的 fts_gen
+ * 因此变成新值、和 active_gen 对不上,检索被静默降级成纯向量。这里原样搬数据,
+ * gen 取状态表里记的 fts_gen —— 行本来就是那一代写进去的;没有状态行的
+ * 就是 legacy。
+ *
+ * 状态表此刻可能还是版本化之前的样子(每篇一行),也可能不存在,两种都兼容。
+ */
+function migrateAddGen(db: DB): void {
+  const hasState = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'doc_index_state'").get()
+  const genExpr = hasState
+    ? `COALESCE((SELECT s.fts_gen FROM doc_index_state s WHERE s.doc_id = o.doc_id LIMIT 1), '${LEGACY_GEN}')`
+    : `'${LEGACY_GEN}'`
+  db.transaction(() => {
+    createTable(db, 'chunk_fts_new')
+    db.exec(`
+      INSERT INTO chunk_fts_new (doc_id, gen, chunk_index, section_slug, section_title, content)
+      SELECT o.doc_id, ${genExpr}, o.chunk_index, o.section_slug, o.section_title, o.content
+      FROM chunk_fts o
+    `)
+    db.exec('DROP TABLE chunk_fts')
+    db.exec('ALTER TABLE chunk_fts_new RENAME TO chunk_fts')
+  })()
+  console.info('[chunkFts] 已为存量索引补上代次列')
 }
 
 /** 索引里的总行数。启动时用它判断是否需要自愈重建。 */
@@ -90,18 +135,33 @@ export function toMatchExpr(query: string): string | null {
   return [...grams].map(g => `"${g.replace(/"/g, '""')}"`).join(' OR ')
 }
 
-/** 覆盖式写入:先删掉该文档的旧块,再整批插入。重复调用不会产生重复行。 */
-export function upsertChunkFts(d: DB, docId: string, chunks: MdChunk[]): void {
+/**
+ * 覆盖式写入这一代:先删掉该文档**这一代**的块,再整批插入。重复调用不会
+ * 产生重复行,也不会碰同一篇其他代次(其他版本)的块。
+ */
+export function upsertChunkFts(d: DB, docId: string, gen: string, chunks: MdChunk[]): void {
   const insert = d.prepare(
-    'INSERT INTO chunk_fts (doc_id, chunk_index, section_slug, section_title, content) VALUES (?, ?, ?, ?, ?)')
+    'INSERT INTO chunk_fts (doc_id, gen, chunk_index, section_slug, section_title, content) VALUES (?, ?, ?, ?, ?, ?)')
   d.transaction(() => {
-    d.prepare('DELETE FROM chunk_fts WHERE doc_id = ?').run(docId)
-    for (const c of chunks) insert.run(docId, c.chunk_index, c.section_slug, c.section_title, c.content)
+    deleteChunkFtsGen(d, docId, gen)
+    for (const c of chunks) insert.run(docId, gen, c.chunk_index, c.section_slug, c.section_title, c.content)
   })()
 }
 
+/** 删掉这篇的全部代次 —— 删除文档时用。 */
 export function deleteChunkFts(d: DB, docId: string): void {
   d.prepare('DELETE FROM chunk_fts WHERE doc_id = ?').run(docId)
+}
+
+/** 这篇在表里有哪些代次的行。 */
+export function listFtsGens(d: DB, docId: string): string[] {
+  return (d.prepare('SELECT DISTINCT gen FROM chunk_fts WHERE doc_id = ?').all(docId) as Array<{ gen: string }>)
+    .map(r => r.gen)
+}
+
+/** 只删某一代 —— 回收旧代时用。 */
+export function deleteChunkFtsGen(d: DB, docId: string, gen: string): void {
+  d.prepare('DELETE FROM chunk_fts WHERE doc_id = ? AND gen = ?').run(docId, gen)
 }
 
 /**
@@ -109,17 +169,22 @@ export function deleteChunkFts(d: DB, docId: string): void {
  *
  * doc_id 作为普通 WHERE 与 MATCH 一起下推,和向量路的 `where: {doc_id}` 一样是
  * **预过滤** —— 不能查完全库再在应用层删,否则前 K 名全是别的文档时会得到空结果。
+ *
+ * gen 同理:一篇文档的多个版本在表里并存,必须按所查版本的代次预过滤。
+ * null 表示 legacy(还没有代次状态),不过滤 —— 与向量路 searchChunks 的约定一致。
  */
-export function searchBm25(d: DB, docId: string, query: string, limit: number): Bm25Hit[] {
+export function searchBm25(d: DB, docId: string, query: string, limit: number, gen: string | null = null): Bm25Hit[] {
   const expr = toMatchExpr(query)
   if (expr === null) return []
+  const genFilter = gen === null ? '' : 'AND gen = ?'
+  const params = gen === null ? [docId, expr, limit] : [docId, gen, expr, limit]
   return d
     .prepare(`
       SELECT doc_id, chunk_index, section_slug, section_title, content, bm25(chunk_fts) AS score
       FROM chunk_fts
-      WHERE doc_id = ? AND chunk_fts MATCH ?
+      WHERE doc_id = ? ${genFilter} AND chunk_fts MATCH ?
       ORDER BY score
       LIMIT ?
     `)
-    .all(docId, expr, limit) as Bm25Hit[]
+    .all(...params) as Bm25Hit[]
 }

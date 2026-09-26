@@ -10,6 +10,8 @@ export interface ChatMessageRow {
   sources_json: string | null
   seq: number
   created_at: string
+  /** 回答时查的版本;版本化之前的旧消息为 null */
+  version: number | null
 }
 
 let _db: DB | null = null
@@ -29,6 +31,10 @@ export function initChatTable(db: DB): void {
     );
     CREATE INDEX IF NOT EXISTS idx_chat_user_doc ON chat_messages(user_id, doc_id, seq);
   `)
+  // 回答时查的是文档的哪个版本。一篇文档只有一条对话,切版本不换对话,
+  // 所以要逐条记下来,界面才能标出「基于 v2」。版本化之前的旧消息为 NULL。
+  const cols = (db.prepare('PRAGMA table_info(chat_messages)').all() as Array<{ name: string }>).map(c => c.name)
+  if (!cols.includes('version')) db.exec('ALTER TABLE chat_messages ADD COLUMN version INTEGER')
 }
 
 function db(): DB {
@@ -43,18 +49,18 @@ function genId(): string {
 export function appendMessage(
   userId: string,
   docId: string,
-  m: { role: 'user' | 'assistant'; content: string; sources?: unknown },
+  m: { role: 'user' | 'assistant'; content: string; sources?: unknown; version?: number },
 ): void {
   const seqRow = db()
     .prepare('SELECT COALESCE(MAX(seq) + 1, 0) AS next FROM chat_messages WHERE user_id = ? AND doc_id = ?')
     .get(userId, docId) as { next: number }
   db().prepare(
-    `INSERT INTO chat_messages (id, user_id, doc_id, role, content, sources_json, seq, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO chat_messages (id, user_id, doc_id, role, content, sources_json, seq, created_at, version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     genId(), userId, docId, m.role, m.content,
     m.sources === undefined ? null : JSON.stringify(m.sources),
-    seqRow.next, new Date().toISOString(),
+    seqRow.next, new Date().toISOString(), m.version ?? null,
   )
 }
 
