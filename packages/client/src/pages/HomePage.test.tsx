@@ -43,12 +43,16 @@ test('研报行渲染标题、日期、段数', async () => {
   expect(within(row).getByText('2026/8/1')).toBeTruthy()
 })
 
-test('更新过的研报,日期显示最新版本的上传日期', async () => {
-  stubFetch({ docs: [{ ...DOCS[0], latest_version: 2, updated_at: '2026-09-26T00:00:00.000Z' }] })
+test('更新过的研报:日期仍是首次上传日,另挂「vN · M/D 更新」标签', async () => {
+  stubFetch({ docs: [{ ...DOCS[0], latest_version: 3, updated_at: '2026-09-26T00:00:00.000Z' }, DOCS[1]] })
   renderHome()
   const row = (await screen.findByText('腾讯生态产业链投资研究报告')).closest('article')!
-  expect(within(row).getByText('2026/9/26')).toBeTruthy()
-  expect(within(row).queryByText(/2026\/8\/1/)).toBeNull()
+  expect(within(row).getByText('2026/8/1')).toBeTruthy()
+  // 桌面跟在标题后、移动端在日期行前,各一份
+  expect(within(row).getAllByText('v3 · 9/26 更新')).toHaveLength(2)
+  // 没更新过的不挂
+  const plain = screen.getByText('港股互联网:估值重估走到哪一步了').closest('article')!
+  expect(within(plain).queryByText(/更新/)).toBeNull()
 })
 
 test('管理员:移动端「⋯」打开行操作菜单', async () => {

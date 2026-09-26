@@ -14,10 +14,8 @@ import type { DocumentVersion } from '../types'
 /**
  * 阅读页 —— 按「报告详情」「报告详情 移动端」两份设计稿重建。
  *
- * 桌面(≥768):全站顶栏 + [目录 264 | 正文(吸顶工具栏) | 问答 384]。
- *   - 问答栏开着且窗口 <1280 时让出目录(三栏挤不下);
- *   - <1024 时问答栏改为浮在正文之上的覆盖层,不再挤压正文。
- *   这两条都是纯宽度规则,交给 Tailwind 的 lg: / xl:,不走 useIsMobile。
+ * 桌面(≥768):全站顶栏 + [目录 264 | 正文(吸顶工具栏)],问答是浮在右侧的
+ *   卡片(距边 12px、圆角、投影),不占栏宽 —— 打开问答时目录和正文都不挪位置。
  * 移动(<768):返回 + 标题 + 目录按钮的顶栏,底部常驻「问这篇报告」条;
  *   目录、版本、问答都是弹层(antd Drawer:自带遮罩、滚动锁、焦点管理)。
  *
@@ -47,11 +45,12 @@ export default function ReaderPage() {
   const [error, setError] = useState('')
   /** 移动端的弹层:同一时刻最多开一个(都是覆盖式的,叠起来遮罩会点不掉) */
   const [sheet, setSheet] = useState<'toc' | 'ver' | null>(null)
-  // 桌面:沿用 localStorage 记忆,默认展开。
+  // 桌面:默认收起(问答是盖在正文上的浮窗,一进来就开着会挡字),
+  //       手动打开过就记在 localStorage,下次进来沿用。
   // 手机:恒为收起且不写 localStorage——否则一进阅读页就被问答弹层盖掉大半正文。
   // 跨断点缩放窗口时不重置该值:它在两侧语义一致(问答是否可见),重置会让面板莫名开合。
   const [chatOpen, setChatOpen] = useState(() =>
-    isMobile ? false : localStorage.getItem(CHAT_OPEN_KEY) !== '0',
+    isMobile ? false : localStorage.getItem(CHAT_OPEN_KEY) === '1',
   )
   const toolbarRef = useRef<HTMLDivElement>(null)
 
@@ -220,12 +219,8 @@ export default function ReaderPage() {
       </header>
 
       <div className="relative flex min-h-0 flex-1">
-        {/* 桌面目录栏。问答栏开着时 <1280 让位 */}
-        <aside
-          className={`hidden w-[264px] flex-none overflow-y-auto border-r border-rule bg-aside px-6 pb-10 pt-7 ${
-            chatOpen ? 'xl:block' : 'md:block'
-          }`}
-        >
+        {/* 桌面目录栏 */}
+        <aside className="hidden w-[264px] flex-none overflow-y-auto border-r border-rule bg-aside px-6 pb-10 pt-7 md:block">
           <div className="mb-2 border-b border-ink pb-2 text-[12px] tracking-[0.08em] text-ink-mute">目录</div>
           {tocList(false)}
         </aside>
@@ -250,18 +245,17 @@ export default function ReaderPage() {
               )}
               {segments !== undefined && <span className="font-numeral">{segments} 段</span>}
             </div>
-            {!chatOpen && (
-              <button
-                type="button"
-                onClick={() => setChat(true)}
-                aria-controls="chat-panel"
-                aria-expanded={chatOpen}
-                className="flex flex-none cursor-pointer items-center gap-2 rounded bg-navy px-4 py-2 text-[13px] font-medium text-page hover:bg-[#14304D]"
-              >
-                <MessageOutlined aria-hidden />
-                问这篇报告
-              </button>
-            )}
+            {/* 常驻:浮窗开着时再点一下收起 */}
+            <button
+              type="button"
+              onClick={() => setChat(!chatOpen)}
+              aria-controls="chat-panel"
+              aria-expanded={chatOpen}
+              className="flex flex-none cursor-pointer items-center gap-2 rounded bg-navy px-4 py-2 text-[13px] font-medium text-page hover:bg-[#14304D]"
+            >
+              <MessageOutlined aria-hidden />
+              问这篇报告
+            </button>
           </div>
 
           {isOld && latest && viewing && (
@@ -305,14 +299,15 @@ export default function ReaderPage() {
         </main>
 
         {/*
-          桌面问答栏。收起时 display:none 而不是卸载:ChatPanel 带着对话状态,
-          收起再展开不该丢。<1024 浮在正文之上(absolute + 阴影),≥1024 回到流内。
-          ChatPanel 本身(带 SSE / fetch 副作用)只能有一个实例,按 isMobile 二选一挂载。
+          桌面问答浮窗。收起时 display:none 而不是卸载:ChatPanel 带着对话状态,
+          收起再展开不该丢。ChatPanel 本身(带 SSE / fetch 副作用)只能有一个实例,
+          按 isMobile 二选一挂载。
         */}
         <aside
           id={isMobile ? undefined : 'chat-panel'}
+          aria-label="问这篇报告"
           inert={!chatOpen}
-          className={`hidden w-[384px] max-w-full flex-none flex-col border-l border-rule bg-white md:absolute md:inset-y-0 md:right-0 md:z-[6] md:shadow-[-12px_0_32px_rgba(20,22,26,0.12)] lg:static lg:shadow-none ${
+          className={`absolute inset-y-3 right-3 z-[6] hidden w-[384px] max-w-[calc(100%-24px)] flex-col overflow-hidden rounded-lg border border-edge bg-white shadow-[0_16px_48px_-12px_rgba(20,22,26,0.28)] ${
             chatOpen ? 'md:flex' : ''
           }`}
         >

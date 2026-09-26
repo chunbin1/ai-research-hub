@@ -81,17 +81,31 @@ afterEach(() => {
 })
 
 describe('ReaderPage — 问答栏初始状态', () => {
-  it('桌面端默认展开', async () => {
+  // 桌面问答是盖在正文上的浮窗,默认开着会挡字
+  it('桌面端默认收起', async () => {
+    stubMatchMedia(true)
+    renderReader()
+    await screen.findByRole('heading', { name: '第一节' })
+    expect(chatExpanded()).toBe('false')
+  })
+
+  it('桌面端沿用 localStorage 的展开状态', async () => {
+    localStorage.setItem('reader.chatOpen', '1')
     stubMatchMedia(true)
     renderReader()
     await waitFor(() => expect(chatExpanded()).toBe('true'))
   })
 
-  it('桌面端沿用 localStorage 的收起状态', async () => {
-    localStorage.setItem('reader.chatOpen', '0')
+  it('桌面端工具栏按钮常驻,再点一次收起浮窗', async () => {
     stubMatchMedia(true)
     renderReader()
+    const btn = await screen.findByRole('button', { name: '问这篇报告' })
+    btn.click()
+    await waitFor(() => expect(chatExpanded()).toBe('true'))
+    expect(localStorage.getItem('reader.chatOpen')).toBe('1')
+    screen.getByRole('button', { name: '问这篇报告' }).click()
     await waitFor(() => expect(chatExpanded()).toBe('false'))
+    expect(localStorage.getItem('reader.chatOpen')).toBe('0')
   })
 
   it('移动端恒为收起,且忽略 localStorage', async () => {
@@ -137,6 +151,7 @@ describe('ReaderPage — 点来源 chip 的溯源回链', () => {
   })
 
   it('桌面端:点来源后面板保持展开', async () => {
+    localStorage.setItem('reader.chatOpen', '1')
     stubMatchMedia(true)
     const { getByText } = renderReader()
     await waitFor(() => expect(chatExpanded()).toBe('true'))
@@ -148,6 +163,7 @@ describe('ReaderPage — 点来源 chip 的溯源回链', () => {
   })
 
   it('桌面端:手动收起会写进 localStorage', async () => {
+    localStorage.setItem('reader.chatOpen', '1')
     stubMatchMedia(true)
     renderReader()
     await waitFor(() => expect(chatExpanded()).toBe('true'))
@@ -156,8 +172,6 @@ describe('ReaderPage — 点来源 chip 的溯源回链', () => {
 
     await waitFor(() => expect(localStorage.getItem('reader.chatOpen')).toBe('0'))
     expect(chatExpanded()).toBe('false')
-    // 收起后工具栏上重新出现「问这篇报告」入口
-    expect(screen.getByRole('button', { name: '问这篇报告' })).toBeTruthy()
   })
 })
 

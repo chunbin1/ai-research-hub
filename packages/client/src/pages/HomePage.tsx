@@ -14,7 +14,8 @@ import type { Document } from '../types'
  * 桌面是一张「日期 | 标题 | 段数 | 操作」的细线表,管理操作悬停才出现;
  * 移动端每行是标题 + 「日期 · 段数」,管理操作收进「⋯」弹出的底部菜单。
  *
- * 日期取最新版本的上传日期 —— 研报更新过就按更新那天算,不再单独标「v2 · 更新」。
+ * 日期是首次上传日期;更新过的研报另挂一个「v2 · 9/25 更新」标签(桌面跟在标题后,
+ * 移动端在「日期 · 段数」前)。
  *
  * 桌面 / 移动的布局差异全部走 Tailwind 断点(hidden / md:hidden 切换同一份 DOM,
  * display:none 的分支读屏不会重复播报),不用 useIsMobile。
@@ -27,9 +28,28 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
 }
 
-/** 列表上显示的日期:最新版本的上传日期(缓存里的旧列表没有 updated_at,退回创建日期) */
-function docDate(doc: Document): string {
-  return formatDate(doc.updated_at ?? doc.created_at)
+/** 更新标签的日期:M/D,同一行已经有年份了 */
+function formatShortDate(iso: string): string {
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+/**
+ * 「v2 · 9/25 更新」。只给更新过的研报;缓存里的旧列表没有 latest_version,按 1 处理。
+ * size:sm = 移动端 11px,md = 桌面 12px(并按设计稿上提 2px,和标题的衬线基线对齐)。
+ */
+function VersionTag({ doc, size }: { doc: Document; size: 'sm' | 'md' }) {
+  const v = doc.latest_version ?? 1
+  if (v <= 1) return null
+  return (
+    <span
+      className={`flex-none whitespace-nowrap rounded-[3px] bg-[#E4EAF0] text-navy ${
+        size === 'sm' ? 'px-1.5 py-px text-[11px]' : 'relative -top-0.5 px-[7px] py-0.5 text-[12px]'
+      }`}
+    >
+      v{v}{doc.updated_at && ` · ${formatShortDate(doc.updated_at)} 更新`}
+    </span>
+  )
 }
 
 /** 桌面表格的列:日期 | 标题 | 段数 | 操作。表头、骨架、数据行三处共用 */
@@ -142,9 +162,9 @@ export default function HomePage() {
               key={doc.id}
               className={`group relative flex items-start gap-1 border-b border-row-rule py-3.5 transition-colors duration-100 md:py-[18px] md:hover:bg-[#F2F0EA] ${DESKTOP_COLS}`}
             >
-              <span className="hidden font-numeral text-[14px] text-ink-faint md:block">{docDate(doc)}</span>
+              <span className="hidden font-numeral text-[14px] text-ink-faint md:block">{formatDate(doc.created_at)}</span>
 
-              <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5 md:pt-0">
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5 md:flex-row md:flex-wrap md:items-baseline md:gap-x-2.5 md:pt-0">
                 <h2 className="m-0 font-serif-sc text-[16px] font-semibold leading-[1.5] text-ink [text-wrap:pretty] md:text-[18px] md:leading-[1.45]">
                   {/* 整行可点,但只有标题是真链接:伪元素铺满整行做点击区,
                       既保留「新标签页打开 / 键盘可达」,又不用给 article 挂 onClick。
@@ -156,9 +176,13 @@ export default function HomePage() {
                     {doc.filename}
                   </Link>
                 </h2>
-                <span className="font-numeral text-[12px] text-ink-faint md:hidden">
-                  {docDate(doc)} · {doc.chunk_count} 段
-                </span>
+                <span className="hidden md:inline-flex"><VersionTag doc={doc} size="md" /></span>
+                <div className="flex flex-wrap items-center gap-2 md:hidden">
+                  <VersionTag doc={doc} size="sm" />
+                  <span className="font-numeral text-[12px] text-ink-faint">
+                    {formatDate(doc.created_at)} · {doc.chunk_count} 段
+                  </span>
+                </div>
               </div>
 
               <span className="hidden text-right font-numeral text-[14px] text-ink-mute md:block">
