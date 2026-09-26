@@ -120,7 +120,9 @@ export default function HomePage() {
       title: '删除这篇报告?',
       content: doc.filename,
       okText: '删除',
-      okButtonProps: { danger: true },
+      // 两个汉字的按钮 antd 默认会插空格(「删 除」),和站内其他按钮不一致
+      okButtonProps: { danger: true, autoInsertSpace: false },
+      cancelButtonProps: { autoInsertSpace: false },
       cancelText: '取消',
       onOk: async () => { await api.deleteDocument(doc.id); await refresh() },
     })

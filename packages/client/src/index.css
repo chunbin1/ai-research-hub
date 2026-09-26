@@ -52,6 +52,12 @@
   /* 预留滚动条槽。列表页在「骨架 / 缓存 → 真实数据」之间高度会变,不预留的话
      滚动条一出现整页就横向缩一下(Windows / Linux,以及 macOS 开了「始终显示滚动条」)。 */
   html { scrollbar-gutter: stable; }
+  /* antd 的 Modal / Drawer 打开时会锁滚动,并给 body 注入
+     `html body { overflow-y: hidden; width: calc(100% - 滚动条宽) }` 来补偿滚动条消失。
+     但上面已经用 scrollbar-gutter 把槽位留住了,滚动条藏起来槽还在 —— 再减一次宽度
+     就是重复补偿,整页在弹窗开合时横向抖一个滚动条宽。这里把宽度钉回 auto。
+     antd 注入的是不分层的样式,分层样式只有加 !important 才压得过。 */
+  html body { width: auto !important; }
   /* 阅读页是 h-dvh 的应用外壳,整页本来就不滚动 —— 那条预留的槽在它右侧
      只会留一道空白,这里收掉。类名挂在 ReaderPage 根节点上。 */
   html:has(.reader-shell) { scrollbar-gutter: auto; }
