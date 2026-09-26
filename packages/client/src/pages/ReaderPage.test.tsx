@@ -7,8 +7,11 @@ import ReaderPage from './ReaderPage'
 // ChatPanel 真身依赖 SSE / fetch,这里换成只暴露一个「来源」按钮的替身,
 // 测的是 ReaderPage 自己的溯源回链行为,不是 ChatPanel 内部。
 vi.mock('../components/ChatPanel', () => ({
-  default: ({ onCite }: { onCite: (slug: string) => void }) => (
-    <button onClick={() => onCite('第一节')}>来源 §第一节</button>
+  default: ({ onCite, onClose }: { onCite: (slug: string) => void; onClose?: () => void }) => (
+    <>
+      <button onClick={() => onCite('第一节')}>来源 §第一节</button>
+      <button onClick={onClose}>收起问答</button>
+    </>
   ),
 }))
 
@@ -31,10 +34,14 @@ function renderReader() {
   )
 }
 
-/** toggle 按钮的展开态:靠 aria-controls 定位,不依赖文案 */
+/**
+ * 移动端底部的「问这篇报告… 提问」条。它在桌面上是 display:none,但一直挂在 DOM 里、
+ * aria-expanded 始终反映问答是否打开 —— 桌面 / 移动两边都拿它读状态。
+ * (桌面工具栏上的「问这篇报告」按钮在面板打开后就不渲染了,读不了状态。)
+ */
 function chatToggle(): HTMLElement {
-  const btn = document.querySelector('button[aria-controls="chat-panel"]')
-  if (!btn) throw new Error('找不到问答栏 toggle 按钮')
+  const btn = document.querySelector('button[aria-label="打开问答"]')
+  if (!btn) throw new Error('找不到打开问答的按钮')
   return btn as HTMLElement
 }
 function chatExpanded(): string | null {
@@ -74,17 +81,31 @@ afterEach(() => {
 })
 
 describe('ReaderPage — 问答栏初始状态', () => {
-  it('桌面端默认展开', async () => {
+  // 桌面问答是盖在正文上的浮窗,默认开着会挡字
+  it('桌面端默认收起', async () => {
+    stubMatchMedia(true)
+    renderReader()
+    await screen.findByRole('heading', { name: '第一节' })
+    expect(chatExpanded()).toBe('false')
+  })
+
+  it('桌面端沿用 localStorage 的展开状态', async () => {
+    localStorage.setItem('reader.chatOpen', '1')
     stubMatchMedia(true)
     renderReader()
     await waitFor(() => expect(chatExpanded()).toBe('true'))
   })
 
-  it('桌面端沿用 localStorage 的收起状态', async () => {
-    localStorage.setItem('reader.chatOpen', '0')
+  it('桌面端工具栏按钮常驻,再点一次收起浮窗', async () => {
     stubMatchMedia(true)
     renderReader()
+    const btn = await screen.findByRole('button', { name: '问这篇报告' })
+    btn.click()
+    await waitFor(() => expect(chatExpanded()).toBe('true'))
+    expect(localStorage.getItem('reader.chatOpen')).toBe('1')
+    screen.getByRole('button', { name: '问这篇报告' }).click()
     await waitFor(() => expect(chatExpanded()).toBe('false'))
+    expect(localStorage.getItem('reader.chatOpen')).toBe('0')
   })
 
   it('移动端恒为收起,且忽略 localStorage', async () => {
@@ -130,6 +151,7 @@ describe('ReaderPage — 点来源 chip 的溯源回链', () => {
   })
 
   it('桌面端:点来源后面板保持展开', async () => {
+    localStorage.setItem('reader.chatOpen', '1')
     stubMatchMedia(true)
     const { getByText } = renderReader()
     await waitFor(() => expect(chatExpanded()).toBe('true'))
@@ -141,13 +163,15 @@ describe('ReaderPage — 点来源 chip 的溯源回链', () => {
   })
 
   it('桌面端:手动收起会写进 localStorage', async () => {
+    localStorage.setItem('reader.chatOpen', '1')
     stubMatchMedia(true)
     renderReader()
     await waitFor(() => expect(chatExpanded()).toBe('true'))
 
-    chatToggle().click()
+    screen.getByText('收起问答').click()
 
     await waitFor(() => expect(localStorage.getItem('reader.chatOpen')).toBe('0'))
+    expect(chatExpanded()).toBe('false')
   })
 })
 

@@ -38,9 +38,30 @@ test('研报行渲染标题、日期、段数', async () => {
   renderHome()
 
   const row = (await screen.findByText('腾讯生态产业链投资研究报告')).closest('article')!
-  expect(within(row).getByText('47 段')).toBeTruthy()
-  // 日期在桌面列与移动行里各渲染一次(另一份被 display:none 藏起来),两处都要有
-  expect(within(row).getAllByText(/2026\/8\/1/)).toHaveLength(2)
+  // 桌面的段数列 + 移动端的「日期 · 段数」行(另一份被 display:none 藏起来),两处都要有
+  expect(within(row).getByText('2026/8/1 · 47 段')).toBeTruthy()
+  expect(within(row).getByText('2026/8/1')).toBeTruthy()
+})
+
+test('更新过的研报:日期仍是首次上传日,另挂「vN · M/D 更新」标签', async () => {
+  stubFetch({ docs: [{ ...DOCS[0], latest_version: 3, updated_at: '2026-09-26T00:00:00.000Z' }, DOCS[1]] })
+  renderHome()
+  const row = (await screen.findByText('腾讯生态产业链投资研究报告')).closest('article')!
+  expect(within(row).getByText('2026/8/1')).toBeTruthy()
+  // 桌面跟在标题后、移动端在日期行前,各一份
+  expect(within(row).getAllByText('v3 · 9/26 更新')).toHaveLength(2)
+  // 没更新过的不挂
+  const plain = screen.getByText('港股互联网:估值重估走到哪一步了').closest('article')!
+  expect(within(plain).queryByText(/更新/)).toBeNull()
+})
+
+test('管理员:移动端「⋯」打开行操作菜单', async () => {
+  stubFetch({ user: ADMIN })
+  renderHome()
+  const more = await screen.findByRole('button', { name: '「腾讯生态产业链投资研究报告」的更多操作' })
+  more.click()
+  await waitFor(() => expect(document.querySelector('.home-row-menu.ant-drawer-open')).toBeTruthy())
+  expect(screen.getByRole('button', { name: '上传新版本' })).toBeTruthy()
 })
 
 // 市场 / 行业标签只能从标题关键词猜,猜错不会报错、只会安静地标错,
@@ -87,7 +108,8 @@ test('非管理员看不到上传入口、删除按钮和管理员栏目', async
   await screen.findByText('腾讯生态产业链投资研究报告')
 
   expect(screen.queryByText('上传研报')).toBeNull()
-  expect(screen.queryByText('删除')).toBeNull()
+  expect(screen.queryByRole('button', { name: /删除/ })).toBeNull()
+  expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull()
   expect(screen.queryByText('评估')).toBeNull()
   expect(screen.queryByText('站点模型')).toBeNull()
   // 信号对所有人开放

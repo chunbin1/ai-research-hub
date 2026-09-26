@@ -52,6 +52,12 @@
   /* 预留滚动条槽。列表页在「骨架 / 缓存 → 真实数据」之间高度会变,不预留的话
      滚动条一出现整页就横向缩一下(Windows / Linux,以及 macOS 开了「始终显示滚动条」)。 */
   html { scrollbar-gutter: stable; }
+  /* antd 的 Modal / Drawer 打开时会锁滚动,并给 body 注入
+     `html body { overflow-y: hidden; width: calc(100% - 滚动条宽) }` 来补偿滚动条消失。
+     但上面已经用 scrollbar-gutter 把槽位留住了,滚动条藏起来槽还在 —— 再减一次宽度
+     就是重复补偿,整页在弹窗开合时横向抖一个滚动条宽。这里把宽度钉回 auto。
+     antd 注入的是不分层的样式,分层样式只有加 !important 才压得过。 */
+  html body { width: auto !important; }
   /* 阅读页是 h-dvh 的应用外壳,整页本来就不滚动 —— 那条预留的槽在它右侧
      只会留一道空白,这里收掉。类名挂在 ReaderPage 根节点上。 */
   html:has(.reader-shell) { scrollbar-gutter: auto; }
@@ -68,63 +74,91 @@
 
 @layer components {
   /* 报告正文:react-markdown 输出原生标签,挂不上 utility class,只能用后代选择器。
-     这里大部分取值是从被删掉的 ReaderPage.module.css 原样搬过来的;
-     只有标题字号字重、列表项目符号、链接颜色,以及下面这些外边距,是专门用来抵消
-     Tailwind preflight 重置(font-weight: inherit / margin: 0 / list-style: none 等)的——
-     这几项对应的是「迁移前浏览器默认值」,不是模块 CSS 里写的数字。 */
-  .report-body { line-height: 1.75; }
-  .report-body h1 { font-size: 26px; font-weight: 700; margin: 0 0 20px; line-height: 1.35; }
-  .report-body h2 { font-size: 24px; font-weight: 700; margin-top: 32px; margin-bottom: 19.92px;
-                    border-bottom: 1px solid #eee; padding-bottom: 6px; }
-  .report-body h3 { font-size: 18.72px; font-weight: 700; margin-top: 24px; margin-bottom: 18.72px; }
-  .report-body h4 { font-size: 16px; font-weight: 700; margin: 21.28px 0; }
-  .report-body h5 { font-size: 13.28px; font-weight: 700; margin: 22.18px 0; }
-  .report-body h6 { font-size: 10.72px; font-weight: 700; margin: 24.98px 0; }
-  .report-body p { margin: 12px 0; }
-  .report-body a { color: #0969da; text-decoration: underline; }
-  .report-body ul { list-style: disc; padding-left: 22px; margin: 16px 0; }
-  .report-body ol { list-style: decimal; padding-left: 22px; margin: 16px 0; }
+     排版按阅读页改版稿(报告详情 / 报告详情 移动端):衬线中文标题、正文 #2A2D33、
+     细线表格、区块分隔用 rule 色。移动端先写,md 起放大到桌面稿的字号。
+     注意 preflight 把 font-weight / margin / list-style 都抹掉了,这里凡是
+     需要「浏览器默认样子」的地方都得显式写回来。 */
+  .report-body { font-size: 15px; line-height: 1.85; color: #2A2D33; }
+  .report-body h1, .report-body h2, .report-body h3, .report-body h4 {
+    font-family: var(--font-serif-sc); color: var(--color-ink); text-wrap: pretty;
+  }
+  .report-body h1 { font-size: 26px; font-weight: 700; line-height: 1.4; margin: 0 0 24px; }
+  .report-body h2 { font-size: 20px; font-weight: 600; line-height: 1.45; margin: 36px 0 16px;
+                    padding-bottom: 10px; border-bottom: 1px solid var(--color-rule); }
+  .report-body h3 { font-size: 17px; font-weight: 600; line-height: 1.5; margin: 28px 0 12px; }
+  .report-body h4 { font-size: 15px; font-weight: 600; margin: 22px 0 10px; }
+  .report-body h5, .report-body h6 { font-size: 14px; font-weight: 600; margin: 20px 0 8px; }
+  .report-body p { margin: 12px 0; text-wrap: pretty; }
+  .report-body strong { font-weight: 600; color: var(--color-ink); }
+  .report-body a { color: var(--color-navy); text-decoration: underline; text-underline-offset: 2px;
+                   text-decoration-color: var(--color-navy-edge); }
+  .report-body a:hover { color: var(--color-brick); }
+  .report-body ul { list-style: disc; padding-left: 22px; margin: 14px 0; }
+  .report-body ol { list-style: decimal; padding-left: 22px; margin: 14px 0; }
   .report-body li { margin: 4px 0; }
-  .report-body code:not(pre code) { font-size: 13.33px; }
-  .report-body table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px;
-                       display: block; overflow-x: auto; }
-  .report-body th, .report-body td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; }
-  .report-body th { background: #f5f5f2; }
-  .report-body blockquote { border-left: 3px solid var(--color-gold); margin: 16px 0; padding: 4px 16px;
-                            color: #555; background: var(--color-gold-wash); }
-  .report-body pre { background: #f6f6f4; padding: 14px; border-radius: 8px; overflow-x: auto;
-                     font-size: 13px; line-height: 1.5; }
+  .report-body li::marker { color: var(--color-ink-faint); }
+  .report-body code:not(pre code) { font-size: 0.88em; background: var(--color-aside);
+                                    border-radius: 3px; padding: 1px 4px; }
+  /* 表格:设计稿的「上粗线 + 表头细线 + 行间淡线」,不画竖线。
+     外包一层横向滚动容器(2–3 列的窄表在手机上偶尔也会撑宽)。 */
+  .report-body .md-table-scroll { overflow-x: auto; margin: 18px 0; }
+  .report-body table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.75;
+                       border-top: 1px solid var(--color-ink); }
+  .report-body th { padding: 10px 12px; font-size: 12px; font-weight: 400; color: var(--color-ink-mute);
+                    text-align: left; border-bottom: 1px solid var(--color-edge); white-space: nowrap; }
+  .report-body td { padding: 12px; text-align: left; vertical-align: top;
+                    border-bottom: 1px solid var(--color-row-rule); }
+  .report-body th:first-child, .report-body td:first-child { padding-left: 0; }
+  .report-body th:last-child, .report-body td:last-child { padding-right: 0; }
+  .report-body td:first-child { font-weight: 500; color: var(--color-ink); }
+  /* 移动端卡片排版(≥4 列的表,见 ReportMarkdown):一行一张,首列作标题,
+     其余列「表头 值」两栏对齐 —— 移动稿「偏见自觉」那一节的样子。 */
+  .report-body .md-cards { margin: 18px 0; border-top: 1px solid var(--color-ink); }
+  .report-body .md-card { padding: 14px 0; border-bottom: 1px solid var(--color-row-rule); }
+  .report-body .md-card-title { font-size: 15px; font-weight: 600; line-height: 1.6; color: var(--color-ink);
+                                margin-bottom: 8px; }
+  .report-body .md-card dl { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  .report-body .md-card-row { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 10px;
+                              font-size: 14px; line-height: 1.7; }
+  .report-body .md-card-row dt { font-size: 12px; color: var(--color-ink-faint); padding-top: 2px; }
+  .report-body .md-card-row dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .report-body .md-card-row dt:only-child, .report-body .md-card-row dd:only-child { grid-column: 1 / -1; }
+  .report-body blockquote { margin: 18px 0; padding: 12px 16px; color: var(--color-ink-soft);
+                            background: var(--color-aside); border-left: 2px solid var(--color-edge); }
+  .report-body blockquote p { margin: 4px 0; }
+  .report-body pre { background: var(--color-aside); padding: 14px; border-radius: 4px; overflow-x: auto;
+                     font-size: 13px; line-height: 1.5; border: 1px solid var(--color-row-rule); }
   .report-body pre code { white-space: pre; font-family: "SF Mono", Menlo, Consolas, monospace; }
-  .report-body hr { border: none; border-top: 1px solid #eee; margin: 28px 0; }
+  .report-body hr { border: none; border-top: 1px solid var(--color-rule); margin: 32px 0; }
   .report-body :target { background: #fff6d6; transition: background 1.2s; }
   .report-body .flash { animation: flash 1.6s ease; }
+  @media (min-width: 768px) {
+    .report-body { font-size: 16px; line-height: 1.9; }
+    .report-body h1 { font-size: 34px; line-height: 1.35; margin-bottom: 32px; }
+    .report-body h2 { font-size: 24px; margin: 44px 0 18px; padding-bottom: 12px; }
+    .report-body h3 { font-size: 19px; margin: 32px 0 14px; }
+    .report-body h4 { font-size: 16px; }
+    .report-body td { padding: 14px 12px; }
+  }
 
   /* 问答气泡里的 assistant markdown,同样是原生标签 */
   .chat-md p { margin: 6px 0; }
-  .chat-md a { color: #0969da; text-decoration: underline; }
+  .chat-md a { color: var(--color-navy); text-decoration: underline; }
   .chat-md ul { list-style: disc; padding-left: 20px; margin: 6px 0; }
   .chat-md ol { list-style: decimal; padding-left: 20px; margin: 6px 0; }
   .chat-md li { margin: 2px 0; }
   .chat-md strong { font-weight: 600; }
-  .chat-md code { background: #f0f0ed; border-radius: 4px; padding: 1px 4px; font-size: 13px; }
+  .chat-md code { background: var(--color-aside); border-radius: 4px; padding: 1px 4px; font-size: 13px; }
   .chat-md h1 { font-size: 18px; font-weight: 600; margin: 8px 0; }
   .chat-md h2 { font-size: 16px; font-weight: 600; margin: 8px 0; }
   .chat-md h3 { font-size: 15px; font-weight: 600; margin: 8px 0; }
   .chat-md h4, .chat-md h5, .chat-md h6 { font-size: 14px; font-weight: 600; margin: 8px 0; }
-  .chat-md blockquote { border-left: 3px solid var(--color-gold); margin: 8px 0; padding: 2px 10px; color: #555; }
+  .chat-md blockquote { border-left: 2px solid var(--color-edge); margin: 8px 0; padding: 2px 10px; color: var(--color-ink-soft); }
   .chat-md hr { border: none; border-top: 1px solid #eee; margin: 10px 0; }
   .chat-md table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px;
                    display: block; overflow-x: auto; }
   .chat-md th, .chat-md td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
-  .chat-md th { background: #f5f5f2; }
-
-  /* 移动端问答面板(antd Drawer,placement="bottom"):底部条实际高度是
-     h-[calc(2.75rem+env(safe-area-inset-bottom))](ReaderPage.tsx 里问答 toggle
-     按钮的高度,已核对);这里把 Drawer 内容层的 bottom 顶到底部条上沿,
-     两者严丝合缝、不留缝也不重叠。 */
-  .reader-chat-drawer .ant-drawer-content-wrapper {
-    bottom: calc(2.75rem + env(safe-area-inset-bottom));
-  }
+  .chat-md th { background: var(--color-aside); }
 
   /* 移动端首页的两条横滑行(栏目导航 / 板块胶囊)。设计稿要求「横向可滑但不见滚动条」,
      两处规则完全一致,写成一个类而不是两串 [&::-webkit-scrollbar]: 任意变体。 */

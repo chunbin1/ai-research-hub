@@ -75,7 +75,7 @@ export function SiteHeader({
 
   return (
     <>
-      <header className="flex items-center justify-between gap-4 border-b border-rule px-[18px] py-3.5 md:px-7 md:py-5 lg:px-10">
+      <header className="flex items-center justify-between gap-4 border-b border-rule py-2.5 pl-[18px] pr-3 md:px-7 md:py-5 lg:px-10">
         {mobile && (
           <div className="flex min-w-0 items-center gap-2.5 md:hidden">
             <Link to={mobile.backTo} aria-label="返回" className="tap-44 text-[18px] leading-none text-ink">
@@ -109,10 +109,10 @@ export function SiteHeader({
           </nav>
         </div>
 
-        {/* 右侧操作区的高度锁死在「上传按钮」那一档(移动 34.5 / 桌面 37.5,量出来的
+        {/* 右侧操作区的高度锁死在「上传按钮」那一档(移动 44 / 桌面 37.5,量出来的
             边框盒高度)。这一格的内容要等 /api/auth/me 回来才定型——不锁的话管理员
             每次进站都是顶栏先 54.5/73px、拿到登录态后弹到 62.5/77.5px,整页跟着下移。 */}
-        <div className="flex min-h-[34.5px] items-center gap-3 md:min-h-[37.5px] md:gap-[18px]">
+        <div className="flex min-h-11 items-center gap-1 md:min-h-[37.5px] md:gap-[18px]">
           {isAdmin && (
             // 移动端的信号追踪顶栏只留头像,上传入口在这一档不出现
             <span className={mobile ? 'hidden md:block' : ''}>
@@ -121,13 +121,14 @@ export function SiteHeader({
                 showUploadList={false}
                 beforeUpload={file => { void handleUpload(file); return false }}
               >
+                {/* 移动端只留图标(44×44 热区),桌面是带字的描边按钮 */}
                 <button
                   type="button"
                   disabled={uploading}
-                  className="tap-44 flex items-center gap-1.5 rounded-[4px] border border-navy-edge bg-white px-3 py-[7px] text-[12px] text-navy transition-[border-color,background] duration-150 hover:border-navy hover:bg-navy-wash md:gap-2 md:px-[15px] md:py-2 md:text-[13px]"
+                  aria-label={uploading ? '上传中' : '上传研报'}
+                  className="flex size-11 items-center justify-center text-navy transition-[border-color,background] duration-150 disabled:opacity-50 md:size-auto md:gap-2 md:rounded-[4px] md:border md:border-navy-edge md:bg-white md:px-[15px] md:py-2 md:text-[13px] md:hover:border-navy md:hover:bg-navy-wash"
                 >
-                  <UploadOutlined className="text-[13px] md:text-[14px]" aria-hidden />
-                  <span className="md:hidden">{uploading ? '上传中' : '上传'}</span>
+                  <UploadOutlined className="text-[20px] md:text-[14px]" aria-hidden />
                   <span className="hidden md:inline">{uploading ? '上传中…' : '上传研报'}</span>
                 </button>
               </Upload>
