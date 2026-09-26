@@ -50,6 +50,13 @@ test('沿用传入的 doc_id,不另生成', () => {
   assert.ok(getDocument('doc_1785581340014_8pha'))
 })
 
+// 写成导入那一刻的话,这批老研报会整体排到导入前上传的新研报前面。
+test('新登记的行 created_at 取 id 里的上传时刻,不是导入时刻', () => {
+  const db = freshDb()
+  importRawDocs(db, ['doc_1785581340014_8pha'], reader({ doc_1785581340014_8pha: MD_A }))
+  assert.equal(getDocument('doc_1785581340014_8pha')?.created_at, new Date(1785581340014).toISOString())
+})
+
 test('没有 H1 时退回用 doc_id 当标题', () => {
   const db = freshDb()
   const out = importRawDocs(db, ['doc_b'], reader({ doc_b: MD_NO_TITLE }))

@@ -21,6 +21,7 @@ export function initDocumentTable(db: DB): void {
   `)
   // 列表要带出最新版本号,两张表总是一起建。
   initVersionTable(db)
+  repairCreatedAt(db)
 }
 
 function db(): DB {
@@ -28,16 +29,60 @@ function db(): DB {
   return _db
 }
 
-function genId(): string {
-  return `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+function genId(now = Date.now()): string {
+  return `doc_${now}_${Math.random().toString(36).slice(2, 6)}`
+}
+
+/**
+ * 从 doc_id 里读出上传时刻。genId 把毫秒时间戳编进了 id,所以 id 本身就是
+ * 「这篇是什么时候传上来的」最可靠的记录 —— 行会被 import:raw 重建,id 不会变。
+ * 不是这个格式(测试里的 doc_a、外来的 id)返回 null。
+ */
+export function uploadedAtFromId(id: string): string | null {
+  const m = /^doc_(\d{13})_/.exec(id)
+  return m ? new Date(Number(m[1])).toISOString() : null
+}
+
+/**
+ * 把 created_at 校正回 id 里记的上传时刻。
+ *
+ * 历史上 import:raw 登记新行时写的是「导入那一刻」,于是一批老研报全挤在同一个
+ * 时间戳上,排到了之前上传的新研报前面,首页显示的日期也是错的。版本迁移又把这个
+ * 错值原样抄成了 v1 的时间,而列表的「更新时间」取的是最新版的时间 —— 只有 v1 的
+ * 文档,v1 错了排序就是错的。
+ *
+ * documents 行与 v1 都代表首次上传,都该等于 id 里的时刻,两处各自按这条校正。
+ * 偏差在一分钟内的不动(正常上传只差几毫秒)。幂等,每次启动跑一遍,行数很少。
+ */
+function repairCreatedAt(db: DB): void {
+  const targets = [
+    { select: 'SELECT id, created_at FROM documents', fix: 'UPDATE documents SET created_at = ? WHERE id = ?' },
+    {
+      select: 'SELECT doc_id AS id, created_at FROM document_versions WHERE version = 1',
+      fix: 'UPDATE document_versions SET created_at = ? WHERE doc_id = ? AND version = 1',
+    },
+  ]
+  db.transaction(() => {
+    for (const t of targets) {
+      const rows = db.prepare(t.select).all() as { id: string; created_at: string }[]
+      const fix = db.prepare(t.fix)
+      for (const { id, created_at } of rows) {
+        const uploadedAt = uploadedAtFromId(id)
+        if (uploadedAt && Math.abs(Date.parse(created_at) - Date.parse(uploadedAt)) > 60_000) {
+          fix.run(uploadedAt, id)
+        }
+      }
+    }
+  })()
 }
 
 type DocSummary = { filename: string; size_bytes: number; chunk_count: number }
 
 /** 只建 documents 行。版本记录由 documentVersion.createVersion 负责。 */
 export function saveDocument(opts: DocSummary): Document {
-  const id = genId()
-  const created_at = new Date().toISOString()
+  const now = Date.now()
+  const id = genId(now)
+  const created_at = new Date(now).toISOString()
   db().prepare(
     'INSERT INTO documents (id, filename, size_bytes, chunk_count, created_at) VALUES (?, ?, ?, ?, ?)',
   ).run(id, opts.filename, opts.size_bytes, opts.chunk_count, created_at)
@@ -62,7 +107,8 @@ const SELECT_DOC = `
 `
 
 export function getAllDocuments(): Document[] {
-  return db().prepare(`${SELECT_DOC} ORDER BY d.created_at DESC`).all() as Document[]
+  // 按更新时间排:给老研报传了新版本,它也该回到最前面,而不是停在首次上传的位置。
+  return db().prepare(`${SELECT_DOC} ORDER BY updated_at DESC, d.id DESC`).all() as Document[]
 }
 
 export function getDocument(id: string): Document | null {
