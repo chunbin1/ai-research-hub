@@ -139,14 +139,6 @@
   .report-body :target { background: #fff6d6; transition: background 1.2s; }
   .report-body .flash { animation: flash 1.6s ease; }
   @media (min-width: 768px) {
-    /* 版心:正文靠左固定,宽 760(一行约 44 个汉字)。右侧留出问答浮窗的位置 ——
-       浮窗 368 宽、距右 16,再空 16 → 离窗口右沿 400;正文区自带 48 右内边距,
-       所以版心最多到「内容宽 - 352」。宽度只跟窗口有关、跟问答开没开无关,
-       打开问答时正文一个像素都不动。窄屏上保底 560,这时问答打开会盖住正文右边一截。
-       宽表(.md-wide,6 列起)不受版心限制,吃满内容区;问答打开时它的右半截被盖住。 */
-    .report-body { --measure: clamp(560px, calc(100% - 352px), 760px); }
-    .report-body > * { max-width: var(--measure); }
-    .report-body > .md-wide { max-width: none; }
     .report-body { font-size: 16px; line-height: 1.9; }
     .report-body h1 { font-size: 34px; line-height: 1.35; margin-bottom: 32px; }
     .report-body h2 { font-size: 24px; margin: 44px 0 18px; padding-bottom: 12px; }

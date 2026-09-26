@@ -12,13 +12,6 @@ import rehypeSlug from 'rehype-slug'
 const CARD_MIN_COLS = 4
 
 /**
- * 桌面端「宽表」的列数门槛:6 列起的表不受正文版心限制,吃满内容区宽度
- * (`.md-wide`,见 index.css)。9 列的上市公司扫描表挤在版心里,价格、市值
- * 全折成两三行;5 列以内在版心里放得下,留在版心里和正文对齐更整齐。
- */
-const WIDE_MIN_COLS = 6
-
-/**
  * 数字单元格:可带正负号 / 约数符号 / 币种符号,紧跟着是数字。
  * 「$114.53」「-$93.6亿」「290x」「30-45%(估计)」「2026-08-06」都算。
  */
@@ -82,13 +75,12 @@ const Table: Components['table'] = ({ children }) => {
     ? children
     : sections.map(s => cloneElement(s, undefined, elementChildren(s).map(markRow)))
 
-  const wide = headers.length >= WIDE_MIN_COLS ? ' md-wide' : ''
-  const table = <div className={`md-table-scroll${wide}`}><table>{body}</table></div>
+  const table = <div className="md-table-scroll"><table>{body}</table></div>
   if (headers.length < CARD_MIN_COLS || rows.length === 0) return table
 
   return (
     <>
-      <div className={`hidden md:block${wide}`}>{table}</div>
+      <div className="hidden md:block">{table}</div>
       <div className="md-cards md:hidden">
         {rows.map((cells, i) => (
           <section key={i} className="md-card">

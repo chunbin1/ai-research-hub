@@ -14,9 +14,10 @@ import type { DocumentVersion } from '../types'
  * 阅读页 —— 按「报告详情」「报告详情 移动端」两份设计稿重建。
  *
  * 桌面(≥768):全站顶栏 + [目录 232 | 正文(吸顶工具栏)],问答是浮在右侧的
- *   卡片(距边 16px、圆角、投影),不占栏宽 —— 打开问答时目录和正文都不挪位置。
- *   正文版心靠左固定、宽 760,右侧留出的空白正好放问答卡片,所以卡片不挡正文;
- *   6 列起的宽表不受版心限制,吃满内容区(版心规则见 index.css 的 .report-body)。
+ *   卡片(距上下 12px、距右 16px,圆角、投影),不占栏宽 —— 打开问答时目录和正文
+ *   都不挪位置,卡片直接盖在正文上。
+ *   正文吃满内容区(不再给问答留右侧空白,那块平时空着太浪费),表格和正文同宽;
+ *   超宽屏上限 1120 居中,免得一行长到读不下去。
  * 移动(<768):返回 + 标题 + 目录按钮的顶栏,底部常驻「问这篇报告」条;
  *   目录、版本、问答都是弹层(antd Drawer:自带遮罩、滚动锁、焦点管理)。
  *
@@ -288,8 +289,8 @@ export default function ReaderPage() {
             </div>
           )}
 
-          {/* 桌面不居中:版心靠左固定,右边留给问答卡片(见 index.css 的 .report-body) */}
-          <div className="px-5 pb-10 pt-6 md:px-12 md:pb-24 md:pt-11">
+          {/* 桌面:正文吃满内容区,上限 1120(+ 两侧各 48 内边距)居中 */}
+          <div className="mx-auto max-w-[1216px] px-5 pb-10 pt-6 md:px-12 md:pb-24 md:pt-11">
             {/* 移动端版本行(桌面的在工具栏里) */}
             {viewing && latest && (
               <div className="mb-3 flex flex-wrap items-center gap-2.5 md:hidden">
@@ -322,7 +323,7 @@ export default function ReaderPage() {
             chatOpen ? 'md:flex' : ''
           }`}
         >
-          {!isMobile && <ChatPanel {...chatProps} onClose={() => setChat(false)} />}
+          {!isMobile && <ChatPanel {...chatProps} open={chatOpen} onClose={() => setChat(false)} />}
         </aside>
       </div>
 
@@ -403,7 +404,7 @@ export default function ReaderPage() {
             rootClassName="reader-chat-drawer"
             styles={{ body: { padding: 0, overflow: 'hidden' }, section: { borderRadius: '14px 14px 0 0' } }}
           >
-            <ChatPanel {...chatProps} variant="sheet" onClose={() => setChatOpen(false)} />
+            <ChatPanel {...chatProps} variant="sheet" open={chatOpen} onClose={() => setChatOpen(false)} />
           </Drawer>
         </>
       )}

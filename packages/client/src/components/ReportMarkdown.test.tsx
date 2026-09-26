@@ -56,23 +56,13 @@ describe('ReportMarkdown — 移动端表格卡片', () => {
   })
 })
 
-describe('ReportMarkdown — 宽表与数字列', () => {
+describe('ReportMarkdown — 数字列', () => {
   const scan = `| 公司 | 代码 | 股价 | 市值 | PS | 净利 | 环节 |
 | --- | --- | --- | --- | --- | --- | --- |
 | SpaceX | SPCX | $114.53 | $1,508亿×10=$1.51万亿 | 78x | -$93.6亿 | 发射+星座+AI |
 | Rocket Lab | RKLB | $70.43 | $421亿 | **62x** | -$1.83亿 | 发射+整星 |
 | Relativity | 未上市 | — | — | — | N/A | 发射 |
 `
-
-  it('6 列起:桌面那份表格标成宽表,不受正文版心限制', () => {
-    const { container } = render(<ReportMarkdown markdown={scan} />)
-    expect(container.querySelector('.md-wide table')).not.toBeNull()
-  })
-
-  it('5 列以内不是宽表', () => {
-    const { container } = render(<ReportMarkdown markdown={fixture} />)
-    expect(container.querySelector('.md-wide')).toBeNull()
-  })
 
   it('整列都是数字的列挂 num(表头也挂),文字列和首列不挂', () => {
     const { container } = render(<ReportMarkdown markdown={scan} />)
