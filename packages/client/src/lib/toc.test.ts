@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest'
-import { extractToc, outlineOf, visibleOutline } from './toc'
+import { extractToc, outlineOf, outlineOwner, visibleOutline } from './toc'
 
 test('提取标题与 slug,与后端 slugger 同款', () => {
   const md = '# 标题A\n\n正文\n\n## 1.3 大事件的规律与启示\n\n内容'
@@ -30,4 +30,16 @@ test('目录折叠:章全部列出,节只列当前章的', () => {
   expect(titles('第二章')).toEqual(['第一章', '第二章', '2.1 小节'])
   // 还没读到任何标题:只列章
   expect(titles('')).toEqual(['第一章', '第二章'])
+})
+
+test('深层标题归到它前面最近的目录项', () => {
+  const toc = extractToc('# 标题\n\n## 第一章\n\n### 1.1 小节\n\n#### 更深的标题\n\n## 第二章')
+  const items = outlineOf(toc)
+  expect(outlineOwner(toc, items, '更深的标题')).toBe('11-小节')
+  // 本身就在目录里的,就是它自己
+  expect(outlineOwner(toc, items, '第二章')).toBe('第二章')
+  // 目录之前的 h1:不归任何一条
+  expect(outlineOwner(toc, items, '标题')).toBe('')
+  // 不存在的 slug 原样返回
+  expect(outlineOwner(toc, items, '没有这个')).toBe('没有这个')
 })

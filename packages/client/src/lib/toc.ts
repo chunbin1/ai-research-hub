@@ -46,3 +46,17 @@ export function visibleOutline(items: OutlineItem[], activeSlug: string): Outlin
   const activeChapter = items.find(t => t.slug === activeSlug)?.chapter ?? ''
   return items.filter(t => t.top || t.chapter === activeChapter)
 }
+
+/**
+ * 某个标题在目录里「算作」哪一条:它本身在目录里就是它自己;更深的标题(四级、
+ * 表格前的小标题)归到它前面最近的一条目录项。问答引用常常指向这种深层标题,
+ * 直接拿它去高亮,目录里找不到它 —— 什么都不亮、各章全收起。
+ * 标题不存在返回它自己(交给后续滚动重算);在第一条目录项之前(比如 h1)返回 ''。
+ */
+export function outlineOwner(toc: ReturnType<typeof extractToc>, items: OutlineItem[], slug: string): string {
+  const at = toc.findIndex(t => t.slug === slug)
+  if (at < 0) return slug
+  const listed = new Set(items.map(t => t.slug))
+  for (let i = at; i >= 0; i--) if (listed.has(toc[i].slug)) return toc[i].slug
+  return ''
+}

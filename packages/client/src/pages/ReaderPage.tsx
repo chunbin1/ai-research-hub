@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Drawer } from 'antd'
 import { CloseOutlined, DownOutlined, LeftOutlined, MessageOutlined, RightOutlined } from '@ant-design/icons'
 import { api } from '../api'
-import { extractToc, outlineOf, visibleOutline } from '../lib/toc'
+import { extractToc, outlineOf, outlineOwner, visibleOutline } from '../lib/toc'
 import { useIsMobile } from '../hooks/useIsMobile'
 import ReportMarkdown from '../components/ReportMarkdown'
 import ChatPanel from '../components/ChatPanel'
@@ -150,8 +150,11 @@ export default function ReaderPage() {
       setChatOpen(false)
       setSheet(null)
     }
-    setActiveSlug(slug)
-    pinnedSlug.current = slug
+    // 问答引用可能指向目录里没有的深层标题(四级标题等):高亮 / 锁定它所属的那条目录项,
+    // 页面仍然滚到这个标题本身。为空(标题在第一条目录项之前)就不锁,交给滚动重算。
+    const owner = outlineOwner(toc, tocItems, slug)
+    setActiveSlug(owner)
+    pinnedSlug.current = owner || null
     const el = document.getElementById(slug)
     const container = document.getElementById('report-content')
     if (!el || !container) return
