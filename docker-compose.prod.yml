@@ -1,11 +1,16 @@
 services:
   chroma:
-    image: chromadb/chroma:latest
+    # 钉死版本,别用 latest:持久化目录、配置格式都随大版本变过,
+    # 哪天 latest 一挪,挂载就可能又对不上。1.0.0 是线上实测在跑的版本。
+    image: chromadb/chroma:1.0.0
     restart: unless-stopped
     expose:
       - "8000"
     volumes:
-      - chroma_data:/chroma/chroma
+      # chromadb/chroma 1.x 的持久化目录是 /data(0.x 才是 /chroma/chroma)。
+      # 挂错目录时数据写进容器可写层,容器一重建向量全丢 —— 线上真的发生过。
+      # 与 docker-compose.dev.yml 保持一致。
+      - chroma_data:/data
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE

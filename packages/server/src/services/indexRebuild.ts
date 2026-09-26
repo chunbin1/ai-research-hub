@@ -10,7 +10,7 @@
 //
 // 现在每篇是这样:
 //
-//   1. 算出目标代次;已经是它了就**跳过**(续传就是这么来的)
+//   1. 算出目标代次;已经是它了(且向量条数对得上)就**跳过**(续传就是这么来的)
 //   2. 把新代写进 Chroma —— 用带代次的 id,旧代原地不动,而且查询不会看见它
 //   3. 数一遍新代实到多少块,对不上就判失败(不看 upsert 的返回值)
 //   4. 一个 SQLite 事务:重建该篇 FTS + 翻转 active_gen
@@ -106,7 +106,11 @@ export async function rebuildDoc(
     state.fts_gen === gen &&
     state.embed_model === deps.embedModel &&
     (!withVectors || state.vec_gen === gen)
-  if (done) {
+  // 状态表说「已是这一代」只代表 SQLite 这边的记账,不代表 Chroma 里真有。
+  // 线上吃过亏:Chroma 数据没落进数据卷,容器一重建向量全丢,状态表却还在,
+  // 于是每次都「跳过 已是最新」、向量一路永远零召回。跳过前数一遍实到条数,
+  // 对不上就当没建过,走下面的正常重建把它补回来。
+  if (done && (!withVectors || await deps.countVectors(docId, gen) === chunks.length)) {
     return { docId, version, filename, status: 'skipped', gen, chunks: chunks.length, fromGen }
   }
 

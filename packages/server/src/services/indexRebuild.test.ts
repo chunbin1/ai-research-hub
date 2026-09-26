@@ -101,6 +101,24 @@ test('已经是目标代次的直接跳过,不再写向量', async () => {
   assert.equal(v.calls.writes, writesAfterFirst, '跳过就不该再调 embedding')
 })
 
+// 线上真实发生过:Chroma 容器重建后向量全丢,SQLite 的状态表还在,
+// 每次都判「已是最新」跳过,向量那一路一直零召回。
+test('状态表说已是目标代次、但向量库里没有:照常重建补回来', async () => {
+  const db = freshDb()
+  const v = fakeVectors()
+  const first = await rebuildDoc(db, 'doc_a', 1, v.deps)
+  v.store.clear()
+
+  const second = await rebuildDoc(db, 'doc_a', 1, v.deps)
+  assert.equal(second.status, 'rebuilt')
+  assert.equal(second.gen, first.gen)
+  assert.equal(await v.deps.countVectors('doc_a', first.gen!), first.chunks)
+  assert.ok(!v.calls.deletes.includes(first.gen!), '同一代补写,不该回收它自己')
+
+  const third = await rebuildDoc(db, 'doc_a', 1, v.deps)
+  assert.equal(third.status, 'skipped', '补齐之后恢复正常跳过')
+})
+
 test('原文变了则重建,并回收旧代向量', async () => {
   const db = freshDb()
   const v = fakeVectors()
