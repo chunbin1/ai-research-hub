@@ -6,6 +6,8 @@ import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import { SiteHeader } from '../components/SiteHeader'
 import { UploadVersionModal } from '../components/UploadVersionModal'
+import { ReportDropZone, DROP_HINT } from '../components/ReportDropZone'
+import { uploadReport } from '../lib/reportUpload'
 import { readCache, writeCache } from '../lib/storage'
 import type { Document } from '../types'
 
@@ -115,6 +117,13 @@ export default function HomePage() {
     .catch(e => setError(String(e.message)))
   useEffect(() => { refresh().finally(() => setLoaded(true)) }, [])
 
+  /** 顶栏按钮和拖拽区共用的上传回调 */
+  const uploadCallbacks = {
+    onUploadingChange: setUploading,
+    onUploaded: () => { setError(''); void refresh() },
+    onUploadError: setError,
+  }
+
   function onDelete(doc: Document) {
     Modal.confirm({
       title: '删除这篇报告?',
@@ -133,9 +142,7 @@ export default function HomePage() {
       <SiteHeader
         active="/"
         uploading={uploading}
-        onUploadingChange={setUploading}
-        onUploaded={() => { setError(''); void refresh() }}
-        onUploadError={setError}
+        {...uploadCallbacks}
       />
 
       <main className="mx-auto flex w-full max-w-[1360px] flex-col px-[18px] pb-6 md:gap-5 md:px-7 md:pb-16 md:pt-9 lg:px-10">
@@ -145,6 +152,16 @@ export default function HomePage() {
             共 {showSkeleton ? '—' : rows.length} 篇
           </span>
         </div>
+
+        {/* 管理员桌面端:拖拽 / 点选上传新研报。移动端没有拖拽,仍用顶栏的上传图标 */}
+        {isAdmin && (
+          <ReportDropZone
+            className="hidden md:block"
+            disabled={uploading}
+            label={uploading ? '上传中…' : DROP_HINT}
+            onFile={file => { setError(''); void uploadReport(file, uploadCallbacks) }}
+          />
+        )}
 
         {error && <p className="pt-4 text-[13px] text-danger md:pt-0">{error}</p>}
 

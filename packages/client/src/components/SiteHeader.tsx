@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeftOutlined, DownOutlined, UploadOutlined } from '@ant-design/icons'
 import { Avatar, Dropdown, Upload } from 'antd'
 import type { MenuProps } from 'antd'
-import { api } from '../api'
+import { REPORT_ACCEPT, uploadReport } from '../lib/reportUpload'
 import { useAuth } from '../hooks/useAuth'
 
 /**
@@ -50,16 +50,9 @@ export function SiteHeader({
   const { user, loading: authLoading, login, logout } = useAuth()
   const isAdmin = user?.isAdmin === true
 
-  async function handleUpload(file: File) {
-    onUploadingChange?.(true)
-    try {
-      await api.uploadDocument(file)
-      onUploaded?.()
-    } catch (err) {
-      onUploadError?.(err instanceof Error ? err.message : '上传失败')
-    } finally {
-      onUploadingChange?.(false)
-    }
+  /** 与首页拖拽区同一条路径:先校验类型 / 大小,再上传 */
+  function handleUpload(file: File) {
+    return uploadReport(file, { onUploaded, onUploadError, onUploadingChange })
   }
 
   const menuItems: MenuProps['items'] = [
@@ -117,7 +110,7 @@ export function SiteHeader({
             // 移动端的信号追踪顶栏只留头像,上传入口在这一档不出现
             <span className={mobile ? 'hidden md:block' : ''}>
               <Upload
-                accept=".md,.markdown,.txt"
+                accept={REPORT_ACCEPT}
                 showUploadList={false}
                 beforeUpload={file => { void handleUpload(file); return false }}
               >

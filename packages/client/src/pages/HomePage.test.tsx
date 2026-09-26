@@ -1,5 +1,5 @@
 import { test, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import HomePage from './HomePage'
 
@@ -108,6 +108,7 @@ test('非管理员看不到上传入口、删除按钮和管理员栏目', async
   await screen.findByText('腾讯生态产业链投资研究报告')
 
   expect(screen.queryByText('上传研报')).toBeNull()
+  expect(screen.queryByText('拖拽文件到此处，或点击选择')).toBeNull()
   expect(screen.queryByRole('button', { name: /删除/ })).toBeNull()
   expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull()
   expect(screen.queryByText('评估')).toBeNull()
@@ -145,4 +146,56 @@ test('不渲染本周财报日历', async () => {
   renderHome()
   await screen.findByText('腾讯生态产业链投资研究报告')
   expect(screen.queryByText('本周财报日历')).toBeNull()
+})
+
+// ---- 拖拽上传 ----
+
+/** 带上传的 fetch 桩:POST /api/documents 记下来并回一篇新文档,之后列表多出这篇 */
+function stubUploadFetch() {
+  const NEW_DOC = { id: 'd9', filename: '新拖进来的研报', size_bytes: 1, chunk_count: 3, created_at: '2026-09-26T00:00:00.000Z' }
+  let uploaded = false
+  const posts: FormData[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (url === '/api/documents' && init?.method === 'POST') {
+      posts.push(init.body as FormData)
+      uploaded = true
+      return { ok: true, json: async () => ({ document: NEW_DOC }) } as Response
+    }
+    if (url.startsWith('/api/documents')) {
+      return { ok: true, json: async () => ({ documents: uploaded ? [NEW_DOC, ...DOCS] : DOCS }) } as Response
+    }
+    throw new Error(`未桩的请求: ${url}`)
+  }))
+  return posts
+}
+
+function dropOn(el: Element, files: File[]) {
+  const dataTransfer = { files, types: ['Files'], dropEffect: 'none' }
+  fireEvent.dragEnter(el, { dataTransfer })
+  fireEvent.dragOver(el, { dataTransfer })
+  fireEvent.drop(el, { dataTransfer })
+}
+
+test('管理员:拖入 .md 走与点选相同的上传接口,完成后列表刷新', async () => {
+  const posts = stubUploadFetch()
+  renderHome()
+  const zone = await screen.findByRole('button', { name: /拖拽文件到此处，或点击选择/ })
+  const f = new File(['# 新研报\n'], '新研报.md', { type: 'text/markdown' })
+  dropOn(zone, [f])
+
+  await waitFor(() => expect(posts).toHaveLength(1))
+  expect(posts[0].get('file')).toBe(f)
+  expect(await screen.findByText('新拖进来的研报')).toBeTruthy()
+  expect(screen.getByText('共 4 篇')).toBeTruthy()
+})
+
+test('管理员:拖入 PDF 被拒收,不发上传请求', async () => {
+  const posts = stubUploadFetch()
+  renderHome()
+  const zone = await screen.findByRole('button', { name: /拖拽文件到此处，或点击选择/ })
+  dropOn(zone, [new File(['%PDF'], '研报.pdf', { type: 'application/pdf' })])
+
+  expect((await screen.findByRole('alert')).textContent).toContain('「研报.pdf」格式不支持')
+  expect(posts).toHaveLength(0)
 })
