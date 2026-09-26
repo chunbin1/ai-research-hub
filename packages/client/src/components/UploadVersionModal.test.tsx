@@ -7,74 +7,56 @@ const mockUploadVersion = vi.fn()
 vi.mock('../api', () => ({
   api: { uploadVersion: (...args: unknown[]) => mockUploadVersion(...args) },
 }))
-
 afterEach(() => { mockUploadVersion.mockReset() })
 
 const DOC: Document = {
   id: 'd1', filename: '腾讯生态产业链投资研究报告', size_bytes: 1, chunk_count: 47,
   created_at: '2026-08-01T00:00:00.000Z', latest_version: 1,
 }
-
 const md = (name = '腾讯 v2.md') => new File(['# v2\n'], name, { type: 'text/markdown' })
 const dt = (files: File[]) => ({ dataTransfer: { files, types: ['Files'], dropEffect: 'none' } })
 
-function renderModal(props: Partial<Parameters<typeof UploadVersionModal>[0]> = {}) {
+function renderModal() {
   const onUploaded = vi.fn()
-  render(<UploadVersionModal doc={DOC} onClose={() => {}} onUploaded={onUploaded} {...props} />)
-  return { onUploaded, area: screen.getByTestId('version-drop-area') }
+  render(<UploadVersionModal doc={DOC} onClose={() => {}} onUploaded={onUploaded} />)
+  const dialog = screen.getByRole('dialog')
+  return {
+    onUploaded, dialog,
+    zone: within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ }),
+    ok: within(dialog).getByRole('button', { name: '上传' }) as HTMLButtonElement,
+  }
 }
 
-test('选择按钮提示可以拖拽', () => {
-  renderModal()
-  expect(screen.getByRole('button', { name: /选择文件\(\.md \/ \.markdown \/ \.txt\),或拖拽到此处/ })).toBeTruthy()
+test('用与「上传研报」相同的大拖拽区,更新说明仍在', () => {
+  const { dialog } = renderModal()
+  expect(within(dialog).getByText('上传新版本 v2')).toBeTruthy()
+  expect(within(dialog).getByTestId('report-file-input')).toBeTruthy()
+  expect(within(dialog).getByLabelText('更新说明(可选)')).toBeTruthy()
 })
 
-test('拖入弹窗:选中文件,点「上传」走 uploadVersion', async () => {
+test('拖入 → 选中 → 写说明 → 点「上传」走 uploadVersion', async () => {
   mockUploadVersion.mockResolvedValue({})
-  const { onUploaded, area } = renderModal()
+  const { zone, ok, onUploaded, dialog } = renderModal()
   const f = md()
-  fireEvent.dragEnter(area, dt([f]))
-  fireEvent.drop(area, dt([f]))
-  expect(screen.getByRole('button', { name: /腾讯 v2\.md/ })).toBeTruthy()
-
-  const dialog = screen.getByRole('dialog')
-  fireEvent.click(within(dialog).getByRole('button', { name: '上传' }))
+  fireEvent.drop(zone, dt([f]))
+  expect(screen.getByText('已选择:腾讯 v2.md')).toBeTruthy()
+  fireEvent.change(within(dialog).getByLabelText('更新说明(可选)'), { target: { value: '加入 Q3 数据' } })
+  fireEvent.click(ok)
   await waitFor(() => expect(onUploaded).toHaveBeenCalled())
-  expect(mockUploadVersion).toHaveBeenCalledWith('d1', f, '')
+  expect(mockUploadVersion).toHaveBeenCalledWith('d1', f, '加入 Q3 数据')
 })
 
-test('拖入 PDF:拒收并提示,「上传」仍不可点', () => {
-  const { area } = renderModal()
-  fireEvent.drop(area, dt([new File(['%PDF'], '研报.pdf', { type: 'application/pdf' })]))
-  expect(screen.getByText(/「研报\.pdf」格式不支持/)).toBeTruthy()
-  const ok = within(screen.getByRole('dialog')).getByRole('button', { name: '上传' }) as HTMLButtonElement
+test('拖入 PDF:拒收,「上传」仍不可点', () => {
+  const { zone, ok } = renderModal()
+  fireEvent.drop(zone, dt([new File(['%PDF'], '研报.pdf', { type: 'application/pdf' })]))
+  expect(screen.getByRole('alert').textContent).toContain('「研报.pdf」格式不支持')
   expect(ok.disabled).toBe(true)
 })
 
-test('超过 20 MB / 多个文件:都拒收', () => {
-  const { area } = renderModal()
-  const big = md('大.md')
-  Object.defineProperty(big, 'size', { value: 20 * 1024 * 1024 + 1 })
-  fireEvent.drop(area, dt([big]))
-  expect(screen.getByText(/超过 20 MB/)).toBeTruthy()
-  fireEvent.drop(area, dt([md('a.md'), md('b.md')]))
-  expect(screen.getByText('一次只能上传一个文件')).toBeTruthy()
-})
-
-test('拖拽高亮:进入亮、经过子元素不闪、离开灭', () => {
-  const { area } = renderModal()
-  const child = screen.getByText('更新说明(可选)')
-  fireEvent.dragEnter(area, dt([]))
-  expect(area.dataset.dragging).toBe('true')
-  expect(screen.getByText('松开即可选择这个文件')).toBeTruthy()
-  fireEvent.dragEnter(child, dt([]))
-  fireEvent.dragLeave(area, dt([]))
-  expect(area.dataset.dragging).toBe('true')
-  fireEvent.dragLeave(child, dt([]))
-  expect(area.dataset.dragging).toBeUndefined()
-})
-
-test('从研报行拖进来打开时:文件已预选', () => {
-  renderModal({ initialFile: md('预选.md') })
-  expect(screen.getByRole('button', { name: /预选\.md/ })).toBeTruthy()
+test('拖拽高亮', () => {
+  const { zone } = renderModal()
+  fireEvent.dragEnter(zone, dt([]))
+  expect(zone.dataset.dragging).toBe('true')
+  fireEvent.dragLeave(zone, dt([]))
+  expect(zone.dataset.dragging).toBeUndefined()
 })

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Drawer, Modal } from 'antd'
 import { DeleteOutlined, EllipsisOutlined, RightOutlined, UploadOutlined } from '@ant-design/icons'
@@ -6,8 +6,6 @@ import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import { SiteHeader } from '../components/SiteHeader'
 import { UploadVersionModal } from '../components/UploadVersionModal'
-import { useFileDrop } from '../hooks/useFileDrop'
-import { pickReportFile } from '../lib/reportUpload'
 import { readCache, writeCache } from '../lib/storage'
 import type { Document } from '../types'
 
@@ -96,39 +94,13 @@ function SkeletonRow() {
   )
 }
 
-/**
- * 研报行。管理员可以把文件直接拖到行上给这篇上传新版本(= 行上「上传新版本」
- * 按钮的拖拽版),拖到哪行哪行高亮。非管理员不挂拖拽处理。
- */
-function DropRow({ enabled, onFiles, className, children }: {
-  enabled: boolean
-  onFiles: (files: File[]) => void
-  className: (dragging: boolean) => string
-  children: (dragging: boolean) => ReactNode
-}) {
-  const { dragging, dropProps } = useFileDrop(onFiles, !enabled)
-  const active = enabled && dragging
-  return (
-    <article
-      {...(enabled ? dropProps : {})}
-      data-dragging={active || undefined}
-      className={className(active)}
-    >
-      {children(active)}
-    </article>
-  )
-}
-
 export default function HomePage() {
   /** null = 这台设备上还没缓存过列表(首次访问 / 无痕模式),此时才需要骨架 */
   const [docs, setDocs] = useState<Document[] | null>(() => readCache<Document[]>(DOCS_CACHE_KEY))
   const [loaded, setLoaded] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   /** 正在给哪篇上传新版本;null = 弹窗关着 */
   const [versionTarget, setVersionTarget] = useState<Document | null>(null)
-  /** 拖到行上打开弹窗时预选的文件 */
-  const [versionFile, setVersionFile] = useState<File | null>(null)
   /** 移动端「⋯」菜单打开在哪篇上;null = 关着 */
   const [menuTarget, setMenuTarget] = useState<Document | null>(null)
   const { user } = useAuth()
@@ -141,20 +113,6 @@ export default function HomePage() {
     .then(list => { setDocs(list); writeCache(DOCS_CACHE_KEY, list) })
     .catch(e => setError(String(e.message)))
   useEffect(() => { refresh().finally(() => setLoaded(true)) }, [])
-
-  /** 把文件拖到某篇研报行上 = 给它上传新版本:校验通过就带着文件打开弹窗 */
-  function onRowDrop(doc: Document, files: File[]) {
-    const picked = pickReportFile(files)
-    if (picked.error !== undefined) { setError(picked.error); return }
-    setError('')
-    setVersionFile(picked.file)
-    setVersionTarget(doc)
-  }
-
-  function openVersionModal(doc: Document | null) {
-    setVersionFile(null)
-    setVersionTarget(doc)
-  }
 
   function onDelete(doc: Document) {
     Modal.confirm({
@@ -173,11 +131,7 @@ export default function HomePage() {
     <div className="flex min-h-screen flex-col bg-page font-sans-sc text-ink">
       <SiteHeader
         active="/"
-        uploading={uploading}
-        onUploadingChange={setUploading}
         onUploaded={() => { setError(''); void refresh() }}
-        onUploadError={setError}
-        dropDisabled={versionTarget !== null}
       />
 
       <main className="mx-auto flex w-full max-w-[1360px] flex-col px-[18px] pb-6 md:gap-5 md:px-7 md:pb-16 md:pt-9 lg:px-10">
@@ -202,14 +156,10 @@ export default function HomePage() {
           {showSkeleton && Array.from({ length: 5 }, (_, i) => <SkeletonRow key={i} />)}
 
           {!showSkeleton && rows.map(doc => (
-            <DropRow
+            <article
               key={doc.id}
-              enabled={isAdmin}
-              onFiles={files => onRowDrop(doc, files)}
-              className={dragging => `group relative flex items-start gap-1 border-b border-row-rule py-3.5 transition-colors duration-100 md:py-[18px] ${
-                dragging ? 'bg-navy-wash shadow-[inset_0_0_0_1px_var(--color-navy)]' : 'md:hover:bg-[#F2F0EA]'
-              } ${DESKTOP_COLS}`}
-            >{dragging => (<>
+              className={`group relative flex items-start gap-1 border-b border-row-rule py-3.5 transition-colors duration-100 md:py-[18px] md:hover:bg-[#F2F0EA] ${DESKTOP_COLS}`}
+            >
               <span className="hidden font-numeral text-[14px] text-ink-faint md:block">{formatDate(doc.created_at)}</span>
 
               <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5 md:flex-row md:flex-wrap md:items-baseline md:gap-x-2.5 md:pt-0">
@@ -238,18 +188,15 @@ export default function HomePage() {
                 <span className="sr-only"> 段</span>
               </span>
 
-              {/* 桌面:悬停(或键盘聚焦)才出管理操作,箭头常驻;文件拖到行上时换成放置提示 */}
+              {/* 桌面:悬停(或键盘聚焦)才出管理操作,箭头常驻 */}
               <div className="hidden items-center justify-end gap-1 md:flex">
-                {dragging && (
-                  <span className="whitespace-nowrap text-[12px] text-navy">松开上传新版本</span>
-                )}
-                {isAdmin && !dragging && (
+                {isAdmin && (
                   <>
                     <button
                       type="button"
                       title="上传新版本"
                       aria-label={`给「${doc.filename}」上传新版本`}
-                      onClick={() => openVersionModal(doc)}
+                      onClick={() => setVersionTarget(doc)}
                       className="relative z-[1] flex size-8 cursor-pointer items-center justify-center rounded text-[16px] text-navy opacity-0 hover:bg-[#E4EAF0] focus-visible:opacity-100 group-hover:opacity-100"
                     >
                       <UploadOutlined aria-hidden />
@@ -265,7 +212,7 @@ export default function HomePage() {
                     </button>
                   </>
                 )}
-                {!dragging && <RightOutlined aria-hidden className="ml-1 text-[13px] text-ink-faint" />}
+                <RightOutlined aria-hidden className="ml-1 text-[13px] text-ink-faint" />
               </div>
 
               {/* 移动端:「⋯」打开底部菜单 */}
@@ -279,7 +226,7 @@ export default function HomePage() {
                   <EllipsisOutlined aria-hidden />
                 </button>
               )}
-            </>)}</DropRow>
+            </article>
           ))}
 
           {/* 空态:保留栏目头与分隔线,正文区只给一行说明 */}
@@ -308,7 +255,7 @@ export default function HomePage() {
           </span>
           <button
             type="button"
-            onClick={() => { openVersionModal(menuTarget); setMenuTarget(null) }}
+            onClick={() => { setVersionTarget(menuTarget); setMenuTarget(null) }}
             className="flex h-[52px] items-center gap-3 border-b border-row-rule px-5 text-left text-[15px] text-navy"
           >
             <UploadOutlined aria-hidden className="text-[18px]" />
@@ -334,9 +281,8 @@ export default function HomePage() {
 
       <UploadVersionModal
         doc={versionTarget}
-        initialFile={versionFile}
-        onClose={() => openVersionModal(null)}
-        onUploaded={() => { openVersionModal(null); setError(''); void refresh() }}
+        onClose={() => setVersionTarget(null)}
+        onUploaded={() => { setVersionTarget(null); setError(''); void refresh() }}
       />
     </div>
   )
