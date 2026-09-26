@@ -48,7 +48,9 @@ export function UploadVersionModal({ doc, onClose, onUploaded }: {
       title={`上传新版本 v${next}`}
       okText={busy ? '上传中…' : '上传'}
       cancelText="取消"
-      okButtonProps={{ disabled: !file || busy }}
+      // 两个汉字的按钮 antd 默认会插空格(「上 传」),和站内其他按钮不一致
+      okButtonProps={{ disabled: !file || busy, autoInsertSpace: false }}
+      cancelButtonProps={{ autoInsertSpace: false }}
       onOk={() => void submit()}
       onCancel={() => { reset(); onClose() }}
       destroyOnHidden
@@ -81,6 +83,8 @@ export function UploadVersionModal({ doc, onClose, onUploaded }: {
         onChange={e => setNote(e.target.value)}
         maxLength={200}
         showCount
+        // 字数统计是绝对定位挂在输入框下方的,不留出空间会压到底部按钮
+        className="mb-6"
         autoSize={{ minRows: 2, maxRows: 4 }}
         placeholder="例如:加入 Q3 财报数据,上调目标价"
       />
