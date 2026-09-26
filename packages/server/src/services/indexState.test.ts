@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import {
   initIndexStateTable, getIndexState, putIndexState, setFtsGen,
-  deleteIndexState, isConsistent, planRetrieval,
+  deleteIndexState, isConsistent, planRetrieval, isGenReferenced,
 } from './indexState.ts'
 
 function freshDb() {
@@ -12,24 +12,25 @@ function freshDb() {
   return db
 }
 
-const row = (over: Partial<Record<string, string>> = {}) => ({
+const row = (over: Partial<Record<string, string | number>> = {}) => ({
   doc_id: 'doc_a',
+  version: 1,
   active_gen: 'g1',
   vec_gen: 'g1',
   fts_gen: 'g1',
   embed_model: 'embedding-3',
   ...over,
-})
+}) as { doc_id: string; version: number; active_gen: string; vec_gen: string; fts_gen: string; embed_model: string }
 
 test('没有行时返回 null —— 调用方要当 legacy 处理,不是错误', () => {
-  assert.equal(getIndexState(freshDb(), 'doc_a'), null)
+  assert.equal(getIndexState(freshDb(), 'doc_a', 1), null)
 })
 
 test('写入后读得回来,重复写是就地更新', () => {
   const db = freshDb()
   putIndexState(db, row())
   putIndexState(db, row({ active_gen: 'g2', vec_gen: 'g2', fts_gen: 'g2' }))
-  assert.equal(getIndexState(db, 'doc_a')?.active_gen, 'g2')
+  assert.equal(getIndexState(db, 'doc_a', 1)?.active_gen, 'g2')
   const { n } = db.prepare('SELECT count(*) AS n FROM doc_index_state').get() as { n: number }
   assert.equal(n, 1)
 })
@@ -39,8 +40,8 @@ test('写入后读得回来,重复写是就地更新', () => {
 test('setFtsGen 只动 fts_gen,故意不碰 active_gen', () => {
   const db = freshDb()
   putIndexState(db, row())
-  setFtsGen(db, 'doc_a', 'g2')
-  const s = getIndexState(db, 'doc_a')!
+  setFtsGen(db, 'doc_a', 1, 'g2')
+  const s = getIndexState(db, 'doc_a', 1)!
   assert.equal(s.fts_gen, 'g2')
   assert.equal(s.active_gen, 'g1')
   assert.equal(s.vec_gen, 'g1')
@@ -48,15 +49,55 @@ test('setFtsGen 只动 fts_gen,故意不碰 active_gen', () => {
 
 test('setFtsGen 对没有状态行的文档是空操作', () => {
   const db = freshDb()
-  setFtsGen(db, 'doc_missing', 'g2')
-  assert.equal(getIndexState(db, 'doc_missing'), null)
+  setFtsGen(db, 'doc_missing', 1, 'g2')
+  assert.equal(getIndexState(db, 'doc_missing', 1), null)
 })
 
-test('deleteIndexState 清掉该文档', () => {
+test('deleteIndexState 清掉该文档的所有版本', () => {
   const db = freshDb()
   putIndexState(db, row())
+  putIndexState(db, row({ version: 2 }))
+  putIndexState(db, row({ doc_id: 'doc_b' }))
   deleteIndexState(db, 'doc_a')
-  assert.equal(getIndexState(db, 'doc_a'), null)
+  assert.equal(getIndexState(db, 'doc_a', 1), null)
+  assert.equal(getIndexState(db, 'doc_a', 2), null)
+  assert.notEqual(getIndexState(db, 'doc_b', 1), null, '别的文档不受影响')
+})
+
+test('同一篇的不同版本各自一行,互不覆盖', () => {
+  const db = freshDb()
+  putIndexState(db, row())
+  putIndexState(db, row({ version: 2, active_gen: 'g2', vec_gen: 'g2', fts_gen: 'g2' }))
+  assert.equal(getIndexState(db, 'doc_a', 1)?.active_gen, 'g1')
+  assert.equal(getIndexState(db, 'doc_a', 2)?.active_gen, 'g2')
+})
+
+test('isGenReferenced 只看本篇的其他版本,任何一路引用都算', () => {
+  const db = freshDb()
+  putIndexState(db, row())                                                       // v1 全是 g1
+  putIndexState(db, row({ version: 2, active_gen: 'g2', vec_gen: 'g1', fts_gen: 'g2' }))
+  putIndexState(db, row({ doc_id: 'doc_b', active_gen: 'g9', vec_gen: 'g9', fts_gen: 'g9' }))
+  assert.equal(isGenReferenced(db, 'doc_a', 'g1', 1), true, 'v2 的向量还在用 g1')
+  assert.equal(isGenReferenced(db, 'doc_a', 'g2', 2), false, '只有 v2 自己在用')
+  assert.equal(isGenReferenced(db, 'doc_a', 'g9', 1), false, '别的文档用同名代次不算')
+})
+
+test('版本化之前的状态表迁移成 v1,数据不丢', () => {
+  const db = new Database(':memory:')
+  db.exec(`CREATE TABLE doc_index_state (doc_id TEXT PRIMARY KEY, active_gen TEXT NOT NULL,
+    vec_gen TEXT NOT NULL, fts_gen TEXT NOT NULL, embed_model TEXT NOT NULL, updated_at TEXT NOT NULL)`)
+  db.prepare("INSERT INTO doc_index_state VALUES ('doc_a','g1','none','g1','m','2026-09-01')").run()
+  initIndexStateTable(db)
+  const s = getIndexState(db, 'doc_a', 1)!
+  assert.equal(s.version, 1)
+  assert.equal(s.vec_gen, 'none')
+  assert.equal(s.updated_at, '2026-09-01')
+  // 迁移后能写 v2
+  putIndexState(db, row({ version: 2 }))
+  assert.notEqual(getIndexState(db, 'doc_a', 2), null)
+  // 再初始化一次是空操作
+  initIndexStateTable(db)
+  assert.equal(getIndexState(db, 'doc_a', 1)?.vec_gen, 'none')
 })
 
 test('三个代次一致才算一致;legacy(null)算一致', () => {

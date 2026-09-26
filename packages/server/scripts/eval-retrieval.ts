@@ -64,7 +64,8 @@ if (!isDocVectorAvailable()) {
 console.log(`评测集: ${setPath}`)
 console.log(`文档:   ${doc.filename}(${doc.chunk_count} 块)`)
 // 与线上同一套代次逻辑 —— 否则评测测的不是生产实际在跑的检索。
-const plan = planRetrieval(getIndexState(db, doc.id))
+// 评测集是按最新版原文出的题,所以查最新版那一代。
+const plan = planRetrieval(getIndexState(db, doc.id, doc.latest_version))
 console.log(`配置:   maxK=${RAG.maxK} poolSize=${RAG.poolSize} rrfK=${RAG.rrfK}`)
 console.log(`代次:   ${plan.gen ?? 'legacy(未代次化)'}${plan.restrict ? ` —— 两路错位,只走 ${plan.restrict}` : ''}\n`)
 if (plan.restrict) {
@@ -77,7 +78,7 @@ const rows: string[] = []
 for (const c of file.cases) {
   const r = await hybridRetrieve(c.question, doc.id, {
     vectorSearch: (q, d) => searchChunks(q, d, RAG.poolSize, plan.gen),
-    keywordSearch: (q, d, limit) => searchBm25(db, d, q, limit),
+    keywordSearch: (q, d, limit) => searchBm25(db, d, q, limit, plan.gen),
   }, { k: RAG.rrfK, restrict: plan.restrict })
 
   const o = scoreCase(c, r.chunks)

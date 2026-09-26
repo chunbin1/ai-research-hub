@@ -12,7 +12,8 @@
 | `data/research.db` | 主库:文档、FTS 索引、trace、聊天、用户、股票信号 |
 | `../../data/chroma/chroma.sqlite3` | ChromaDB 的库:向量 + metadata |
 
-原文不在库里,在 `data/raw/<docId>.md` 文件里。
+原文不在库里,在文件里:每个版本一份 `data/raw/versions/<docId>/v<n>.md`(写入后不再改),
+`data/raw/<docId>.md` 是最新版的镜像。
 
 **生产环境**进容器执行:
 
@@ -114,14 +115,27 @@ where cast(chunk_index as integer) between 6 and 8    -- ✅
 
 ## 文档与切块
 
+一篇文档可以有多个版本,各版本的块按**代次**(`gen`)并存在 `chunk_fts` 里。
+只按 `doc_id` 查会把所有版本的块混在一起 —— 先从 `doc_index_state` 取出那个版本的
+`active_gen`,再按它过滤。
+
 ```sql
 -- 有哪些研报
 select * from documents;
 
--- 某篇的块列表
+-- 某篇有哪些版本,各自的索引代次
+select v.version, v.created_at, v.note, s.active_gen, s.vec_gen, s.fts_gen
+from document_versions v
+left join doc_index_state s on s.doc_id = v.doc_id and s.version = v.version
+where v.doc_id = 'doc_1787472419127_c7mj'
+order by v.version;
+
+-- 某篇某个版本的块列表
 select chunk_index, section_title, length(content) len
 from chunk_fts
 where doc_id = 'doc_1787472419127_c7mj'
+  and gen = (select active_gen from doc_index_state
+             where doc_id = 'doc_1787472419127_c7mj' and version = 1)
 order by cast(chunk_index as int);
 
 -- 看某一块的正文

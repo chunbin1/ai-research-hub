@@ -4,6 +4,8 @@ import { requireAdmin } from './auth.js'
 import { getAllDocuments, getDocument } from '../services/documentStore.js'
 import { createRun, hasRunningRun, getLatestRunByDoc, getResults, aggregateStats } from '../services/evalStore.js'
 import { runEval } from '../services/evalRunner.js'
+import { latestVersion } from '../services/versionStore.js'
+import { getDb } from '../services/db.js'
 
 export const evalRoutes: FastifyPluginAsync = async (app) => {
   // 列表 + 顶部统计
@@ -21,6 +23,9 @@ export const evalRoutes: FastifyPluginAsync = async (app) => {
         avg_faithfulness: run?.avg_faithfulness ?? null,
         avg_relevancy: run?.avg_relevancy ?? null,
         finished_at: run?.finished_at ?? null,
+        // 分数是哪一版的;和 latest_version 不同就说明文档更新过、分数过期了
+        run_version: run?.version ?? null,
+        latest_version: d.latest_version,
       }
     })
     return { stats: aggregateStats(), reports }
@@ -33,7 +38,7 @@ export const evalRoutes: FastifyPluginAsync = async (app) => {
     if (!docId) return reply.status(400).send({ error: 'docId is required' })
     if (!getDocument(docId)) return reply.status(404).send({ error: 'document not found' })
     if (hasRunningRun(docId)) return reply.status(409).send({ error: 'already_running' })
-    const runId = createRun(docId)
+    const runId = createRun(docId, latestVersion(getDb(), docId))
     // fire-and-forget:runEval 内部自捕获,失败会 failRun
     void runEval(docId, runId)
     return { runId, status: 'running' }

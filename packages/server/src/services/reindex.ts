@@ -13,12 +13,14 @@
 
 import type { DB } from './db.js'
 import { parseMarkdown } from './markdownParser.js'
-import { upsertChunkFts } from './chunkFts.js'
+import { upsertChunkFts, deleteChunkFtsGen, listFtsGens } from './chunkFts.js'
 import { computeGen } from './indexGen.js'
-import { getIndexState, setFtsGen } from './indexState.js'
+import { getIndexState, setFtsGen, isGenReferenced } from './indexState.js'
+import { versionsOf } from './versionStore.js'
 
 export interface ReindexOutcome {
   docId: string
+  version: number
   chunks: number
   /** missing:原文文件取不到(被手工删过,或上传时写盘失败)。 */
   status: 'ok' | 'missing'
@@ -46,26 +48,48 @@ export interface ReindexOutcome {
 export function reindexFts(
   db: DB,
   docIds: readonly string[],
-  readMarkdown: (docId: string) => string | null,
+  readMarkdown: (docId: string, version: number) => string | null,
 ): ReindexOutcome[] {
-  return docIds.map(docId => {
-    const md = readMarkdown(docId)
-    if (md === null) return { docId, chunks: 0, status: 'missing' as const, gen: null, mismatch: false }
+  return docIds.flatMap(docId => versionsOf(db, docId).map(version => {
+    const md = readMarkdown(docId, version)
+    if (md === null) return { docId, version, chunks: 0, status: 'missing' as const, gen: null, mismatch: false }
     const { chunks } = parseMarkdown(md)
     const gen = computeGen(chunks)
+    const before = getIndexState(db, docId, version)
     db.transaction(() => {
       // upsert 是「先删后插」,所以原文改短后不会留下过时的旧块。
-      upsertChunkFts(db, docId, chunks)
-      setFtsGen(db, docId, gen)
+      upsertChunkFts(db, docId, gen, chunks)
+      setFtsGen(db, docId, version, gen)
+      sweepFts(db, docId, version, gen)
     })()
-    const state = getIndexState(db, docId)
+    const state = getIndexState(db, docId, version)
     return {
       docId,
+      version,
       chunks: chunks.length,
       status: 'ok' as const,
       gen,
       // 没有状态行 = legacy,两路都还没代次化,谈不上错位。
       mismatch: state !== null && state.active_gen !== gen,
     }
-  })
+  }))
 }
+
+/**
+ * 清掉这篇里没有任何版本在用的 FTS 代次 —— 原文改短、切块变了之后,旧块不能
+ * 留着被召回。
+ *
+ * 「在用」看状态表:任何版本的任何一路引用着就留。没有状态行的版本(legacy)
+ * 说不清自己的行属于哪一代,所以只有当本篇其他版本**都有**状态行时才敢扫 ——
+ * 这时没被引用的行只可能是当前这个版本的旧行。
+ */
+function sweepFts(db: DB, docId: string, version: number, gen: string): void {
+  const others = versionsOf(db, docId).filter(v => v !== version)
+  if (others.some(v => getIndexState(db, docId, v) === null)) return
+  for (const g of listFtsGens(db, docId)) {
+    if (g !== gen && !isGenReferenced(db, docId, g, NO_VERSION)) deleteChunkFtsGen(db, docId, g)
+  }
+}
+
+/** 传给 isGenReferenced 的「排除版本」:不排除任何版本。 */
+const NO_VERSION = -1

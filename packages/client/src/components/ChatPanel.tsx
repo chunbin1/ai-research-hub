@@ -7,8 +7,17 @@ import { useLLMConfig } from '../hooks/useLLMConfig'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (slug: string) => void }) {
-  const { messages, send, streaming } = useDocChat(docId)
+interface Props {
+  docId: string
+  onCite: (slug: string) => void
+  /** 当前正在看的版本;提问针对它 */
+  version?: number
+  /** 当前版本里存在的章节锚点。不在里面的来源点了也跳不过去,渲染成普通文字。 */
+  slugs?: ReadonlySet<string>
+}
+
+export default function ChatPanel({ docId, onCite, version, slugs }: Props) {
+  const { messages, send, streaming } = useDocChat(docId, version)
   const { user, login } = useAuth()
   const [input, setInput] = useState('')
   const { data: llm } = useLLMConfig()
@@ -68,16 +77,33 @@ export default function ChatPanel({ docId, onCite }: { docId: string; onCite: (s
             {m.role === 'assistant'
               ? <Markdown remarkPlugins={[remarkGfm]}>{m.content || '…'}</Markdown>
               : m.content}
+            {/* 回答基于的版本和正在看的不同时才标 —— 同一版本的标注只是噪音 */}
+            {m.role === 'assistant' && m.version !== undefined && version !== undefined && m.version !== version && (
+              <div className="mt-1.5 text-[12px] text-[#999]">基于 v{m.version}</div>
+            )}
             {m.sources && m.sources.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {m.sources.map((s, j) => (
-                  <button
-                    key={j}
-                    className="cursor-pointer rounded-full border border-gold bg-gold-wash px-2.5 py-[3px] text-[12px] text-gold-ink hover:bg-[#f3ead0]"
-                    onClick={() => onCite(s.section_slug)}
-                  >
-                    来源 §{s.section_title || '引言'}
-                  </button>
+                  // 引言块没有锚点(slug 为空),版本化之前也是这样,不算失效
+                  !slugs || !s.section_slug || slugs.has(s.section_slug)
+                    ? (
+                      <button
+                        key={j}
+                        className="cursor-pointer rounded-full border border-gold bg-gold-wash px-2.5 py-[3px] text-[12px] text-gold-ink hover:bg-[#f3ead0]"
+                        onClick={() => onCite(s.section_slug)}
+                      >
+                        来源 §{s.section_title || '引言'}
+                      </button>
+                    )
+                    : (
+                      <span
+                        key={j}
+                        title="这一节在当前版本里没有"
+                        className="rounded-full border border-[#e5e5e5] px-2.5 py-[3px] text-[12px] text-[#aaa]"
+                      >
+                        来源 §{s.section_title || '引言'}
+                      </span>
+                    )
                 ))}
               </div>
             )}

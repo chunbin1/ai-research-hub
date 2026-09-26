@@ -4,6 +4,22 @@ export interface Document {
   size_bytes: number
   chunk_count: number
   created_at: string
+  /** 最新版本号。本地缓存里的旧列表没有这个字段,读的时候按 1 处理。 */
+  latest_version?: number
+  /** 最新版本的上传时间 */
+  updated_at?: string
+}
+
+/** 文档的一个版本 */
+export interface DocumentVersion {
+  doc_id: string
+  version: number
+  filename: string
+  size_bytes: number
+  chunk_count: number
+  /** 更新说明 */
+  note: string | null
+  created_at: string
 }
 export interface Source {
   section_title: string
@@ -14,6 +30,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   sources?: Source[]
+  /** 回答时查的是哪个版本;版本化之前的旧消息没有 */
+  version?: number
 }
 
 export type TraceStatus = 'ok' | 'degraded' | 'error'
@@ -66,6 +84,9 @@ export interface EvalReportRow {
   avg_faithfulness: number | null
   avg_relevancy: number | null
   finished_at: string | null
+  /** 这份分数是哪个版本的;旧记录为 null */
+  run_version: number | null
+  latest_version: number
 }
 
 export interface EvalStats {

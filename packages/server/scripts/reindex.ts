@@ -21,7 +21,8 @@
 // 等在模块作用域读 env 的地方拿到默认值。
 import 'dotenv/config'
 import { initDb } from '../src/services/db.js'
-import { initDocumentTable, getAllDocuments, readRawMarkdown } from '../src/services/documentStore.js'
+import { initDocumentTable, getAllDocuments, readVersionMarkdown } from '../src/services/documentStore.js'
+import { migrateLegacyVersions } from '../src/services/documentVersion.js'
 import { initChunkFtsTable } from '../src/services/chunkFts.js'
 import { initIndexStateTable } from '../src/services/indexState.js'
 import { reindexFts } from '../src/services/reindex.js'
@@ -40,6 +41,8 @@ initDocumentTable(db)
 initChunkFtsTable(db)
 initIndexStateTable(db)
 
+migrateLegacyVersions(db)
+
 const all = getAllDocuments()
 const targets = only ? all.filter(d => d.id === only) : all
 
@@ -53,7 +56,7 @@ if (targets.length === 0) {
 }
 
 console.log(`重建 ${targets.length} 篇的 BM25 索引…\n`)
-const results = reindexFts(db, targets.map(d => d.id), readRawMarkdown)
+const results = reindexFts(db, targets.map(d => d.id), readVersionMarkdown)
 
 const nameOf = new Map(targets.map(d => [d.id, d.filename]))
 let ok = 0, missing = 0, chunks = 0
@@ -61,17 +64,17 @@ for (const r of results) {
   if (r.status === 'ok') { ok++; chunks += r.chunks } else { missing++ }
   const mark = r.status === 'ok' ? '✓' : '✗'
   const detail = r.status === 'ok' ? `${String(r.chunks).padStart(4)} 块` : '  原文缺失'
-  console.log(`  ${mark} ${detail}  ${nameOf.get(r.docId) ?? r.docId}`)
+  console.log(`  ${mark} ${detail}  ${nameOf.get(r.docId) ?? r.docId} v${r.version}`)
 }
 
-console.log(`\n完成:${ok} 篇 / ${chunks} 块${missing ? `,${missing} 篇原文缺失` : ''}`)
+console.log(`\n完成:${ok} 个版本 / ${chunks} 块${missing ? `,${missing} 个版本原文缺失` : ''}`)
 
 // 只重建 FTS 会让两路代次错位。检索侧查得出来(会拒绝融合、退成纯向量并记进
 // trace),所以不会返回错块 —— 但那是降级,不是正常状态,必须说清楚。
 const mismatched = results.filter(r => r.status === 'ok' && r.mismatch)
 if (mismatched.length) {
-  console.log(`\n⚠️ ${mismatched.length} 篇的向量还停在旧切块代次:`)
-  for (const r of mismatched) console.log(`     ${nameOf.get(r.docId) ?? r.docId}`)
+  console.log(`\n⚠️ ${mismatched.length} 个版本的向量还停在旧切块代次:`)
+  for (const r of mismatched) console.log(`     ${nameOf.get(r.docId) ?? r.docId} v${r.version}`)
   console.log('   这些文档的检索已降级为纯向量(不融合)—— 融合按 chunk_index 对齐,')
   console.log('   两代编号指向的文字不同,融了就是静默返回错块。')
   console.log('   用 `pnpm import:raw` 把两路推到同一代即可恢复(已完成的会跳过)。')

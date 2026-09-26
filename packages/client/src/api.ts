@@ -1,4 +1,4 @@
-import type { Document } from './types'
+import type { Document, DocumentVersion } from './types'
 
 export const api = {
   async listDocuments(): Promise<Document[]> {
@@ -6,10 +6,27 @@ export const api = {
     if (!r.ok) throw new Error('列表加载失败')
     return (await r.json()).documents
   },
-  async getDocument(id: string): Promise<{ document: Document; markdown: string }> {
-    const r = await fetch(`/api/documents/${id}`)
+  /** 不传 version 就是最新版 */
+  async getDocument(id: string, version?: number): Promise<{
+    document: Document; markdown: string; version: number; versions: DocumentVersion[]
+  }> {
+    const q = version === undefined ? '' : `?version=${version}`
+    const r = await fetch(`/api/documents/${id}${q}`)
+    if (r.status === 404 && version !== undefined) throw new Error(`没有 v${version} 这个版本`)
     if (!r.ok) throw new Error('报告加载失败')
     return r.json()
+  },
+  async uploadVersion(id: string, file: File, note: string): Promise<DocumentVersion> {
+    const fd = new FormData()
+    // note 必须在 file 前面:服务端流式解析,只读得到文件之前的字段
+    if (note.trim()) fd.append('note', note.trim())
+    fd.append('file', file)
+    const r = await fetch(`/api/documents/${id}/versions`, { method: 'POST', body: fd })
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({})) as { error?: string; message?: string }
+      throw new Error(body.message ?? body.error ?? '上传失败')
+    }
+    return (await r.json()).version
   },
   async uploadDocument(file: File): Promise<Document> {
     const fd = new FormData()

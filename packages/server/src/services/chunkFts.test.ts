@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
-import { initChunkFtsTable, upsertChunkFts, deleteChunkFts, searchBm25, toMatchExpr, countChunkFts } from './chunkFts.ts'
+import { initChunkFtsTable, upsertChunkFts, deleteChunkFts, deleteChunkFtsGen, searchBm25, toMatchExpr, countChunkFts } from './chunkFts.ts'
 import type { MdChunk } from './markdownParser.ts'
 
 function chunk(chunk_index: number, section_title: string, content: string): MdChunk {
@@ -46,7 +46,7 @@ test('查询里的双引号被转义,不会破坏 MATCH 表达式', () => {
 
 test('写入后能按关键词查到', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, '2.2 生意特征', '游戏毛利率 61%,广告毛利率 57%')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, '2.2 生意特征', '游戏毛利率 61%,广告毛利率 57%')])
   const hits = searchBm25(db, 'd1', '毛利率', 10)
   assert.equal(hits.length, 1)
   assert.equal(hits[0].chunk_index, 0)
@@ -55,8 +55,8 @@ test('写入后能按关键词查到', () => {
 test('同一文档重复写入是覆盖,不是追加', () => {
   const db = freshDb()
   const c = [chunk(0, 'A', '游戏毛利率 61%')]
-  upsertChunkFts(db, 'd1', c)
-  upsertChunkFts(db, 'd1', c)
+  upsertChunkFts(db, 'd1', 'g1', c)
+  upsertChunkFts(db, 'd1', 'g1', c)
   assert.equal(searchBm25(db, 'd1', '毛利率', 10).length, 1)
 })
 
@@ -64,8 +64,8 @@ test('同一文档重复写入是覆盖,不是追加', () => {
 // 否则前 K 名全是别的文档时会得到空结果。
 test('doc_id 是预过滤:查 d1 不会命中 d2 的块', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, 'A', '游戏毛利率 61%')])
-  upsertChunkFts(db, 'd2', [chunk(0, 'B', '游戏毛利率 99%')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '游戏毛利率 61%')])
+  upsertChunkFts(db, 'd2', 'g1', [chunk(0, 'B', '游戏毛利率 99%')])
   const hits = searchBm25(db, 'd1', '毛利率', 10)
   assert.equal(hits.length, 1)
   assert.equal(hits[0].doc_id, 'd1')
@@ -73,8 +73,8 @@ test('doc_id 是预过滤:查 d1 不会命中 d2 的块', () => {
 
 test('删除只影响指定文档', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, 'A', '游戏毛利率 61%')])
-  upsertChunkFts(db, 'd2', [chunk(0, 'B', '游戏毛利率 99%')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '游戏毛利率 61%')])
+  upsertChunkFts(db, 'd2', 'g1', [chunk(0, 'B', '游戏毛利率 99%')])
   deleteChunkFts(db, 'd1')
   assert.equal(searchBm25(db, 'd1', '毛利率', 10).length, 0)
   assert.equal(searchBm25(db, 'd2', '毛利率', 10).length, 1)
@@ -82,13 +82,13 @@ test('删除只影响指定文档', () => {
 
 test('无匹配返回空数组', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, 'A', '游戏毛利率 61%')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '游戏毛利率 61%')])
   assert.deepEqual(searchBm25(db, 'd1', '碳酸锂价格走势', 10), [])
 })
 
 test('查询不足 3 字时返回空数组,不抛错', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, 'A', '游戏毛利率 61%')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '游戏毛利率 61%')])
   assert.deepEqual(searchBm25(db, 'd1', '毛利', 10), [])
 })
 
@@ -96,7 +96,7 @@ test('查询不足 3 字时返回空数组,不抛错', () => {
 // 线上研报满是数字和代码,这条不过关整个 BM25 路会在真实查询上崩掉。
 test('含数字和标点的查询不触发 FTS5 语法错误', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, 'A', '毛利率 42.3%,代码 NYSE: ALB,错误码 ERR_AUTH_1042')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '毛利率 42.3%,代码 NYSE: ALB,错误码 ERR_AUTH_1042')])
   assert.doesNotThrow(() => searchBm25(db, 'd1', '毛利率 42.3% 是多少', 10))
   assert.equal(searchBm25(db, 'd1', '42.3', 10).length, 1)
   assert.equal(searchBm25(db, 'd1', 'ERR_AUTH_1042', 10).length, 1)
@@ -104,7 +104,7 @@ test('含数字和标点的查询不触发 FTS5 语法错误', () => {
 
 test('按相关性排序:命中更集中的块排前面', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [
+  upsertChunkFts(db, 'd1', 'g1', [
     chunk(0, 'A', '本节讨论公司的整体经营情况以及许多其他与本次提问无关的内容,篇幅很长'.repeat(6) + '毛利率'),
     chunk(1, 'B', '毛利率 61%'),
   ])
@@ -114,13 +114,13 @@ test('按相关性排序:命中更集中的块排前面', () => {
 
 test('limit 生效', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, 'A', '毛利率高'), chunk(1, 'B', '毛利率低'), chunk(2, 'C', '毛利率中')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '毛利率高'), chunk(1, 'B', '毛利率低'), chunk(2, 'C', '毛利率中')])
   assert.equal(searchBm25(db, 'd1', '毛利率', 2).length, 2)
 })
 
 test('章节标题也参与检索', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, '2.2 各环节生意特征', '正文与查询词无关')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, '2.2 各环节生意特征', '正文与查询词无关')])
   assert.equal(searchBm25(db, 'd1', '生意特征', 10).length, 1)
 })
 
@@ -128,7 +128,7 @@ test('章节标题也参与检索', () => {
 // BM25 单路命中的块如果没有 slug,那条来源链接就是死的。
 test('返回 section_slug,供溯源回链使用', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [{ ...chunk(0, '2.2 生意特征', '游戏毛利率 61%'), section_slug: '22-生意特征' }])
+  upsertChunkFts(db, 'd1', 'g1', [{ ...chunk(0, '2.2 生意特征', '游戏毛利率 61%'), section_slug: '22-生意特征' }])
   assert.equal(searchBm25(db, 'd1', '毛利率', 10)[0].section_slug, '22-生意特征')
 })
 
@@ -145,13 +145,13 @@ test('遇到列不匹配的旧表时重建,而不是静默沿用', () => {
 
   assert.doesNotThrow(() => searchBm25(db, 'd1', '毛利率', 10))
   assert.equal(searchBm25(db, 'd1', '毛利率', 10).length, 0, '重建后是空表,等待 reindex 回填')
-  upsertChunkFts(db, 'd1', [{ ...chunk(0, 'A', '游戏毛利率 61%'), section_slug: 'a' }])
+  upsertChunkFts(db, 'd1', 'g1', [{ ...chunk(0, 'A', '游戏毛利率 61%'), section_slug: 'a' }])
   assert.equal(searchBm25(db, 'd1', '毛利率', 10)[0].section_slug, 'a')
 })
 
 test('schema 已是最新时不重建,保留已有数据', () => {
   const db = freshDb()
-  upsertChunkFts(db, 'd1', [chunk(0, 'A', '游戏毛利率 61%')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '游戏毛利率 61%')])
   initChunkFtsTable(db)
   assert.equal(searchBm25(db, 'd1', '毛利率', 10).length, 1, '数据不该被抹掉')
 })
@@ -159,6 +159,67 @@ test('schema 已是最新时不重建,保留已有数据', () => {
 test('countChunkFts 报告索引里的行数,供启动时自愈判断', () => {
   const db = freshDb()
   assert.equal(countChunkFts(db), 0)
-  upsertChunkFts(db, 'd1', [chunk(0, 'A', 'x'), chunk(1, 'B', 'y')])
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', 'x'), chunk(1, 'B', 'y')])
   assert.equal(countChunkFts(db), 2)
+})
+
+// ---------- 代次:一篇文档的多个版本在表里并存 ----------
+
+test('不同代次并存,按代次过滤只命中那一代', () => {
+  const db = freshDb()
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '旧版毛利率 61%')])
+  upsertChunkFts(db, 'd1', 'g2', [chunk(0, 'A', '新版毛利率 65%')])
+  assert.deepEqual(searchBm25(db, 'd1', '毛利率', 10, 'g1').map(h => h.content), ['旧版毛利率 61%'])
+  assert.deepEqual(searchBm25(db, 'd1', '毛利率', 10, 'g2').map(h => h.content), ['新版毛利率 65%'])
+  assert.equal(searchBm25(db, 'd1', '毛利率', 10).length, 2, 'gen 为 null(legacy)不过滤')
+})
+
+test('覆盖写入只替换同一代,不碰其他代', () => {
+  const db = freshDb()
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '旧版毛利率 61%')])
+  upsertChunkFts(db, 'd1', 'g2', [chunk(0, 'A', '新版毛利率 65%')])
+  upsertChunkFts(db, 'd1', 'g2', [chunk(0, 'A', '新版毛利率 66%')])
+  assert.equal(searchBm25(db, 'd1', '毛利率', 10, 'g1').length, 1)
+  assert.deepEqual(searchBm25(db, 'd1', '毛利率', 10, 'g2').map(h => h.content), ['新版毛利率 66%'])
+})
+
+test('deleteChunkFtsGen 只删那一代', () => {
+  const db = freshDb()
+  upsertChunkFts(db, 'd1', 'g1', [chunk(0, 'A', '旧版毛利率 61%')])
+  upsertChunkFts(db, 'd1', 'g2', [chunk(0, 'A', '新版毛利率 65%')])
+  deleteChunkFtsGen(db, 'd1', 'g1')
+  assert.equal(searchBm25(db, 'd1', '毛利率', 10, 'g1').length, 0)
+  assert.equal(searchBm25(db, 'd1', '毛利率', 10, 'g2').length, 1)
+})
+
+// 加 gen 列不能走删表自愈:回填会按当前切块重算代次,legacy 文档因此和
+// active_gen 错位,检索被静默降级成纯向量。
+test('没有 gen 列的旧表:原样搬数据,gen 取状态表的 fts_gen,没有状态的记 legacy', () => {
+  const db = new Database(':memory:')
+  db.exec(`CREATE VIRTUAL TABLE chunk_fts USING fts5(
+    doc_id UNINDEXED, chunk_index UNINDEXED, section_slug UNINDEXED, section_title, content, tokenize='trigram')`)
+  const ins = db.prepare('INSERT INTO chunk_fts VALUES (?,?,?,?,?)')
+  ins.run('d1', 0, 'a', 'A', '游戏毛利率 61%')
+  ins.run('d1', 1, 'b', 'B', '广告毛利率 57%')
+  ins.run('d2', 0, 'a', 'A', '碳酸锂毛利率 30%')
+  // 版本化之前的状态表:每篇一行
+  db.exec(`CREATE TABLE doc_index_state (doc_id TEXT PRIMARY KEY, active_gen TEXT, vec_gen TEXT,
+    fts_gen TEXT, embed_model TEXT, updated_at TEXT)`)
+  db.prepare("INSERT INTO doc_index_state VALUES ('d1','g7','g7','g7','m','t')").run()
+
+  initChunkFtsTable(db)
+
+  assert.equal(countChunkFts(db), 3, '一行都不能丢')
+  assert.equal(searchBm25(db, 'd1', '毛利率', 10, 'g7').length, 2)
+  assert.equal(searchBm25(db, 'd2', '毛利率', 10, 'legacy').length, 1)
+  assert.equal(searchBm25(db, 'd1', '毛利率', 10, 'g7')[0].section_slug.length > 0, true, 'section_slug 也要搬过来')
+})
+
+test('没有状态表时旧行全部记 legacy', () => {
+  const db = new Database(':memory:')
+  db.exec(`CREATE VIRTUAL TABLE chunk_fts USING fts5(
+    doc_id UNINDEXED, chunk_index UNINDEXED, section_slug UNINDEXED, section_title, content, tokenize='trigram')`)
+  db.prepare('INSERT INTO chunk_fts VALUES (?,?,?,?,?)').run('d1', 0, 'a', 'A', '游戏毛利率 61%')
+  initChunkFtsTable(db)
+  assert.equal(searchBm25(db, 'd1', '毛利率', 10, 'legacy').length, 1)
 })

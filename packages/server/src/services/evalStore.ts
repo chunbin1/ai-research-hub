@@ -14,6 +14,8 @@ export interface EvalRunRow {
   avg_relevancy: number | null
   started_at: string
   finished_at: string | null
+  /** 评测针对的文档版本;版本化之前的旧记录为 null */
+  version: number | null
 }
 
 export interface EvalResultRow {
@@ -65,6 +67,9 @@ export function initEvalTables(db: DB): void {
     );
     CREATE INDEX IF NOT EXISTS idx_eval_results_run ON eval_results(run_id);
   `)
+  // 评测结果只对当时的那个版本成立;文档更新后要能看出这份分数是哪一版的。
+  const cols = (db.prepare('PRAGMA table_info(eval_runs)').all() as Array<{ name: string }>).map(c => c.name)
+  if (!cols.includes('version')) db.exec('ALTER TABLE eval_runs ADD COLUMN version INTEGER')
 }
 
 function db(): DB {
@@ -74,11 +79,11 @@ function db(): DB {
 const now = () => new Date().toISOString()
 const rid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
 
-export function createRun(docId: string): string {
+export function createRun(docId: string, version: number | null = null): string {
   const id = rid('run')
   db().prepare(
-    `INSERT INTO eval_runs (id, doc_id, status, question_count, started_at) VALUES (?, ?, 'running', 0, ?)`,
-  ).run(id, docId, now())
+    `INSERT INTO eval_runs (id, doc_id, status, question_count, started_at, version) VALUES (?, ?, 'running', 0, ?, ?)`,
+  ).run(id, docId, now(), version)
   return id
 }
 
