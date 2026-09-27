@@ -106,6 +106,17 @@ describe('ReaderPage — 版本', () => {
     expect(mockGetDocument).toHaveBeenLastCalledWith('doc-1', undefined)
   })
 
+  it('版本入口通往对比页:旧版提示条比最新版,下拉比上一版', async () => {
+    serve([ver(1), ver(2), ver(3)])
+    renderReader('/reports/doc-1?v=2')
+    await waitFor(() => screen.getByRole('status'))
+    expect(within(screen.getByRole('status')).getByRole('link').getAttribute('href'))
+      .toBe('/reports/doc-1/diff?from=2&to=3')
+    fireEvent.click(screen.getAllByLabelText('选择版本')[0])
+    expect(screen.getByRole('link', { name: /对比版本改动/ }).getAttribute('href'))
+      .toBe('/reports/doc-1/diff?from=1&to=2')
+  })
+
   it('标题跟着所看的版本走', async () => {
     serve([ver(1), ver(2)])
     renderReader('/reports/doc-1?v=1')
