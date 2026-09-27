@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
-import { Modal, Alert, Input, Radio } from 'antd'
+import { Alert, Input, Radio } from 'antd'
 import { api } from '../api'
 import type { SimilarReport } from '../types'
 import { ReportDropZone } from './ReportDropZone'
+import { UploadDialog } from './UploadDialog'
 
 type Check =
   | { status: 'idle' }
@@ -17,9 +18,9 @@ type Choice = 'new' | string
  * 上传一篇新研报。顶栏「上传研报」按钮(桌面带字 / 移动端图标)点开的弹窗,
  * 与「上传新版本」弹窗同一套外观:大拖拽区选文件(拖入或点击),点「上传」才提交。
  *
- * 选好文件先查重:库里有标题相近、或正文大段重合的研报,就把它们列出来,
- * 让管理员自己选「作为它的新版本」还是「新建一篇」—— 标题常常只改了一部分,
- * 光凭记忆很容易把同一篇传成两篇。不选不让传。
+ * 选好文件先查重:列出库里最相近的 3 篇(标题相近、正文重合、主题相近),
+ * 让管理员自己选「作为其中一篇的新版本」还是「新建一篇」—— 标题常常只改了一部分,
+ * 甚至整篇重写,光凭记忆很容易把同一篇传成两篇。库里有研报时每次都要选,不选不让传。
  */
 export function UploadReportModal({ open, onClose, onUploaded }: {
   open: boolean
@@ -80,21 +81,14 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
   }
 
   return (
-    <Modal
+    <UploadDialog
       open={open}
       title="上传研报"
       okText={busy ? '上传中…' : targetDoc ? '上传为新版本' : '上传'}
-      cancelText="取消"
-      // 两个汉字的按钮 antd 默认会插空格(「上 传」),和站内其他按钮不一致
-      okButtonProps={{
-        disabled: !file || busy || check.status === 'checking' || target === null,
-        autoInsertSpace: false,
-      }}
-      cancelButtonProps={{ autoInsertSpace: false, disabled: busy }}
+      okDisabled={!file || busy || check.status === 'checking' || target === null}
+      cancelDisabled={busy}
       onOk={() => void submit()}
       onCancel={() => { if (busy) return; reset(); onClose() }}
-      destroyOnHidden
-      width={640}
     >
       <p className="mb-4 text-[13px] leading-[1.7] text-[#777]">
         上传后自动切段、建索引,完成后出现在研报列表里。
@@ -115,8 +109,11 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
 
       {candidates.length > 0 && (
         <div className="mt-4 rounded-[6px] border border-warn-edge bg-[#FDFAF4] px-4 py-3">
-          <p className="m-0 mb-1 text-[14px] text-ink">库里可能已有这篇的旧版本</p>
+          <p className="m-0 mb-1 text-[14px] text-ink">
+            {candidates.some(c => c.likely) ? '库里可能已有这篇的旧版本' : '库里与这篇最相近的研报'}
+          </p>
           <p className="m-0 mb-3 text-[12px] leading-[1.6] text-ink-mute">
+            {candidates.some(c => c.likely) ? '' : '标题和正文都没对上,按主题排了最接近的几篇,看看有没有同一篇。'}
             作为新版本上传时,旧版本原样保留,读者可以在阅读页切回去看。
           </p>
           <Radio.Group
@@ -161,15 +158,18 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
       )}
 
       {error && <Alert type="error" showIcon className="mt-4" title={error} />}
-    </Modal>
+    </UploadDialog>
   )
 }
+
+/** 与服务端 services/similarReports.ts 的 TITLE_MIN 一致 */
+const TITLE_SIMILAR = 0.1
 
 /** 「标题相近 · 正文重合 98% · 目前 v1,9/25 更新」—— 给人判断是不是同一篇的依据 */
 function describe(c: SimilarReport): string {
   const parts: string[] = []
   if (c.titleScore >= 1) parts.push('标题相同')
-  else if (c.titleScore > 0) parts.push('标题相近')
+  else if (c.titleScore >= TITLE_SIMILAR) parts.push('标题相近')
   parts.push(`正文重合 ${Math.round(c.contentScore * 100)}%`)
   const d = c.document
   const at = d.updated_at ?? d.created_at

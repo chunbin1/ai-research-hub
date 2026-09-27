@@ -1,6 +1,7 @@
 import { test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { UploadReportModal } from './UploadReportModal'
+import { stubMatchMedia } from '../test/matchMedia'
 
 const mockUploadDocument = vi.fn()
 const mockUploadVersion = vi.fn()
@@ -13,7 +14,7 @@ vi.mock('../api', () => ({
   },
 }))
 beforeEach(() => { mockCheckSimilar.mockResolvedValue({ title: '新研报', candidates: [] }) })
-afterEach(() => { mockUploadDocument.mockReset(); mockUploadVersion.mockReset(); mockCheckSimilar.mockReset() })
+afterEach(() => { mockUploadDocument.mockReset(); mockUploadVersion.mockReset(); mockCheckSimilar.mockReset(); vi.unstubAllGlobals() })
 
 const md = (name = '新研报.md') => new File(['# 新研报\n'], name, { type: 'text/markdown' })
 const dt = (files: File[]) => ({ dataTransfer: { files, types: ['Files'], dropEffect: 'none' } })
@@ -75,6 +76,8 @@ const OLD = {
   },
   titleScore: 0.62,
   contentScore: 0.41,
+  topicScore: 0.7,
+  likely: true,
 }
 
 test('库里有疑似旧版本:列出来并给出依据,不选就不让传', async () => {
@@ -147,4 +150,40 @@ test('查重失败:提示一句,仍能新建上传', async () => {
   expect(ok.disabled).toBe(false)
   fireEvent.click(ok)
   await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
+})
+
+test('没有很可能的旧版本:换个说法列出最相近的几篇,照样要选', async () => {
+  const far = (id: string, filename: string, titleScore = 0) => ({
+    document: { ...OLD.document, id, filename, latest_version: 1 },
+    titleScore, contentScore: 0.02, topicScore: 0.5, likely: false,
+  })
+  mockCheckSimilar.mockResolvedValue({
+    title: '中海油', candidates: [far('a', '中国海洋石油（CNOOC）产业链投资研究报告', 0.05), far('b', '煤炭'), far('c', '碳酸锂')],
+  })
+  const { zone, ok } = renderModal()
+  fireEvent.drop(zone, dt([md('中海油.md')]))
+
+  expect(await screen.findByText('库里与这篇最相近的研报')).toBeTruthy()
+  expect(screen.queryByText('库里可能已有这篇的旧版本')).toBeNull()
+  // 标题分没过线,不说「标题相近」
+  expect(screen.getAllByText('正文重合 2% · 目前 v1,2026/9/25 更新')).toHaveLength(3)
+  expect(screen.getAllByRole('radio')).toHaveLength(4)
+  expect(ok.disabled).toBe(true)
+})
+
+test('手机:在底部抽屉里选候选、按新版本上传', async () => {
+  stubMatchMedia(false)
+  mockCheckSimilar.mockResolvedValue({ title: '腾讯(Q4 更新)', candidates: [OLD] })
+  mockUploadVersion.mockResolvedValue({ version: 3 })
+  const onUploaded = vi.fn()
+  render(<UploadReportModal open onClose={vi.fn()} onUploaded={onUploaded} />)
+  expect(document.querySelector('.upload-sheet')).not.toBeNull()
+
+  const f = md('腾讯Q4.md')
+  fireEvent.drop(screen.getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ }), dt([f]))
+  fireEvent.click(await screen.findByRole('radio', { name: /作为「腾讯生态产业链投资研究报告」的新版本/ }))
+  fireEvent.click(screen.getByRole('button', { name: '上传为新版本' }))
+
+  await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
+  expect(mockUploadVersion).toHaveBeenCalledWith('doc_tx', f, '')
 })

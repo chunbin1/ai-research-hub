@@ -10,13 +10,17 @@ export interface Document {
   updated_at?: string
 }
 
-/** 上传前查重报出的候选:可能是这篇的旧版本 */
+/** 上传前查重列出的候选:库里与这篇最相近的几篇之一 */
 export interface SimilarReport {
   document: Document
   /** 0~1,1 = 去掉版本标记后标题一字不差 */
   titleScore: number
   /** 0~1,正文重合度;不同研报之间通常只有 2%~3% */
   contentScore: number
+  /** 主题相近度(embedding 余弦),只用于排序;服务端向量不可用时为 null */
+  topicScore: number | null
+  /** 标题或正文过线:很可能就是这篇的旧版本 */
+  likely: boolean
 }
 
 /** 文档的一个版本 */

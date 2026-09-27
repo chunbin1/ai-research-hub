@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { findSimilarReports, type ExistingReport } from './similarReports.ts'
+import { findSimilarReports, topicScores, type ExistingReport } from './similarReports.ts'
 
 // 生产库里的真实标题:大半是「XX产业链投资研究报告」,查重最容易栽在这套模板上
 const TITLES = [
@@ -38,12 +38,58 @@ test('标题改了一部分(加版本后缀 / 换说法)仍能认出旧版本', 
   ]) {
     const hits = check(title)
     assert.equal(hits[0]?.id, idOf(old), title)
+    assert.equal(hits[0].likely, true, title)
   }
 })
 
-test('只是套了同一个标题模板的不算:「宁德时代产业链投资研究报告」没有候选', () => {
-  assert.deepEqual(check('宁德时代产业链投资研究报告'), [])
-  assert.deepEqual(check('苹果（AAPL）投资研究报告'), [])
+test('只是套了同一个标题模板的不算「很可能」:照样列最相近的 3 篇,但都不标 likely', () => {
+  for (const title of ['宁德时代产业链投资研究报告', '苹果（AAPL）投资研究报告']) {
+    const hits = check(title)
+    assert.equal(hits.length, 3, title)
+    assert.ok(hits.every(h => !h.likely), title)
+  }
+})
+
+test('标题、正文都对不上时按主题相近度排', () => {
+  const topic = library.map((_, i) => (i === 7 ? 0.66 : i === 4 ? 0.5 : 0.4))
+  const hits = findSimilarReports({ title: '中海油:高股息的底气', markdown: '# 中海油\n\n桶油成本。\n' }, library, topic)
+  assert.deepEqual(hits.map(h => h.id), ['doc_7', 'doc_4', 'doc_0'])
+  assert.equal(hits[0].topicScore, 0.66)
+  assert.equal(hits[0].likely, false)
+})
+
+test('标题或正文过线的排在主题相近的前面', () => {
+  const tx = idOf('腾讯生态产业链投资研究报告')
+  // 故意让不相干的一篇主题分更高
+  const topic = library.map((_, i) => (i === 0 ? 0.9 : 0.3))
+  const hits = findSimilarReports({ title: '腾讯控股投资研究报告', markdown: '# 腾讯控股\n' }, library, topic)
+  assert.equal(hits[0].id, tx)
+  assert.equal(hits[1].id, 'doc_0')
+})
+
+test('主题相近度:库里的指纹只算一次,版本变了重算,原文缺失的用标题', async () => {
+  const calls: string[][] = []
+  // 假 embedding:按首字区分方向,够验证余弦与缓存
+  const embed = async (texts: string[]) => {
+    calls.push(texts)
+    return texts.map(t => (t.includes('腾讯') ? [1, 0] : [0, 1]))
+  }
+  const lib: ExistingReport[] = [
+    { id: 'a', title: '腾讯', markdown: '# 腾讯生态\n\n社交与游戏。' },
+    { id: 'b', title: '茅台', markdown: '# 茅台\n\n白酒。' },
+    { id: 'c', title: '腾讯老报告', markdown: null },
+  ]
+  const model = `test-${Math.random()}`
+  assert.deepEqual(await topicScores('# 腾讯控股\n', lib, embed, model), [1, 0, 1])
+  assert.equal(calls[0].length, 4)
+  assert.equal(calls[0][3], '腾讯老报告')
+
+  await topicScores('# 茅台 2027\n', lib, embed, model)
+  assert.deepEqual(calls[1], ['# 茅台 2027\n'], '库里的指纹走缓存,只算上传这篇')
+
+  lib[1] = { ...lib[1], markdown: '# 茅台\n\n白酒,新版。' }
+  await topicScores('# 茅台 2027\n', lib, embed, model)
+  assert.equal(calls[2].length, 2, '版本变了只重算变了的那篇')
 })
 
 test('标题完全改掉,正文大段相同也能认出来', () => {

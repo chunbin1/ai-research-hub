@@ -1,19 +1,23 @@
 // packages/server/src/services/similarReports.ts
 /**
- * 上传前查重:库里有没有「这篇的旧版本」。给上传弹窗用,让管理员决定是作为新版本上传
- * 还是新建一篇 —— 这里只给候选和理由,不替人做决定。
+ * 上传前查重:库里有没有「这篇的旧版本」。给上传弹窗用,始终列出最相近的 3 篇,
+ * 让管理员决定是作为其中一篇的新版本上传,还是新建一篇 —— 这里只排序、给依据,不替人做决定。
  *
- * 两路信号,任一命中就算候选:
+ * 三路信号:
  *
  * - **正文重合**(5 字 shingle 的 Jaccard)。同一篇改一版,正文大段照搬;不同研报之间
  *   即便用同一套模板(「研究框架:产业链全景扫描 + 四大师…」),重合也只有 2%~3%。
  *   在生产那批研报上量过:腾讯 v1/v2 是 98%,其余两两之间最高 3.3%。
- * - **标题相似**(字 bigram 的加权 Jaccard)。正文整篇重写时只能靠标题。难点是模板化
- *   的标题:「碳酸锂产业链投资研究报告」和「腾讯生态产业链投资研究报告」按字面有一半
- *   相同。所以出现在太多标题里的 bigram(产业、链投、研究、报告…)直接不计分,剩下的
- *   按 IDF 加权,分数落在「腾讯」「碳酸锂」这种区分度高的字上。
- *   同一批数据上:真的旧版本最低 0.11(「腾讯控股投资研究报告」→ 腾讯生态那篇),
- *   不相干的最高 0.09。
+ * - **标题相似**(字 bigram 的加权 Jaccard)。难点是模板化的标题:「碳酸锂产业链投资研究
+ *   报告」和「腾讯生态产业链投资研究报告」按字面有一半相同。所以出现在太多标题里的 bigram
+ *   (产业、链投、研究、报告…)直接不计分,剩下的按 IDF 加权,分数落在「腾讯」「碳酸锂」
+ *   这种区分度高的字上。同一批数据上:真的旧版本最低 0.11,不相干的最高 0.09。
+ * - **主题相近**(「标题 + 正文开头」的 embedding 余弦)。管的是标题换了说法、正文也
+ *   整篇重写的情况 ——「中海油:高股息的底气」对「中国海洋石油产业链投资研究报告」,
+ *   前两路都是 0。它的绝对分数分不开(库里不相干的两篇之间也能到 0.69),但排序是准的,
+ *   所以只拿来排序,不设门槛。
+ *
+ * 前两路过线的算「很可能是旧版本」(likely),排在最前;其余按主题相近度排。
  */
 
 export interface ExistingReport {
@@ -27,12 +31,23 @@ export interface SimilarReport {
   id: string
   titleScore: number
   contentScore: number
+  /** 主题相近度(embedding 余弦);向量不可用时为 null */
+  topicScore: number | null
+  /** 标题或正文过线:很可能就是这篇的旧版本 */
+  likely: boolean
 }
+
+export type EmbedFn = (texts: string[]) => Promise<number[][]>
 
 const TITLE_MIN = 0.1
 const CONTENT_MIN = 0.06
 const MAX_CANDIDATES = 3
 const SHINGLE = 5
+/**
+ * 主题指纹取「标题 + 正文开头」这么多字。开头通常是执行摘要,最能说明研究的是什么;
+ * 目录不行 —— 这批研报是同一套框架写的,章节几乎都是「第一步…第八步:综合决策备忘录」。
+ */
+const FINGERPRINT_CHARS = 1500
 
 /** 去掉空白、标点和版本标记(v2 / Q3 / 2026Q3 / 2026 年 / 更新…),这些不说明「是不是同一篇」 */
 function normalizeTitle(s: string): string {
@@ -100,23 +115,66 @@ function titleScores(title: string, existing: ExistingReport[]): number[] {
   })
 }
 
-/** 最像的在前,最多 3 篇;没有像的返回空数组 */
+function cosine(a: number[], b: number[]): number {
+  let dot = 0
+  let na = 0
+  let nb = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]
+    na += a[i] * a[i]
+    nb += b[i] * b[i]
+  }
+  return na && nb ? dot / Math.sqrt(na * nb) : 0
+}
+
+/** 库里研报的指纹向量,按「模型 + 指纹原文」缓存:版本变了指纹就变,不会读到旧的 */
+const fingerprintCache = new Map<string, number[]>()
+
+/**
+ * 上传的这篇与库里每篇的主题相近度,顺序与 existing 一致。
+ * 库里的指纹只在第一次见到时算(一次批量请求),之后每次查重只多算上传这一篇。
+ * 原文缺失的老文档拿标题当指纹。
+ */
+export async function topicScores(
+  uploadMarkdown: string,
+  existing: ExistingReport[],
+  embed: EmbedFn,
+  model: string,
+): Promise<number[]> {
+  const texts = existing.map(r => (r.markdown ?? r.title).slice(0, FINGERPRINT_CHARS))
+  const key = (t: string) => `${model}\0${t}`
+  const missing = [...new Set(texts.filter(t => !fingerprintCache.has(key(t))))]
+  const [query, ...vectors] = await embed([uploadMarkdown.slice(0, FINGERPRINT_CHARS), ...missing])
+  missing.forEach((t, i) => fingerprintCache.set(key(t), vectors[i]))
+  return texts.map(t => cosine(query, fingerprintCache.get(key(t))!))
+}
+
+/**
+ * 最相近的 3 篇(库里不足 3 篇就全列),最像的在前。
+ * topic 是 topicScores 的结果;向量不可用时不传,只按标题和正文排。
+ */
 export function findSimilarReports(
   upload: { title: string; markdown: string },
   existing: ExistingReport[],
+  topic?: number[],
 ): SimilarReport[] {
   if (existing.length === 0) return []
   const titles = titleScores(upload.title, existing)
   const body = shingles(upload.markdown)
   const round = (n: number) => Math.round(n * 100) / 100
 
-  return existing
-    .map((r, i) => ({
-      id: r.id,
-      titleScore: round(titles[i]),
-      contentScore: r.markdown === null ? 0 : round(jaccard(body, shingles(r.markdown))),
-    }))
-    .filter(c => c.titleScore >= TITLE_MIN || c.contentScore >= CONTENT_MIN)
-    .sort((a, b) => Math.max(b.titleScore, b.contentScore) - Math.max(a.titleScore, a.contentScore))
+  const scored = existing.map((r, i) => {
+    const titleScore = round(titles[i])
+    const contentScore = r.markdown === null ? 0 : round(jaccard(body, shingles(r.markdown)))
+    const topicScore = topic ? round(topic[i]) : null
+    const likely = titleScore >= TITLE_MIN || contentScore >= CONTENT_MIN
+    const strongest = Math.max(titleScore, contentScore)
+    // 余弦 < 1,likely 的加 1 保证排在前面
+    const rank = likely ? 1 + strongest : (topicScore ?? strongest)
+    return { candidate: { id: r.id, titleScore, contentScore, topicScore, likely }, rank }
+  })
+  return scored
+    .sort((a, b) => b.rank - a.rank)
     .slice(0, MAX_CANDIDATES)
+    .map(s => s.candidate)
 }
