@@ -29,14 +29,14 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
 }
 
-/** 更新标签的日期:M/D,同一行已经有年份了 */
-function formatShortDate(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getMonth() + 1}/${d.getDate()}`
+/** 列表显示的日期:最近一次更新(上传新版本)的日子;缓存里的旧列表没有 updated_at,退回首次上传日 */
+function shownDate(doc: Document): string {
+  return formatDate(doc.updated_at ?? doc.created_at)
 }
 
 /**
- * 「v2 · 9/25 更新」。只给更新过的研报;缓存里的旧列表没有 latest_version,按 1 处理。
+ * 「v2」。只给更新过的研报;日期列已经是更新日,标签不再重复写日期。
+ * 缓存里的旧列表没有 latest_version,按 1 处理。
  * size:sm = 移动端 11px,md = 桌面 12px(并按设计稿上提 2px,和标题的衬线基线对齐)。
  */
 function VersionTag({ doc, size }: { doc: Document; size: 'sm' | 'md' }) {
@@ -48,7 +48,7 @@ function VersionTag({ doc, size }: { doc: Document; size: 'sm' | 'md' }) {
         size === 'sm' ? 'px-1.5 py-px text-[11px]' : 'relative -top-0.5 px-[7px] py-0.5 text-[12px]'
       }`}
     >
-      v{v}{doc.updated_at && ` · ${formatShortDate(doc.updated_at)} 更新`}
+      v{v}
     </span>
   )
 }
@@ -161,7 +161,7 @@ export default function HomePage() {
               key={doc.id}
               className={`group relative flex items-start gap-1 border-b border-row-rule py-3.5 transition-colors duration-100 md:py-[18px] md:hover:bg-[#F2F0EA] ${DESKTOP_COLS}`}
             >
-              <span className="hidden font-numeral text-[14px] text-ink-faint md:block">{formatDate(doc.created_at)}</span>
+              <span className="hidden font-numeral text-[14px] text-ink-faint md:block">{shownDate(doc)}</span>
 
               <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5 md:flex-row md:flex-wrap md:items-baseline md:gap-x-2.5 md:pt-0">
                 <h2 className="m-0 font-serif-sc text-[16px] font-semibold leading-[1.5] text-ink [text-wrap:pretty] md:text-[18px] md:leading-[1.45]">
@@ -179,7 +179,7 @@ export default function HomePage() {
                 <div className="flex flex-wrap items-center gap-2 md:hidden">
                   <VersionTag doc={doc} size="sm" />
                   <span className="font-numeral text-[12px] text-ink-faint">
-                    {formatDate(doc.created_at)} · {doc.chunk_count} 段
+                    {shownDate(doc)} · {doc.chunk_count} 段
                   </span>
                 </div>
               </div>
