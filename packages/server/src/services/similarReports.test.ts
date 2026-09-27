@@ -39,15 +39,35 @@ test('标题改了一部分(加版本后缀 / 换说法)仍能认出旧版本', 
     const hits = check(title)
     assert.equal(hits[0]?.id, idOf(old), title)
     assert.equal(hits[0].likely, true, title)
+    assert.notEqual(hits[0].titleMatch, null, title)
   }
 })
 
-test('只是套了同一个标题模板的不算「很可能」:照样列最相近的 3 篇,但都不标 likely', () => {
+test('只是套了同一个标题模板的不算「很可能」:有主题分时照样列最相近的 3 篇,但都不标 likely', () => {
+  const topic = library.map((_, i) => 0.5 - i / 100)
   for (const title of ['宁德时代产业链投资研究报告', '苹果（AAPL）投资研究报告']) {
-    const hits = check(title)
+    const hits = findSimilarReports({ title, markdown: `# ${title}\n\n全新的正文。\n` }, library, topic)
     assert.equal(hits.length, 3, title)
-    assert.ok(hits.every(h => !h.likely), title)
+    assert.ok(hits.every(h => !h.likely && h.titleMatch === null && !h.contentMatch), title)
   }
+})
+
+test('向量不可用(没有主题分)时只返回 likely 的:不相干的一篇都不列,好让上传直接走新建', () => {
+  assert.deepEqual(check('宁德时代产业链投资研究报告'), [])
+  const hits = check('腾讯控股投资研究报告')
+  assert.deepEqual(hits.map(h => h.id), [idOf('腾讯生态产业链投资研究报告')])
+})
+
+test('股票代码整段比:代码不同的不因「60」「sh」这类碎片撞上,代码相同的认得出', () => {
+  assert.deepEqual(check('中国神华（601088.SH）投资研究报告'), [], '神华不该撞上茅台')
+  assert.deepEqual(check('（601088.SH）投资研究报告'), [], '去掉代码后标题一样,但代码对不上')
+  for (const title of ['茅台（600519）投资研究报告', '600519.SH 深度研究', '贵州茅台投资研究报告']) {
+    const hits = check(title)
+    assert.equal(hits[0]?.id, idOf('贵州茅台（600519.SH）投资研究报告'), title)
+  }
+  // 年份正则不能把代码里的「2049」切掉
+  const lib = [{ id: 'x', title: '紫光国微（002049.SZ）研究', markdown: null }, ...library]
+  assert.equal(findSimilarReports({ title: '002049 深度', markdown: '# 002049 深度\n' }, lib)[0]?.id, 'x')
 })
 
 test('标题、正文都对不上时按主题相近度排', () => {
@@ -90,6 +110,11 @@ test('主题相近度:库里的指纹只算一次,版本变了重算,原文缺�
   lib[1] = { ...lib[1], markdown: '# 茅台\n\n白酒,新版。' }
   await topicScores('# 茅台 2027\n', lib, embed, model)
   assert.equal(calls[2].length, 2, '版本变了只重算变了的那篇')
+
+  // 库里少了一篇:它的指纹从缓存里清掉,再出现时要重算
+  await topicScores('# 茅台\n', lib.slice(0, 2), embed, model)
+  await topicScores('# 茅台\n', lib, embed, model)
+  assert.deepEqual(calls[4], ['# 茅台\n', '腾讯老报告'])
 })
 
 test('标题完全改掉,正文大段相同也能认出来', () => {
@@ -98,7 +123,9 @@ test('标题完全改掉,正文大段相同也能认出来', () => {
   const hits = findSimilarReports({ title: '中海油:高股息的底气', markdown: `# 中海油\n\n${body}补充 Q3 数据。\n` }, lib)
   assert.equal(hits[0].id, 'cnooc_old')
   assert.ok(hits[0].contentScore > 0.5, String(hits[0].contentScore))
+  assert.equal(hits[0].contentMatch, true)
   assert.equal(hits[0].titleScore, 0)
+  assert.equal(hits[0].titleMatch, null)
 })
 
 test('原文缺失的老文档只比标题,不因此报错', () => {
@@ -115,4 +142,5 @@ test('空库没有候选;候选最多 3 篇', () => {
   const hits = findSimilarReports({ title: '腾讯生态 v2', markdown: '# 腾讯生态 v2\n' }, same)
   assert.equal(hits.length, 3)
   assert.equal(hits[0].titleScore, 1)
+  assert.equal(hits[0].titleMatch, 'same')
 })

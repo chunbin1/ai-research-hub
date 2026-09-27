@@ -84,7 +84,8 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
     <UploadDialog
       open={open}
       title="上传研报"
-      okText={busy ? '上传中…' : targetDoc ? '上传为新版本' : '上传'}
+      // 手机上「新建一篇」可能在折叠线下面,按钮直接说清楚为什么点不了
+      okText={busy ? '上传中…' : target === null ? '请先选择上传方式' : targetDoc ? '上传为新版本' : '上传'}
       okDisabled={!file || busy || check.status === 'checking' || target === null}
       cancelDisabled={busy}
       onOk={() => void submit()}
@@ -162,15 +163,17 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
   )
 }
 
-/** 与服务端 services/similarReports.ts 的 TITLE_MIN 一致 */
-const TITLE_SIMILAR = 0.1
-
-/** 「标题相近 · 正文重合 98% · 目前 v1,9/25 更新」—— 给人判断是不是同一篇的依据 */
+/**
+ * 「标题相近 · 正文重合 98% · 目前 v1,9/25 更新」—— 给人判断是不是同一篇的依据。
+ * 过没过线由服务端判断;没过线的分数(正文重合 2%)不显示,只会让人困惑。
+ */
 function describe(c: SimilarReport): string {
   const parts: string[] = []
-  if (c.titleScore >= 1) parts.push('标题相同')
-  else if (c.titleScore >= TITLE_SIMILAR) parts.push('标题相近')
-  parts.push(`正文重合 ${Math.round(c.contentScore * 100)}%`)
+  if (c.titleMatch === 'same') parts.push('标题相同')
+  else if (c.titleMatch === 'similar') parts.push('标题相近')
+  if (c.contentMatch) parts.push(`正文重合 ${Math.round(c.contentScore * 100)}%`)
+  // 服务端只在有主题分时才会列出不 likely 的候选,它就是按主题排进来的
+  if (!c.likely && c.topicScore !== null) parts.push('主题相近')
   const d = c.document
   const at = d.updated_at ?? d.created_at
   const date = new Date(at)

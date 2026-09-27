@@ -147,8 +147,9 @@ test('查重:报出可能是旧版本的那篇,且不落任何东西', async () 
   assert.ok(hit, '应当报出刚上传的那篇')
   assert.equal(hit.titleScore, 1)
   assert.equal(hit.likely, true)
-  // 测试里没有 embedding key,主题相近度不算,查重照样成功
+  // 测试里没有 embedding key,主题相近度不算,查重照样成功;这时只列很可能是旧版本的
   assert.equal(hit.topicScore, null)
+  assert.ok(body.candidates.every((c: { likely: boolean }) => c.likely))
   assert.equal(hit.document.latest_version, 1)
 
   const after = (await app.inject({ method: 'GET', url: '/api/documents' })).json().documents.length

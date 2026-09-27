@@ -18,6 +18,8 @@
  *   所以只拿来排序,不设门槛。
  *
  * 前两路过线的算「很可能是旧版本」(likely),排在最前;其余按主题相近度排。
+ * 向量不可用时没有主题分可排,剩下的候选只是库里的随便几篇 —— 这时只返回 likely 的,
+ * 一篇都没有就让上传直接走新建,不拿不相干的研报让人挑。
  */
 
 export interface ExistingReport {
@@ -33,7 +35,11 @@ export interface SimilarReport {
   contentScore: number
   /** 主题相近度(embedding 余弦);向量不可用时为 null */
   topicScore: number | null
-  /** 标题或正文过线:很可能就是这篇的旧版本 */
+  /** 标题判断:去掉版本标记后相同 / 过线 / 没对上。给界面直接用,不让前端再抄一份阈值 */
+  titleMatch: 'same' | 'similar' | null
+  /** 正文重合过线 */
+  contentMatch: boolean
+  /** titleMatch 或 contentMatch:很可能就是这篇的旧版本 */
   likely: boolean
 }
 
@@ -49,9 +55,32 @@ const SHINGLE = 5
  */
 const FINGERPRINT_CHARS = 1500
 
-/** 去掉空白、标点和版本标记(v2 / Q3 / 2026Q3 / 2026 年 / 更新…),这些不说明「是不是同一篇」 */
+/**
+ * 股票代码:A 股 6 位(可带 .SH/.SZ/.BJ)、港股 4~5 位带 .HK、美股带交易所前缀(NYSE: ALB)。
+ * 代码要整段比:拆成 bigram 的话,「601088.SH」和「600519.SH」会因为共有「60」「sh」
+ * 被判成相近 —— 中国神华就这样撞上了贵州茅台。整段相同则是很强的「同一家公司」信号。
+ */
+const CODE_RE = /\b\d{6}\b(?:\s*\.\s*(?:sh|sz|bj|ss))?|\b\d{4,5}\s*\.\s*hk\b|(?:nyse|nasdaq|amex|hkex|otc)\s*[:：]\s*[a-z.]+/gi
+
+/** 标题里的代码,统一成 #600519 / #0700 / #alb */
+function titleCodes(title: string): Set<string> {
+  return new Set([...title.toLowerCase().matchAll(CODE_RE)].map(m => '#' + m[0]
+    .replace(/^[a-z]+\s*[:：]\s*/, '')
+    .replace(/\s*\.\s*[a-z]+$/, '')
+    .replace(/\s/g, '')))
+}
+
+/**
+ * 去掉代码、空白、标点和版本标记(v2 / Q3 / 2026Q3 / 2026 年 / 更新…),这些不说明「是不是同一篇」。
+ * 代码要先摘掉:「002049」里藏着「2049」,后面按年份去会把代码切碎。
+ */
 function normalizeTitle(s: string): string {
-  return strip(s).replace(/v\d+|(20\d\d)?q[1-4]|20\d\d年?|更新|修订|最新/g, '')
+  return strip(s.toLowerCase().replace(CODE_RE, ' ')).replace(/v\d+|(20\d\d)?q[1-4]|20\d\d年?|更新|修订|最新/g, '')
+}
+
+/** 标题的比对单位:去掉代码后的字 bigram,加上整段的代码 */
+function titleFeatures(title: string): Set<string> {
+  return new Set([...bigrams(normalizeTitle(title)), ...titleCodes(title)])
 }
 
 function strip(s: string): string {
@@ -90,7 +119,7 @@ function jaccard<T>(a: Set<T>, b: Set<T>): number {
 
 /** 按与库里全部标题的对比结果,给新标题跟每篇打分 */
 function titleScores(title: string, existing: ExistingReport[]): number[] {
-  const grams = [title, ...existing.map(r => r.title)].map(t => bigrams(normalizeTitle(t)))
+  const grams = [title, ...existing.map(r => r.title)].map(titleFeatures)
   const df = new Map<string, number>()
   for (const g of grams) for (const x of g) df.set(x, (df.get(x) ?? 0) + 1)
   // 库很小时(≤ 8 篇)至少容许两篇共有,不然「同一篇的两个版本」本身就会把关键字判成常见字
@@ -101,9 +130,13 @@ function titleScores(title: string, existing: ExistingReport[]): number[] {
   }
   const q = grams[0]
   const norm = normalizeTitle(title)
+  const codes = titleCodes(title)
   return grams.slice(1).map((g, i) => {
-    // 去掉版本标记后一字不差:再常见的字也是同一篇
-    if (norm && normalizeTitle(existing[i].title) === norm) return 1
+    // 去掉版本标记后一字不差:再常见的字也是同一篇 —— 除非两边代码对不上
+    //(「（600519.SH）投资研究报告」和「（601088.SH）投资研究报告」去掉代码后一样)
+    const other = titleCodes(existing[i].title)
+    const codesAgree = codes.size === 0 || other.size === 0 || [...codes].some(c => other.has(c))
+    if (norm && normalizeTitle(existing[i].title) === norm && codesAgree) return 1
     let inter = 0
     let union = 0
     for (const x of new Set([...q, ...g])) {
@@ -127,7 +160,10 @@ function cosine(a: number[], b: number[]): number {
   return na && nb ? dot / Math.sqrt(na * nb) : 0
 }
 
-/** 库里研报的指纹向量,按「模型 + 指纹原文」缓存:版本变了指纹就变,不会读到旧的 */
+/**
+ * 库里研报的指纹向量,按「模型 + 指纹原文」缓存:版本变了指纹就变,不会读到旧的。
+ * 每次查重后只留当前库里用得到的,旧版本、删掉的研报、换掉的模型不会越攒越多。
+ */
 const fingerprintCache = new Map<string, number[]>()
 
 /**
@@ -146,12 +182,15 @@ export async function topicScores(
   const missing = [...new Set(texts.filter(t => !fingerprintCache.has(key(t))))]
   const [query, ...vectors] = await embed([uploadMarkdown.slice(0, FINGERPRINT_CHARS), ...missing])
   missing.forEach((t, i) => fingerprintCache.set(key(t), vectors[i]))
-  return texts.map(t => cosine(query, fingerprintCache.get(key(t))!))
+  const scores = texts.map(t => cosine(query, fingerprintCache.get(key(t))!))
+  const live = new Set(texts.map(key))
+  for (const k of fingerprintCache.keys()) if (!live.has(k)) fingerprintCache.delete(k)
+  return scores
 }
 
 /**
  * 最相近的 3 篇(库里不足 3 篇就全列),最像的在前。
- * topic 是 topicScores 的结果;向量不可用时不传,只按标题和正文排。
+ * topic 是 topicScores 的结果;向量不可用时不传,这时只返回 likely 的(可能一篇都没有)。
  */
 export function findSimilarReports(
   upload: { title: string; markdown: string },
@@ -167,13 +206,16 @@ export function findSimilarReports(
     const titleScore = round(titles[i])
     const contentScore = r.markdown === null ? 0 : round(jaccard(body, shingles(r.markdown)))
     const topicScore = topic ? round(topic[i]) : null
-    const likely = titleScore >= TITLE_MIN || contentScore >= CONTENT_MIN
+    const titleMatch = titleScore >= 1 ? 'same' as const : titleScore >= TITLE_MIN ? 'similar' as const : null
+    const contentMatch = contentScore >= CONTENT_MIN
+    const likely = titleMatch !== null || contentMatch
     const strongest = Math.max(titleScore, contentScore)
     // 余弦 < 1,likely 的加 1 保证排在前面
     const rank = likely ? 1 + strongest : (topicScore ?? strongest)
-    return { candidate: { id: r.id, titleScore, contentScore, topicScore, likely }, rank }
+    return { candidate: { id: r.id, titleScore, contentScore, topicScore, titleMatch, contentMatch, likely }, rank }
   })
   return scored
+    .filter(s => topic || s.candidate.likely)
     .sort((a, b) => b.rank - a.rank)
     .slice(0, MAX_CANDIDATES)
     .map(s => s.candidate)

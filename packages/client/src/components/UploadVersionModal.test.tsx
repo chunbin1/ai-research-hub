@@ -1,13 +1,14 @@
 import { test, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { UploadVersionModal } from './UploadVersionModal'
+import { stubMatchMedia } from '../test/matchMedia'
 import type { Document } from '../types'
 
 const mockUploadVersion = vi.fn()
 vi.mock('../api', () => ({
   api: { uploadVersion: (...args: unknown[]) => mockUploadVersion(...args) },
 }))
-afterEach(() => { mockUploadVersion.mockReset() })
+afterEach(() => { mockUploadVersion.mockReset(); vi.unstubAllGlobals() })
 
 const DOC: Document = {
   id: 'd1', filename: '腾讯生态产业链投资研究报告', size_bytes: 1, chunk_count: 47,
@@ -59,4 +60,23 @@ test('拖拽高亮', () => {
   expect(zone.dataset.dragging).toBe('true')
   fireEvent.dragLeave(zone, dt([]))
   expect(zone.dataset.dragging).toBeUndefined()
+})
+
+test('手机:上传途中点 ✕ / 取消都关不掉,传完才走 onUploaded', async () => {
+  stubMatchMedia(false)
+  let finish = () => {}
+  mockUploadVersion.mockReturnValue(new Promise(r => { finish = () => r({}) }))
+  const onClose = vi.fn()
+  const onUploaded = vi.fn()
+  render(<UploadVersionModal doc={DOC} onClose={onClose} onUploaded={onUploaded} />)
+  fireEvent.drop(screen.getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ }), dt([md()]))
+  fireEvent.click(screen.getByRole('button', { name: '上传' }))
+
+  expect(await screen.findByRole('button', { name: '上传中…' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: '关闭' }))
+  fireEvent.click(screen.getByRole('button', { name: '取消' }))
+  expect(onClose).not.toHaveBeenCalled()
+
+  finish()
+  await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
 })

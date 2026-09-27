@@ -19,7 +19,11 @@ export interface SimilarReport {
   contentScore: number
   /** 主题相近度(embedding 余弦),只用于排序;服务端向量不可用时为 null */
   topicScore: number | null
-  /** 标题或正文过线:很可能就是这篇的旧版本 */
+  /** 服务端的标题判断:去掉版本标记后相同 / 相近 / 没对上 */
+  titleMatch: 'same' | 'similar' | null
+  /** 正文重合过线 */
+  contentMatch: boolean
+  /** titleMatch 或 contentMatch:很可能就是这篇的旧版本 */
   likely: boolean
 }
 

@@ -51,8 +51,10 @@ export function UploadVersionModal({ doc, onClose, onUploaded }: {
       title={`上传新版本 v${next}`}
       okText={busy ? '上传中…' : '上传'}
       okDisabled={!file || busy}
+      // 上传途中不许关:手机抽屉点遮罩、点 ✕ 都会走 onCancel
+      cancelDisabled={busy}
       onOk={() => void submit()}
-      onCancel={() => { reset(); onClose() }}
+      onCancel={() => { if (busy) return; reset(); onClose() }}
     >
       <p className="mb-4 text-[13px] leading-[1.7] text-[#777]">
         「{doc?.filename}」目前是 v{doc?.latest_version ?? 1}。新版本上传后成为默认显示的版本,

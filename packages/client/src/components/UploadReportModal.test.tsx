@@ -77,6 +77,8 @@ const OLD = {
   titleScore: 0.62,
   contentScore: 0.41,
   topicScore: 0.7,
+  titleMatch: 'similar' as const,
+  contentMatch: true,
   likely: true,
 }
 
@@ -89,6 +91,7 @@ test('库里有疑似旧版本:列出来并给出依据,不选就不让传', asy
   expect(screen.getByText('作为「腾讯生态产业链投资研究报告」的新版本 v3')).toBeTruthy()
   expect(screen.getByText('标题相近 · 正文重合 41% · 目前 v2,2026/9/25 更新')).toBeTruthy()
   expect(ok.disabled).toBe(true)
+  expect(ok.textContent).toBe('请先选择上传方式')
 })
 
 test('选「作为新版本」:出现更新说明,按新版本上传到那篇', async () => {
@@ -155,7 +158,7 @@ test('查重失败:提示一句,仍能新建上传', async () => {
 test('没有很可能的旧版本:换个说法列出最相近的几篇,照样要选', async () => {
   const far = (id: string, filename: string, titleScore = 0) => ({
     document: { ...OLD.document, id, filename, latest_version: 1 },
-    titleScore, contentScore: 0.02, topicScore: 0.5, likely: false,
+    titleScore, contentScore: 0.02, topicScore: 0.5, titleMatch: null, contentMatch: false, likely: false,
   })
   mockCheckSimilar.mockResolvedValue({
     title: '中海油', candidates: [far('a', '中国海洋石油（CNOOC）产业链投资研究报告', 0.05), far('b', '煤炭'), far('c', '碳酸锂')],
@@ -165,8 +168,8 @@ test('没有很可能的旧版本:换个说法列出最相近的几篇,照样要
 
   expect(await screen.findByText('库里与这篇最相近的研报')).toBeTruthy()
   expect(screen.queryByText('库里可能已有这篇的旧版本')).toBeNull()
-  // 标题分没过线,不说「标题相近」
-  expect(screen.getAllByText('正文重合 2% · 目前 v1,2026/9/25 更新')).toHaveLength(3)
+  // 没过线的分数不显示,只说是按主题排进来的
+  expect(screen.getAllByText('主题相近 · 目前 v1,2026/9/25 更新')).toHaveLength(3)
   expect(screen.getAllByRole('radio')).toHaveLength(4)
   expect(ok.disabled).toBe(true)
 })
