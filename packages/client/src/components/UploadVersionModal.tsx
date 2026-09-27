@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Modal, Input, Alert } from 'antd'
+import { Input, Alert } from 'antd'
 import { ReportDropZone } from './ReportDropZone'
+import { UploadDialog } from './UploadDialog'
 import { api } from '../api'
 import type { Document } from '../types'
 
@@ -45,18 +46,15 @@ export function UploadVersionModal({ doc, onClose, onUploaded }: {
   const next = (doc?.latest_version ?? 1) + 1
 
   return (
-    <Modal
+    <UploadDialog
       open={doc !== null}
       title={`上传新版本 v${next}`}
       okText={busy ? '上传中…' : '上传'}
-      cancelText="取消"
-      // 两个汉字的按钮 antd 默认会插空格(「上 传」),和站内其他按钮不一致
-      okButtonProps={{ disabled: !file || busy, autoInsertSpace: false }}
-      cancelButtonProps={{ autoInsertSpace: false }}
+      okDisabled={!file || busy}
+      // 上传途中不许关:手机抽屉点遮罩、点 ✕ 都会走 onCancel
+      cancelDisabled={busy}
       onOk={() => void submit()}
-      onCancel={() => { reset(); onClose() }}
-      destroyOnHidden
-      width={640}
+      onCancel={() => { if (busy) return; reset(); onClose() }}
     >
       <p className="mb-4 text-[13px] leading-[1.7] text-[#777]">
         「{doc?.filename}」目前是 v{doc?.latest_version ?? 1}。新版本上传后成为默认显示的版本,
@@ -85,6 +83,6 @@ export function UploadVersionModal({ doc, onClose, onUploaded }: {
       />
 
       {error && <Alert type="error" showIcon className="mt-4" title={error} />}
-    </Modal>
+    </UploadDialog>
   )
 }

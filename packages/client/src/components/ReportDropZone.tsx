@@ -50,7 +50,7 @@ export function ReportDropZone({ onFile, selectedName, disabled = false }: {
         onClick={openPicker}
         onKeyDown={onKeyDown}
         {...dropProps}
-        className={`flex min-h-[220px] w-full flex-col items-center justify-center gap-2 rounded-[6px] border border-dashed px-6 py-8 text-center transition-[border-color,background] duration-150 ${
+        className={`flex min-h-[140px] w-full flex-col items-center justify-center gap-2 rounded-[6px] border border-dashed px-6 py-6 text-center md:min-h-[220px] md:py-8 transition-[border-color,background] duration-150 ${
           dragging
             ? 'border-navy bg-navy-wash'
             : error
@@ -59,7 +59,10 @@ export function ReportDropZone({ onFile, selectedName, disabled = false }: {
         } ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
       >
         <InboxOutlined aria-hidden className="text-[40px] text-navy" />
-        <span className="text-[15px] text-ink">{dragging ? '松开即可选择这个文件' : DROP_HINT}</span>
+        {/* 手机上没有拖拽,只说「点击」 */}
+        <span className="text-[15px] text-ink">
+          {dragging ? '松开即可选择这个文件' : <><span className="md:hidden">点击选择文件</span><span className="hidden md:inline">{DROP_HINT}</span></>}
+        </span>
         <span className="text-[12px] text-ink-faint">{REPORT_HINT}</span>
         {selectedName && (
           <span className="mt-2 max-w-full truncate rounded-[3px] bg-[#E4EAF0] px-2.5 py-1 text-[13px] text-navy">

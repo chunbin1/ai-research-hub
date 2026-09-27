@@ -10,6 +10,23 @@ export interface Document {
   updated_at?: string
 }
 
+/** 上传前查重列出的候选:库里与这篇最相近的几篇之一 */
+export interface SimilarReport {
+  document: Document
+  /** 0~1,1 = 去掉版本标记后标题一字不差 */
+  titleScore: number
+  /** 0~1,正文重合度;不同研报之间通常只有 2%~3% */
+  contentScore: number
+  /** 主题相近度(embedding 余弦),只用于排序;服务端向量不可用时为 null */
+  topicScore: number | null
+  /** 服务端的标题判断:去掉版本标记后相同 / 相近 / 没对上 */
+  titleMatch: 'same' | 'similar' | null
+  /** 正文重合过线 */
+  contentMatch: boolean
+  /** titleMatch 或 contentMatch:很可能就是这篇的旧版本 */
+  likely: boolean
+}
+
 /** 文档的一个版本 */
 export interface DocumentVersion {
   doc_id: string

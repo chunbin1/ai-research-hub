@@ -134,3 +134,29 @@ test('没有版本记录的旧文档(原文缺失、迁移不出来)照旧能打
   assert.equal(res.json().markdown, '')
   assert.equal(res.json().version, 1)
 })
+
+test('查重:报出可能是旧版本的那篇,且不落任何东西', async () => {
+  const doc = await upload()
+  const before = (await app.inject({ method: 'GET', url: '/api/documents' })).json().documents.length
+
+  const res = await app.inject({ method: 'POST', url: '/api/documents/similar', ...form('tx-q3.md', V2) })
+  assert.equal(res.statusCode, 200)
+  const body = res.json()
+  assert.equal(body.title, '腾讯生态(Q3 更新)')
+  const hit = body.candidates.find((c: { document: { id: string } }) => c.document.id === doc.id)
+  assert.ok(hit, '应当报出刚上传的那篇')
+  assert.equal(hit.titleScore, 1)
+  assert.equal(hit.likely, true)
+  // 测试里没有 embedding key,主题相近度不算,查重照样成功;这时只列很可能是旧版本的
+  assert.equal(hit.topicScore, null)
+  assert.ok(body.candidates.every((c: { likely: boolean }) => c.likely))
+  assert.equal(hit.document.latest_version, 1)
+
+  const after = (await app.inject({ method: 'GET', url: '/api/documents' })).json().documents.length
+  assert.equal(after, before)
+})
+
+test('查重:格式不对照样 400', async () => {
+  const res = await app.inject({ method: 'POST', url: '/api/documents/similar', ...form('a.pdf', '%PDF') })
+  assert.equal(res.statusCode, 400)
+})

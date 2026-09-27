@@ -11,7 +11,8 @@ import { deleteChunkFts } from '../services/chunkFts.js'
 import { deleteIndexState } from '../services/indexState.js'
 import { listVersions, latestVersion, deleteVersions } from '../services/versionStore.js'
 import { createVersion, SameContentError, type VersionDeps } from '../services/documentVersion.js'
-import { embeddingModel } from '../services/embeddings.js'
+import { findSimilarReports, topicScores } from '../services/similarReports.js'
+import { embeddingModel, embedBatch, isEmbeddingAvailable } from '../services/embeddings.js'
 import { getDb } from '../services/db.js'
 import { syncWatchlistFromMarkdown } from '../services/signals/watchlistSync.js'
 import { requireAdmin } from './auth.js'
@@ -87,6 +88,38 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     })
     await addVersion(doc.id, up)
     return { document: getDocument(doc.id) }
+  })
+
+  /**
+   * 上传前查重:库里最相近的 3 篇,交给上传弹窗让管理员选「作为其中一篇的新版本」还是「新建」。
+   * 只读,不落任何东西。向量不可用或出错时退回只按标题、正文排,不让查重失败。
+   */
+  app.post('/documents/similar', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
+    const up = await readUpload(request, reply)
+    if (!up) return
+
+    const title = parseMarkdown(up.md).displayName || up.baseName
+    const docs = getAllDocuments()
+    const existing = docs.map(d => ({
+      id: d.id,
+      title: d.filename,
+      // 迁移不出版本记录的老文档只有 raw 原文
+      markdown: readVersionMarkdown(d.id, d.latest_version) ?? readRawMarkdown(d.id),
+    }))
+    let topic: number[] | undefined
+    if (isEmbeddingAvailable() && existing.length > 0) {
+      try {
+        topic = await topicScores(up.md, existing, embedBatch, embeddingModel())
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        app.log.warn(`[documents] 查重算主题相近度失败,只按标题和正文排: ${msg}`)
+      }
+    }
+    const byId = new Map(docs.map(d => [d.id, d]))
+    const candidates = findSimilarReports({ title, markdown: up.md }, existing, topic)
+      .map(({ id, ...scores }) => ({ document: byId.get(id)!, ...scores }))
+    return { title, candidates }
   })
 
   app.post<{ Params: { id: string } }>('/documents/:id/versions', async (request, reply) => {
