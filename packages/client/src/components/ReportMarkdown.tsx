@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkCjkFriendly from 'remark-cjk-friendly'
 import rehypeSlug from 'rehype-slug'
 
 /**
@@ -118,9 +119,15 @@ const Table: Components['table'] = ({ children }) => {
 
 const components: Components = { table: Table }
 
+/**
+ * remark-cjk-friendly:CommonMark 的定界规则对中文不友好 ——「**智谱(Z.ai)**在」这种
+ * 收尾 ** 前是全角标点、后面紧跟汉字的写法不算闭合,会原样露出星号。这个插件放宽了这条规则。
+ */
+const remarkPlugins = [remarkGfm, remarkCjkFriendly]
+
 export default function ReportMarkdown({ markdown }: { markdown: string }) {
   return (
-    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSlug]} components={components}>
+    <Markdown remarkPlugins={remarkPlugins} rehypePlugins={[rehypeSlug]} components={components}>
       {markdown}
     </Markdown>
   )
