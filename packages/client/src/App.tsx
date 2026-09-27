@@ -19,6 +19,7 @@ import { useWindowDropGuard } from './hooks/useFileDrop'
  */
 
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
+const VersionDiffPage = lazy(() => import('./pages/VersionDiffPage'))
 const SignalsPage = lazy(() => import('./pages/SignalsPage'))
 const TracesPage = lazy(() => import('./components/TracesPage').then(m => ({ default: m.TracesPage })))
 const TraceDetailPage = lazy(() => import('./components/TraceDetailPage').then(m => ({ default: m.TraceDetailPage })))
@@ -35,6 +36,7 @@ export default function App() {
       <Route element={<SiteLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/reports/:id" element={<ReaderPage />} />
+        <Route path="/reports/:id/diff" element={<VersionDiffPage />} />
         <Route path="/signals" element={<SignalsPage />} />
         <Route path="/traces" element={<TracesPage />} />
         <Route path="/traces/:id" element={<TraceDetailPage />} />

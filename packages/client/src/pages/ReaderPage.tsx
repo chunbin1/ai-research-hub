@@ -4,6 +4,7 @@ import { Drawer } from 'antd'
 import { CloseOutlined, DownOutlined, LeftOutlined, MessageOutlined, RightOutlined } from '@ant-design/icons'
 import { api } from '../api'
 import { extractToc, outlineOf, outlineOwner, visibleOutline } from '../lib/toc'
+import { diffHref, diffPairFor } from '../lib/versionDiff'
 import { useIsMobile } from '../hooks/useIsMobile'
 import ReportMarkdown from '../components/ReportMarkdown'
 import ChatPanel from '../components/ChatPanel'
@@ -271,7 +272,13 @@ export default function ReaderPage() {
               </Link>
               <span className="h-3.5 w-px flex-none bg-edge" aria-hidden />
               {viewing && latest && (
-                <VersionMenu versions={versions} viewing={viewing} latest={latest} onSwitch={switchVersion} />
+                <VersionMenu
+                  versions={versions}
+                  viewing={viewing}
+                  latest={latest}
+                  onSwitch={switchVersion}
+                  diffTo={diffHref(id, ...diffPairFor(versions, viewing.version))}
+                />
               )}
               {segments !== undefined && <span className="font-numeral">{segments} 段</span>}
             </div>
@@ -297,14 +304,23 @@ export default function ReaderPage() {
                 <span className="md:hidden">历史版本 v{viewing.version} · {formatDate(viewing.created_at)}</span>
                 <span className="hidden md:inline">正在查看历史版本 v{viewing.version}({formatDate(viewing.created_at)})</span>
               </span>
-              <button
-                type="button"
-                onClick={() => switchVersion(latest.version)}
-                className="flex-none cursor-pointer py-1.5 font-medium text-navy hover:text-brick"
-              >
-                <span className="md:hidden">看最新版 ›</span>
-                <span className="hidden md:inline">切换到最新版 v{latest.version} ›</span>
-              </button>
+              <span className="flex flex-none items-center gap-3 md:gap-3.5">
+                <Link
+                  to={diffHref(id, viewing.version, latest.version)}
+                  className="py-1.5 text-ink-soft hover:text-brick"
+                >
+                  <span className="md:hidden">对比</span>
+                  <span className="hidden md:inline">和最新版对比</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => switchVersion(latest.version)}
+                  className="cursor-pointer py-1.5 font-medium text-navy hover:text-brick"
+                >
+                  <span className="md:hidden">看最新版 ›</span>
+                  <span className="hidden md:inline">切换到最新版 v{latest.version} ›</span>
+                </button>
+              </span>
             </div>
           )}
 
@@ -409,6 +425,14 @@ export default function ReaderPage() {
                   <span className="text-[12px] text-ink-faint">共 {versions.length} 个</span>
                 </div>
                 <VersionOptions versions={versions} viewing={viewing} latest={latest} onSwitch={switchVersion} mobile />
+                {versions.length > 1 && (
+                  <Link
+                    to={diffHref(id, ...diffPairFor(versions, viewing.version))}
+                    className="mx-5 mt-4 flex h-11 items-center justify-center rounded border border-navy-edge text-[14px] font-medium text-navy"
+                  >
+                    对比版本改动
+                  </Link>
+                )}
               </div>
             )}
           </Drawer>
@@ -516,11 +540,13 @@ function VersionOptions({ versions, viewing, latest, onSwitch, mobile }: {
 }
 
 /** 桌面工具栏里的版本下拉 */
-function VersionMenu({ versions, viewing, latest, onSwitch }: {
+function VersionMenu({ versions, viewing, latest, onSwitch, diffTo }: {
   versions: DocumentVersion[]
   viewing: DocumentVersion
   latest: DocumentVersion
   onSwitch: (v: number) => void
+  /** 「对比版本改动」的链接 */
+  diffTo: string
 }) {
   const [open, setOpen] = useState(false)
 
@@ -553,6 +579,12 @@ function VersionMenu({ versions, viewing, latest, onSwitch }: {
               latest={latest}
               onSwitch={v => { setOpen(false); onSwitch(v) }}
             />
+            <Link
+              to={diffTo}
+              className="mt-1 border-t border-row-rule px-2.5 pb-1.5 pt-2.5 text-[13px] text-navy hover:text-brick"
+            >
+              对比版本改动 ›
+            </Link>
           </div>
         </>
       )}
