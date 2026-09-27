@@ -57,7 +57,9 @@ test('更新过的研报:日期显示更新日,另挂「vN」标签', async () =
   stubFetch({ docs: [{ ...DOCS[0], latest_version: 3, updated_at: '2026-09-26T00:00:00.000Z' }, DOCS[1]] })
   renderHome()
   const row = (await screen.findByText('腾讯生态产业链投资研究报告')).closest('article')!
-  expect(within(row).getByText('2026/9/26')).toBeTruthy()
+  // 前面的用例会把 DOCS 写进 localStorage 缓存,首帧画的是缓存里没更新过的那一版;
+  // 得等服务端结果覆盖上来再断言,不然全量跑时偶发抢跑
+  expect(await within(row).findByText('2026/9/26')).toBeTruthy()
   expect(within(row).getByText('2026/9/26 · 47 段')).toBeTruthy()
   expect(within(row).queryByText('2026/8/1')).toBeNull()
   // 桌面跟在标题后、移动端在日期行前,各一份
