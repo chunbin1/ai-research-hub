@@ -43,12 +43,11 @@ test('标题改了一部分(加版本后缀 / 换说法)仍能认出旧版本', 
   }
 })
 
-test('只是套了同一个标题模板的不算「很可能」:有主题分时照样列最相近的 3 篇,但都不标 likely', () => {
-  const topic = library.map((_, i) => 0.5 - i / 100)
-  for (const title of ['宁德时代产业链投资研究报告', '苹果（AAPL）投资研究报告']) {
-    const hits = findSimilarReports({ title, markdown: `# ${title}\n\n全新的正文。\n` }, library, topic)
-    assert.equal(hits.length, 3, title)
-    assert.ok(hits.every(h => !h.likely && h.titleMatch === null && !h.contentMatch), title)
+test('标题正文没对上、主题也没有明显领先的:一篇不列(套同一个标题模板的也一样)', () => {
+  // 主题分挤在一起,最高的也只比中位数高 0.05
+  const topic = library.map((_, i) => 0.6 - i / 100)
+  for (const title of ['宁德时代产业链投资研究报告', '中国大模型产业研究']) {
+    assert.deepEqual(findSimilarReports({ title, markdown: `# ${title}\n\n全新的正文。\n` }, library, topic), [], title)
   }
 })
 
@@ -70,12 +69,18 @@ test('股票代码整段比:代码不同的不因「60」「sh」这类碎片撞
   assert.equal(findSimilarReports({ title: '002049 深度', markdown: '# 002049 深度\n' }, lib)[0]?.id, 'x')
 })
 
-test('标题、正文都对不上时按主题相近度排', () => {
-  const topic = library.map((_, i) => (i === 7 ? 0.66 : i === 4 ? 0.5 : 0.4))
+test('标题、正文都对不上时,只列主题明显领先的,按主题分排', () => {
+  // 中位数 0.4:0.66 和 0.58 领先 ≥ 0.15,0.5 只领先 0.1
+  const topic = library.map((_, i) => (i === 7 ? 0.66 : i === 4 ? 0.58 : i === 9 ? 0.5 : 0.4))
   const hits = findSimilarReports({ title: '中海油:高股息的底气', markdown: '# 中海油\n\n桶油成本。\n' }, library, topic)
-  assert.deepEqual(hits.map(h => h.id), ['doc_7', 'doc_4', 'doc_0'])
+  assert.deepEqual(hits.map(h => h.id), ['doc_7', 'doc_4'])
   assert.equal(hits[0].topicScore, 0.66)
   assert.equal(hits[0].likely, false)
+})
+
+test('库里不足 4 篇时不看主题,只列标题或正文对上的', () => {
+  const lib = library.slice(4, 7)
+  assert.deepEqual(findSimilarReports({ title: '中海油', markdown: '# 中海油\n' }, lib, [0.9, 0.1, 0.1]), [])
 })
 
 test('标题或正文过线的排在主题相近的前面', () => {

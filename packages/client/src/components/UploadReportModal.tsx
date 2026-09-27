@@ -18,9 +18,9 @@ type Choice = 'new' | string
  * 上传一篇新研报。顶栏「上传研报」按钮(桌面带字 / 移动端图标)点开的弹窗,
  * 与「上传新版本」弹窗同一套外观:大拖拽区选文件(拖入或点击),点「上传」才提交。
  *
- * 选好文件先查重:列出库里最相近的 3 篇(标题相近、正文重合、主题相近),
+ * 选好文件先查重:库里有像的(标题相近、正文重合、或主题明显更近,最多 3 篇)就列出来,
  * 让管理员自己选「作为其中一篇的新版本」还是「新建一篇」—— 标题常常只改了一部分,
- * 甚至整篇重写,光凭记忆很容易把同一篇传成两篇。库里有研报时每次都要选,不选不让传。
+ * 甚至整篇重写,光凭记忆很容易把同一篇传成两篇。有候选时不选不让传;没有就直接上传。
  */
 export function UploadReportModal({ open, onClose, onUploaded }: {
   open: boolean
@@ -114,7 +114,7 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
             {candidates.some(c => c.likely) ? '库里可能已有这篇的旧版本' : '库里与这篇最相近的研报'}
           </p>
           <p className="m-0 mb-3 text-[12px] leading-[1.6] text-ink-mute">
-            {candidates.some(c => c.likely) ? '' : '标题和正文都没对上,按主题排了最接近的几篇,看看有没有同一篇。'}
+            {candidates.some(c => c.likely) ? '' : '标题和正文都没对上,但主题和这几篇明显更近,看看有没有同一篇。'}
             作为新版本上传时,旧版本原样保留,读者可以在阅读页切回去看。
           </p>
           <Radio.Group

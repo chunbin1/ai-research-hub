@@ -1,7 +1,8 @@
 // packages/server/src/services/similarReports.ts
 /**
- * 上传前查重:库里有没有「这篇的旧版本」。给上传弹窗用,始终列出最相近的 3 篇,
- * 让管理员决定是作为其中一篇的新版本上传,还是新建一篇 —— 这里只排序、给依据,不替人做决定。
+ * 上传前查重:库里有没有「这篇的旧版本」。给上传弹窗用,列出真的像的(最多 3 篇),
+ * 让管理员决定是作为其中一篇的新版本上传,还是新建一篇 —— 这里只筛选、排序、给依据,
+ * 不替人做决定。一篇都不像就不列,上传直接走新建。
  *
  * 三路信号:
  *
@@ -14,12 +15,13 @@
  *   这种区分度高的字上。同一批数据上:真的旧版本最低 0.11,不相干的最高 0.09。
  * - **主题相近**(「标题 + 正文开头」的 embedding 余弦)。管的是标题换了说法、正文也
  *   整篇重写的情况 ——「中海油:高股息的底气」对「中国海洋石油产业链投资研究报告」,
- *   前两路都是 0。它的绝对分数分不开(库里不相干的两篇之间也能到 0.69),但排序是准的,
- *   所以只拿来排序,不设门槛。
+ *   前两路都是 0。它的绝对分数分不开(同一套模板写的研报之间普遍 0.6~0.7),所以看的是
+ *   「比库里其余研报的中位数高出多少」:模板把所有分数一起抬高,差值不受影响。
+ *   量过:真的旧版本、同题材的两篇领先 0.18~0.32;库里不相干的研报两两轮流比、
+ *   宁德时代、中国大模型这类,最高只领先 0.124。门槛取 0.15。
  *
- * 前两路过线的算「很可能是旧版本」(likely),排在最前;其余按主题相近度排。
- * 向量不可用时没有主题分可排,剩下的候选只是库里的随便几篇 —— 这时只返回 likely 的,
- * 一篇都没有就让上传直接走新建,不拿不相干的研报让人挑。
+ * 前两路过线的算「很可能是旧版本」(likely),排在最前;其余只有主题明显领先的才列,
+ * 按主题相近度排。向量不可用时没有主题分,只返回 likely 的。
  */
 
 export interface ExistingReport {
@@ -48,6 +50,10 @@ export type EmbedFn = (texts: string[]) => Promise<number[][]>
 const TITLE_MIN = 0.1
 const CONTENT_MIN = 0.06
 const MAX_CANDIDATES = 3
+/** 主题分至少比库里中位数高出这么多,才算「标题正文没对上、但主题明显更近」 */
+const TOPIC_LEAD = 0.15
+/** 库太小时中位数没意义,不看主题 */
+const TOPIC_MIN_LIBRARY = 4
 const SHINGLE = 5
 /**
  * 主题指纹取「标题 + 正文开头」这么多字。开头通常是执行摘要,最能说明研究的是什么;
@@ -188,9 +194,15 @@ export async function topicScores(
   return scores
 }
 
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
 /**
- * 最相近的 3 篇(库里不足 3 篇就全列),最像的在前。
- * topic 是 topicScores 的结果;向量不可用时不传,这时只返回 likely 的(可能一篇都没有)。
+ * 像的研报,最多 3 篇,最像的在前;一篇都不像返回空数组。
+ * topic 是 topicScores 的结果;向量不可用时不传,这时只返回 likely 的。
  */
 export function findSimilarReports(
   upload: { title: string; markdown: string },
@@ -199,6 +211,7 @@ export function findSimilarReports(
 ): SimilarReport[] {
   if (existing.length === 0) return []
   const titles = titleScores(upload.title, existing)
+  const topicBar = topic && existing.length >= TOPIC_MIN_LIBRARY ? median(topic) + TOPIC_LEAD : Infinity
   const body = shingles(upload.markdown)
   const round = (n: number) => Math.round(n * 100) / 100
 
@@ -212,10 +225,11 @@ export function findSimilarReports(
     const strongest = Math.max(titleScore, contentScore)
     // 余弦 < 1,likely 的加 1 保证排在前面
     const rank = likely ? 1 + strongest : (topicScore ?? strongest)
-    return { candidate: { id: r.id, titleScore, contentScore, topicScore, titleMatch, contentMatch, likely }, rank }
+    const topicLeads = topic !== undefined && topic[i] >= topicBar
+    return { candidate: { id: r.id, titleScore, contentScore, topicScore, titleMatch, contentMatch, likely }, rank, keep: likely || topicLeads }
   })
   return scored
-    .filter(s => topic || s.candidate.likely)
+    .filter(s => s.keep)
     .sort((a, b) => b.rank - a.rank)
     .slice(0, MAX_CANDIDATES)
     .map(s => s.candidate)
