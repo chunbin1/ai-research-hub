@@ -27,6 +27,16 @@ describe('ReportMarkdown', () => {
     expect(container.querySelector('table')).not.toBeNull()
     expect(container.querySelector('code')).not.toBeNull()
   })
+
+  it('收尾 ** 前是全角标点、后面紧跟汉字,也能加粗', () => {
+    const md = `| 日期 | 事件 |
+| --- | --- |
+| 2026-01-08 | **智谱（Z.ai，02513.HK）**在港交所上市 |
+`
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    expect(container.querySelector('td strong')?.textContent).toBe('智谱（Z.ai，02513.HK）')
+    expect(container.textContent).not.toContain('**')
+  })
 })
 
 describe('ReportMarkdown — 移动端表格卡片', () => {

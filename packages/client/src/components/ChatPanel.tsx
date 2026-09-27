@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useLLMConfig } from '../hooks/useLLMConfig'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkCjkFriendly from 'remark-cjk-friendly'
 
 interface Props {
   docId: string
@@ -148,7 +149,7 @@ export default function ChatPanel({ docId, onCite, version, slugs, variant = 'pa
             }
           >
             {m.role === 'assistant'
-              ? <Markdown remarkPlugins={[remarkGfm]}>{m.content || '…'}</Markdown>
+              ? <Markdown remarkPlugins={[remarkGfm, remarkCjkFriendly]}>{m.content || '…'}</Markdown>
               : m.content}
             {/* 回答基于的版本和正在看的不同时才标 —— 同一版本的标注只是噪音 */}
             {m.role === 'assistant' && m.version !== undefined && version !== undefined && m.version !== version && (
