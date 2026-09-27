@@ -165,6 +165,9 @@ test('管理员:点「上传研报」打开弹窗,拖入 .md 点「上传」→ 
   const posts: FormData[] = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (url === '/api/documents/similar') {
+      return { ok: true, json: async () => ({ title: '新研报', candidates: [] }) } as Response
+    }
     if (url === '/api/documents' && init?.method === 'POST') {
       posts.push(init.body as FormData)
       uploaded = true
@@ -182,7 +185,10 @@ test('管理员:点「上传研报」打开弹窗,拖入 .md 点「上传」→ 
   const zone = within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ })
   const f = new File(['# 新研报\n'], '新研报.md', { type: 'text/markdown' })
   fireEvent.drop(zone, { dataTransfer: { files: [f], types: ['Files'] } })
-  fireEvent.click(within(dialog).getByRole('button', { name: '上传' }))
+  // 先查重,库里没有像的才放行
+  const ok = within(dialog).getByRole('button', { name: '上传' }) as HTMLButtonElement
+  await waitFor(() => expect(ok.disabled).toBe(false))
+  fireEvent.click(ok)
 
   await waitFor(() => expect(posts).toHaveLength(1))
   expect(posts[0].get('file')).toBe(f)

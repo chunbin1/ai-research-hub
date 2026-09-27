@@ -1,4 +1,4 @@
-import type { Document, DocumentVersion } from './types'
+import type { Document, DocumentVersion, SimilarReport } from './types'
 
 export const api = {
   async listDocuments(): Promise<Document[]> {
@@ -34,6 +34,14 @@ export const api = {
     const r = await fetch('/api/documents', { method: 'POST', body: fd })
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? '上传失败')
     return (await r.json()).document
+  },
+  /** 上传前查重:库里可能是这篇旧版本的研报。只读,不落任何东西。 */
+  async checkSimilar(file: File): Promise<{ title: string; candidates: SimilarReport[] }> {
+    const fd = new FormData()
+    fd.append('file', file)
+    const r = await fetch('/api/documents/similar', { method: 'POST', body: fd })
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? '查重失败')
+    return r.json()
   },
   async deleteDocument(id: string): Promise<void> {
     const r = await fetch(`/api/documents/${id}`, { method: 'DELETE' })

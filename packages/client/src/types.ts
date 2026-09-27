@@ -10,6 +10,15 @@ export interface Document {
   updated_at?: string
 }
 
+/** 上传前查重报出的候选:可能是这篇的旧版本 */
+export interface SimilarReport {
+  document: Document
+  /** 0~1,1 = 去掉版本标记后标题一字不差 */
+  titleScore: number
+  /** 0~1,正文重合度;不同研报之间通常只有 2%~3% */
+  contentScore: number
+}
+
 /** 文档的一个版本 */
 export interface DocumentVersion {
   doc_id: string
