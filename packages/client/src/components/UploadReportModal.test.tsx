@@ -13,7 +13,7 @@ vi.mock('../api', () => ({
     checkSimilar: (...args: unknown[]) => mockCheckSimilar(...args),
   },
 }))
-beforeEach(() => { mockCheckSimilar.mockResolvedValue({ title: '新研报', candidates: [] }) })
+beforeEach(() => { mockCheckSimilar.mockResolvedValue({ title: '新研报', suggestedKind: null, candidates: [] }) })
 afterEach(() => { mockUploadDocument.mockReset(); mockUploadVersion.mockReset(); mockCheckSimilar.mockReset(); vi.unstubAllGlobals() })
 
 const md = (name = '新研报.md') => new File(['# 新研报\n'], name, { type: 'text/markdown' })
@@ -48,7 +48,7 @@ test('拖入 .md → 显示文件名 → 点「上传」调用 uploadDocument �
 
   fireEvent.click(ok)
   await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
-  expect(mockUploadDocument).toHaveBeenCalledWith(f)
+  expect(mockUploadDocument).toHaveBeenCalledWith(f, 'industry')
 })
 
 test('拖入 PDF:拒收并提示,「上传」仍不可点,不发请求', () => {
@@ -125,7 +125,7 @@ test('选「新建一篇」:照常新建,不出更新说明', async () => {
   fireEvent.click(ok)
 
   await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
-  expect(mockUploadDocument).toHaveBeenCalledWith(f)
+  expect(mockUploadDocument).toHaveBeenCalledWith(f, 'industry')
   expect(mockUploadVersion).not.toHaveBeenCalled()
 })
 
@@ -170,7 +170,8 @@ test('没有很可能的旧版本:换个说法列出最相近的几篇,照样要
   expect(screen.queryByText('库里可能已有这篇的旧版本')).toBeNull()
   // 没过线的分数不显示,只说是按主题排进来的
   expect(screen.getAllByText('主题相近 · 目前 v1,2026/9/25 更新')).toHaveLength(3)
-  expect(screen.getAllByRole('radio')).toHaveLength(4)
+  // 3 篇候选 + 「新建一篇」,再加不属于候选的 2 个研报类型单选
+  expect(screen.getAllByRole('radio')).toHaveLength(6)
   expect(ok.disabled).toBe(true)
 })
 
@@ -189,4 +190,90 @@ test('手机:在底部抽屉里选候选、按新版本上传', async () => {
 
   await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
   expect(mockUploadVersion).toHaveBeenCalledWith('doc_tx', f, '')
+})
+
+
+// ── 研报类型 ──────────────────────────────────────────────────────────────
+
+const kindRadio = (name: string) => screen.findByRole('radio', { name }) as Promise<HTMLInputElement>
+
+test('选完文件按服务端的建议预填类型;推不出来默认行业研报', async () => {
+  mockCheckSimilar.mockResolvedValue({ title: '中国海洋石油（0883.HK）投资研究报告', suggestedKind: 'company', candidates: [] })
+  const first = renderModal()
+  fireEvent.drop(first.zone, dt([md('海油.md')]))
+  expect((await kindRadio('公司研报')).checked).toBe(true)
+  expect((await kindRadio('行业研报')).checked).toBe(false)
+})
+
+test('类型选择器要等第一次查重回来再出现,没选文件时不出', async () => {
+  renderModal()
+  expect(screen.queryByRole('radio', { name: '公司研报' })).toBeNull()
+})
+
+test('预填的类型随上传带上去', async () => {
+  mockCheckSimilar.mockResolvedValue({ title: '海油', suggestedKind: 'company', candidates: [] })
+  mockUploadDocument.mockResolvedValue({ id: 'd9' })
+  const { zone, ok, onUploaded } = renderModal()
+  const f = md('海油.md')
+  fireEvent.drop(zone, dt([f]))
+  await kindRadio('公司研报')
+  await waitFor(() => expect(ok.disabled).toBe(false))
+  fireEvent.click(ok)
+  await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
+  expect(mockUploadDocument).toHaveBeenCalledWith(f, 'company')
+})
+
+test('改选类型:用新类型重新查重,上传带改后的类型', async () => {
+  mockCheckSimilar.mockResolvedValueOnce({ title: '海油', suggestedKind: 'company', candidates: [] })
+  mockUploadDocument.mockResolvedValue({ id: 'd9' })
+  const { zone, ok, onUploaded } = renderModal()
+  const f = md('海油.md')
+  fireEvent.drop(zone, dt([f]))
+  await kindRadio('公司研报')
+  expect(mockCheckSimilar).toHaveBeenLastCalledWith(f)
+
+  // 改成行业研报后,库里同类的那篇产业链报告才会出现在候选里
+  mockCheckSimilar.mockResolvedValueOnce({ title: '海油', suggestedKind: 'company', candidates: [OLD] })
+  fireEvent.click(await kindRadio('行业研报'))
+  expect(mockCheckSimilar).toHaveBeenLastCalledWith(f, 'industry')
+  expect(await screen.findByText('库里可能已有这篇的旧版本')).toBeTruthy()
+  // 重查的结果回来之前上传是锁住的;候选出现后要重新选
+  expect(ok.disabled).toBe(true)
+  fireEvent.click(await screen.findByRole('radio', { name: /新建一篇/ }))
+  expect((await kindRadio('行业研报')).checked).toBe(true)
+  fireEvent.click(ok)
+  await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
+  expect(mockUploadDocument).toHaveBeenCalledWith(f, 'industry')
+})
+
+test('选「作为新版本」:类型继承原文档,选择器收起', async () => {
+  mockCheckSimilar.mockResolvedValue({ title: '腾讯(Q4 更新)', suggestedKind: 'industry', candidates: [OLD] })
+  renderModal()
+  fireEvent.drop(screen.getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ }), dt([md('腾讯Q4.md')]))
+  await kindRadio('行业研报')
+  fireEvent.click(await screen.findByRole('radio', { name: /作为「腾讯生态产业链投资研究报告」的新版本/ }))
+  expect(screen.queryByRole('radio', { name: '公司研报' })).toBeNull()
+})
+
+test('查重失败:类型选择器照样给,默认行业研报', async () => {
+  mockCheckSimilar.mockRejectedValue(new Error('查重失败'))
+  const { zone } = renderModal()
+  fireEvent.drop(zone, dt([md()]))
+  expect((await kindRadio('行业研报')).checked).toBe(true)
+})
+
+test('候选和要上传的类型不同:依据里说明「库里是…」,方便判断是不是推断错了类型', async () => {
+  const moutai = { ...OLD, document: { ...OLD.document, id: 'doc_mt', filename: '贵州茅台（600519.SH）投资研究报告', kind: 'company' as const, latest_version: 1 }, titleScore: 0, titleMatch: null, contentScore: 1 }
+  mockCheckSimilar.mockResolvedValue({ title: '白酒龙头的护城河', suggestedKind: 'industry', candidates: [moutai] })
+  renderModal()
+  fireEvent.drop(screen.getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ }), dt([md('白酒.md')]))
+  expect(await screen.findByText('正文重合 100% · 库里是公司研报 · 目前 v1,2026/9/25 更新')).toBeTruthy()
+})
+
+test('同类候选不加「库里是…」', async () => {
+  mockCheckSimilar.mockResolvedValue({ title: '腾讯(Q4 更新)', suggestedKind: 'industry', candidates: [OLD] })
+  renderModal()
+  fireEvent.drop(screen.getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ }), dt([md('腾讯Q4.md')]))
+  await screen.findByText('库里可能已有这篇的旧版本')
+  expect(screen.queryByText(/库里是/)).toBeNull()
 })

@@ -1,13 +1,24 @@
+/** 行业研报(产业链、行业主题)/ 公司研报(只针对一家公司) */
+export type ReportKind = 'industry' | 'company'
+
+export const REPORT_KIND_LABEL: Record<ReportKind, string> = { industry: '行业研报', company: '公司研报' }
+
 export interface Document {
   id: string
   filename: string
   size_bytes: number
   chunk_count: number
   created_at: string
+  /** 本地缓存里的旧列表没有这个字段,读的时候按 industry 处理(见 docKind)。 */
+  kind?: ReportKind
   /** 最新版本号。本地缓存里的旧列表没有这个字段,读的时候按 1 处理。 */
   latest_version?: number
   /** 最新版本的上传时间 */
   updated_at?: string
+}
+
+export function docKind(doc: Pick<Document, 'kind'>): ReportKind {
+  return doc.kind ?? 'industry'
 }
 
 /** 上传前查重列出的候选:库里与这篇最相近的几篇之一 */

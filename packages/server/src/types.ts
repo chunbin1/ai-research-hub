@@ -1,4 +1,6 @@
 // packages/server/src/types.ts
+import type { ReportKind } from './services/reportKind.js'
+
 export type MessageRole = 'user' | 'assistant'
 
 export interface LLMMessage {
@@ -41,6 +43,8 @@ export interface Document {
   size_bytes: number
   chunk_count: number
   created_at: string
+  /** 行业研报 / 公司研报。新版本继承,只有管理员能改。 */
+  kind: ReportKind
   /** 最新版本号。还没有版本记录的旧文档记为 1。 */
   latest_version: number
   /** 最新版本的上传时间;没有版本记录时等于 created_at。 */

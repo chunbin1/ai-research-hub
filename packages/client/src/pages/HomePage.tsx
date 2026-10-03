@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Drawer, Modal } from 'antd'
-import { DeleteOutlined, EllipsisOutlined, RightOutlined, UploadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EllipsisOutlined, RightOutlined, SwapOutlined, UploadOutlined } from '@ant-design/icons'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import { REPORT_UPLOADED_EVENT } from '../components/SiteHeader'
 import { UploadVersionModal } from '../components/UploadVersionModal'
 import { readCache, writeCache } from '../lib/storage'
-import type { Document } from '../types'
+import { docKind, type Document, type ReportKind } from '../types'
 
 /**
  * 首页 —— 按「研报站首页 v2」「研报站首页 移动端 v2」两份设计稿:
  * 桌面是一张「日期 | 标题 | 段数 | 操作」的细线表,管理操作悬停才出现;
  * 移动端每行是标题 + 「日期 · 段数」,管理操作收进「⋯」弹出的底部菜单。
+ *
+ * 研报分行业 / 公司两类(上传时选)。库里有公司研报时,栏目头下方出分段筛选,
+ * 状态放在 URL(`/?kind=company`);「全部」视图里公司研报的标题后挂「公司」小标。
  *
  * 日期是首次上传日期;更新过的研报另挂一个「v2 · 9/25 更新」标签(桌面跟在标题后,
  * 移动端在「日期 · 段数」前)。
@@ -53,8 +56,31 @@ function VersionTag({ doc, size }: { doc: Document; size: 'sm' | 'md' }) {
   )
 }
 
-/** 桌面表格的列:日期 | 标题 | 段数 | 操作。表头、骨架、数据行三处共用 */
-const DESKTOP_COLS = 'md:grid md:grid-cols-[84px_minmax(0,1fr)_56px_104px] md:items-center md:gap-6 md:px-4 lg:grid-cols-[96px_minmax(0,1fr)_64px_104px]'
+/** 「公司」。只在「全部」视图里给公司研报挂 —— 筛到公司视图时满屏都是,没信息量 */
+function KindTag({ doc, size }: { doc: Document; size: 'sm' | 'md' }) {
+  if (docKind(doc) !== 'company') return null
+  return (
+    <span
+      className={`flex-none whitespace-nowrap rounded-[3px] border border-edge text-ink-mute ${
+        size === 'sm' ? 'px-1.5 py-px text-[11px]' : 'relative -top-0.5 px-[6px] py-px text-[12px]'
+      }`}
+    >
+      公司
+    </span>
+  )
+}
+
+const KIND_TABS: ReadonlyArray<{ key: ReportKind | null; label: string }> = [
+  { key: null, label: '全部' },
+  { key: 'industry', label: '行业' },
+  { key: 'company', label: '公司' },
+]
+
+/**
+ * 桌面表格的列:日期 | 标题 | 段数 | 操作。表头、骨架、数据行三处共用。
+ * 操作列 136px:管理员行是 3 个 32px 按钮 + 箭头 + 间距 ≈ 125px,104px 时 flex 会把按钮压到 25px。
+ */
+const DESKTOP_COLS = 'md:grid md:grid-cols-[84px_minmax(0,1fr)_56px_136px] md:items-center md:gap-6 md:px-4 lg:grid-cols-[96px_minmax(0,1fr)_64px_136px]'
 
 /**
  * 上一次拿到的研报列表。只为「刷新不抖」:有缓存就首帧直接画出列表,
@@ -107,7 +133,24 @@ export default function HomePage() {
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
 
-  const rows = docs ?? []
+  const [params, setParams] = useSearchParams()
+  const kindParam = params.get('kind')
+  /** null = 全部。URL 上不认识的值当没传 */
+  const filter: ReportKind | null = kindParam === 'industry' || kindParam === 'company' ? kindParam : null
+  function chooseFilter(key: ReportKind | null) {
+    setParams(key ? { kind: key } : {}, { replace: true })
+  }
+
+  const all = docs ?? []
+  const counts = {
+    all: all.length,
+    industry: all.filter(d => docKind(d) === 'industry').length,
+    company: all.filter(d => docKind(d) === 'company').length,
+  }
+  const rows = filter ? all.filter(d => docKind(d) === filter) : all
+  // 还没有公司研报时不出筛选:别给读者一个永远为空的选项。
+  // 已经筛到某一类时即使那类空了也要留着,否则人被困在空列表里出不来。
+  const showTabs = counts.company > 0 || filter !== null
   const showSkeleton = !loaded && docs === null
 
   const refresh = () => api.listDocuments()
@@ -133,6 +176,17 @@ export default function HomePage() {
     })
   }
 
+  /** 改成另一类。可逆,不用确认 */
+  async function onToggleKind(doc: Document) {
+    try {
+      await api.setDocumentKind(doc.id, docKind(doc) === 'company' ? 'industry' : 'company')
+      setError('')
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '修改类型失败')
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <main className="mx-auto flex w-full max-w-[1360px] flex-col px-[18px] pb-6 md:gap-5 md:px-7 md:pb-16 md:pt-9 lg:px-10">
@@ -142,6 +196,29 @@ export default function HomePage() {
             共 {showSkeleton ? '—' : rows.length} 篇
           </span>
         </div>
+
+        {showTabs && (
+          <nav aria-label="研报类型" className="flex gap-5 border-b border-rule text-[14px] md:gap-6">
+            {KIND_TABS.map(tab => {
+              const active = tab.key === filter
+              const n = tab.key === null ? counts.all : counts[tab.key]
+              return (
+                <button
+                  key={tab.label}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => chooseFilter(tab.key)}
+                  className={`-mb-px cursor-pointer border-b-2 bg-transparent px-0.5 py-2.5 ${
+                    active ? 'border-ink font-semibold text-ink' : 'border-transparent text-ink-mute hover:text-ink'
+                  }`}
+                >
+                  {tab.label}
+                  <span className="ml-1 font-numeral text-[12px] text-ink-faint">{n}</span>
+                </button>
+              )
+            })}
+          </nav>
+        )}
 
         {error && <p className="pt-4 text-[13px] text-danger md:pt-0">{error}</p>}
 
@@ -176,8 +253,10 @@ export default function HomePage() {
                   </Link>
                 </h2>
                 <span className="hidden md:inline-flex"><VersionTag doc={doc} size="md" /></span>
+                {filter === null && <span className="hidden md:inline-flex"><KindTag doc={doc} size="md" /></span>}
                 <div className="flex flex-wrap items-center gap-2 md:hidden">
                   <VersionTag doc={doc} size="sm" />
+                  {filter === null && <KindTag doc={doc} size="sm" />}
                   <span className="font-numeral text-[12px] text-ink-faint">
                     {shownDate(doc)} · {doc.chunk_count} 段
                   </span>
@@ -201,6 +280,15 @@ export default function HomePage() {
                       className="relative z-[1] flex size-8 cursor-pointer items-center justify-center rounded text-[16px] text-navy opacity-0 hover:bg-[#E4EAF0] focus-visible:opacity-100 group-hover:opacity-100"
                     >
                       <UploadOutlined aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      title={docKind(doc) === 'company' ? '改为行业研报' : '改为公司研报'}
+                      aria-label={`把「${doc.filename}」${docKind(doc) === 'company' ? '改为行业研报' : '改为公司研报'}`}
+                      onClick={() => void onToggleKind(doc)}
+                      className="relative z-[1] flex size-8 cursor-pointer items-center justify-center rounded text-[16px] text-ink-faint opacity-0 hover:bg-[#E4EAF0] hover:text-navy focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <SwapOutlined aria-hidden />
                     </button>
                     <button
                       type="button"
@@ -232,7 +320,9 @@ export default function HomePage() {
 
           {/* 空态:保留栏目头与分隔线,正文区只给一行说明 */}
           {loaded && rows.length === 0 && (
-            <p className="py-6 text-[13px] text-ink-faint md:px-4">还没有研报</p>
+            <p className="py-6 text-[13px] text-ink-faint md:px-4">
+              {filter ? `还没有${filter === 'company' ? '公司' : '行业'}研报` : '还没有研报'}
+            </p>
           )}
         </div>
       </main>
@@ -261,6 +351,14 @@ export default function HomePage() {
           >
             <UploadOutlined aria-hidden className="text-[18px]" />
             上传新版本
+          </button>
+          <button
+            type="button"
+            onClick={() => { const d = menuTarget; setMenuTarget(null); if (d) void onToggleKind(d) }}
+            className="flex h-[52px] items-center gap-3 border-b border-row-rule px-5 text-left text-[15px] text-navy"
+          >
+            <SwapOutlined aria-hidden className="text-[18px]" />
+            {menuTarget && docKind(menuTarget) === 'company' ? '改为行业研报' : '改为公司研报'}
           </button>
           <button
             type="button"

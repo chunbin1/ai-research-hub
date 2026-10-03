@@ -1,4 +1,4 @@
-import type { Document, DocumentVersion, SimilarReport } from './types'
+import type { Document, DocumentVersion, ReportKind, SimilarReport } from './types'
 
 export const api = {
   async listDocuments(): Promise<Document[]> {
@@ -28,20 +28,36 @@ export const api = {
     }
     return (await r.json()).version
   },
-  async uploadDocument(file: File): Promise<Document> {
+  async uploadDocument(file: File, kind?: ReportKind): Promise<Document> {
     const fd = new FormData()
+    // kind 必须在 file 前面:服务端流式解析,只读得到文件之前的字段
+    if (kind) fd.append('kind', kind)
     fd.append('file', file)
     const r = await fetch('/api/documents', { method: 'POST', body: fd })
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? '上传失败')
     return (await r.json()).document
   },
-  /** 上传前查重:库里可能是这篇旧版本的研报。只读,不落任何东西。 */
-  async checkSimilar(file: File): Promise<{ title: string; candidates: SimilarReport[] }> {
+  /**
+   * 上传前查重:库里可能是这篇旧版本的研报。只读,不落任何东西。
+   * 只在同类之间查:kind 不传就用服务端按标题推断的 suggestedKind(推不出来则不分类)。
+   */
+  async checkSimilar(file: File, kind?: ReportKind): Promise<{
+    title: string; suggestedKind: ReportKind | null; candidates: SimilarReport[]
+  }> {
     const fd = new FormData()
+    if (kind) fd.append('kind', kind)
     fd.append('file', file)
     const r = await fetch('/api/documents/similar', { method: 'POST', body: fd })
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? '查重失败')
     return r.json()
+  },
+  async setDocumentKind(id: string, kind: ReportKind): Promise<void> {
+    const r = await fetch(`/api/documents/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind }),
+    })
+    if (!r.ok) throw new Error('修改类型失败')
   },
   async deleteDocument(id: string): Promise<void> {
     const r = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
