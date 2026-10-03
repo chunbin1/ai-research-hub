@@ -67,3 +67,10 @@ test('isReportKind', () => {
   assert.equal(isReportKind('other'), false)
   assert.equal(isReportKind(undefined), false)
 })
+
+test('「年份 + 空格 + HK」不是港股代码;点号形式(2020.HK 是安踏)仍是', () => {
+  assert.equal(inferKind('2026 HK 科技股中期策略'), null)
+  assert.equal(inferKind('港股 2026 hk 展望'), null)
+  assert.equal(inferKind('安踏体育 2020.HK 投资研究报告'), 'company')
+  assert.equal(inferKind('腾讯控股 0700 HK 投资研究报告'), 'company')
+})

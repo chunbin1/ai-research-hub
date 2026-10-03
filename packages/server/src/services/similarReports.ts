@@ -27,7 +27,8 @@
  * 哪怕上传方的类型被推断错了(标题写「白酒行业龙头」的公司研报被预填成行业研报),
  * 也不能因此漏掉库里一模一样的旧版本、静默建出重复的一篇。库里每一行都有确定的类型,
  * 所以「任一边未知则不过滤」只对上传方未知(推断不出、也没选)生效。
- * 主题中位数只在保留下来的子集上算(不同类的模板不同,混着算会把基线抬歪)。
+ * 主题中位数只在保留下来的子集上算(不同类的模板不同,混着算会把基线抬歪);
+ * 标题的 IDF 则要在整库上算(见 findSimilarReports 里的说明)。
  *
  * 前两路过线的算「很可能是旧版本」(likely),排在最前;其余只有主题明显领先的才列,
  * 按主题相近度排。向量不可用时没有主题分,只返回 likely 的。
@@ -239,7 +240,11 @@ export function findSimilarReports(
   const existing = keep.map(i => all[i])
   const topic = allTopic && keep.map(i => allTopic[i])
   if (existing.length === 0) return []
-  const titles = titleScores(upload.title, existing)
+  // 标题的 IDF 必须在整库上算:同类子集很小时(早期只有一两篇公司研报),
+  // 「投资研究报告」这类模板字在子集里的文档频率低,会被当成稀有字加权,
+  // 任何新的公司研报都会和那一两篇「标题相近」。
+  const allTitles = titleScores(upload.title, all)
+  const titles = keep.map(i => allTitles[i])
   const topicBar = topic && existing.length >= TOPIC_MIN_LIBRARY ? median(topic) + TOPIC_LEAD : Infinity
 
   const scored = existing.map((r, i) => {

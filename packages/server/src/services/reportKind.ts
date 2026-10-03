@@ -17,9 +17,10 @@ export function isReportKind(v: unknown): v is ReportKind {
 /**
  * 标题里的股票代码:A 股 6 位(可带 .SH/.SZ/.BJ)、港股 4~5 位带 .HK(或 `0700 HK`)、
  * 交易所前缀形式(NYSE: ALB / KRX: 000660)。
- * 4 位纯数字不认 —— 「（2026Q3 更新）」之类的年份会撞上。
+ * 4 位纯数字不认 —— 「（2026Q3 更新）」之类的年份会撞上;`2026 HK 展望` 这种「年份 + 空格 + HK」同理,
+ * 所以空格形式要排除 20xx(点号形式不排除:`2020.HK` 是安踏)。
  */
-const CODE_RE = /\b\d{6}\b|\b\d{4,5}\s*[.\s]\s*hk\b|\b(?:nyse|nasdaq|amex|hkex|krx|tse|lse|tsx|asx|otc)\s*[:：]\s*[a-z0-9.]+/i
+const CODE_RE = /\b\d{6}\b|\b\d{4,5}\s*\.\s*hk\b|\b(?!20\d\d\b)\d{4,5}\s+hk\b|\b(?:nyse|nasdaq|amex|hkex|krx|tse|lse|tsx|asx|otc)\s*[:：]\s*[a-z0-9.]+/i
 
 /**
  * 路透式美股代码后缀:`NVDA.O` / `BRK.N`。区分大小写 —— 小写的 `ai.o` 之类不是代码。
