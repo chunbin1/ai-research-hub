@@ -20,10 +20,14 @@
  *   量过:真的旧版本、同题材的两篇领先 0.18~0.32;库里不相干的研报两两轮流比、
  *   宁德时代、中国大模型这类,最高只领先 0.124。门槛取 0.15。
  *
- * **只在同类之间比。** 上传和候选两边的类型(行业 / 公司)都已知且不同,就整篇排除:
- * 同一家公司的公司研报和产业链报告共享「中国海洋石油」这种高区分度的词,标题分会过线,
- * 但它们是两篇不同的报告。任一边类型未知则不过滤 —— 宁可多提示,不可漏掉真正的旧版本。
- * 主题中位数也只在同类子集上算(不同类的模板不同,混着算会把基线抬歪)。
+ * **类型只用来压掉「标题 / 主题撞词」的误报,不用来排除正文本身。** 上传和候选两边的类型
+ * (行业 / 公司)都已知且不同时,候选只有**正文重合过线**才保留:同一家公司的公司研报和产业链报告
+ * 共享「中国海洋石油」这种高区分度的词,标题分会过线,但它们是两篇不同的报告;而正文重合
+ * 在不同研报之间最高只有约 3%(公司研报与同公司的产业链报告也不到 6%),过线了就是同一篇 ——
+ * 哪怕上传方的类型被推断错了(标题写「白酒行业龙头」的公司研报被预填成行业研报),
+ * 也不能因此漏掉库里一模一样的旧版本、静默建出重复的一篇。库里每一行都有确定的类型,
+ * 所以「任一边未知则不过滤」只对上传方未知(推断不出、也没选)生效。
+ * 主题中位数只在保留下来的子集上算(不同类的模板不同,混着算会把基线抬歪)。
  *
  * 前两路过线的算「很可能是旧版本」(likely),排在最前;其余只有主题明显领先的才列,
  * 按主题相近度排。向量不可用时没有主题分,只返回 likely 的。
@@ -218,19 +222,29 @@ export function findSimilarReports(
   all: ExistingReport[],
   allTopic?: number[],
 ): SimilarReport[] {
+  const round = (n: number) => Math.round(n * 100) / 100
+  const body = shingles(upload.markdown)
+  // 每篇的正文指纹只算一次:过滤和打分都要用
+  const shingleCache = new Map<number, Set<number>>()
+  const shinglesOf = (i: number) => {
+    let sh = shingleCache.get(i)
+    if (!sh) shingleCache.set(i, sh = shingles(all[i].markdown!))
+    return sh
+  }
+  // 类型不同的候选只在正文重合过线时保留(见上面的说明)。
   // topic 与 all 按下标对齐,过滤时两边同取子集
-  const keep = all.map((r, i) => i).filter(i => !upload.kind || !all[i].kind || all[i].kind === upload.kind)
+  const keep = all.map((_, i) => i).filter(i =>
+    !upload.kind || !all[i].kind || all[i].kind === upload.kind
+    || (all[i].markdown !== null && jaccard(body, shinglesOf(i)) >= CONTENT_MIN))
   const existing = keep.map(i => all[i])
   const topic = allTopic && keep.map(i => allTopic[i])
   if (existing.length === 0) return []
   const titles = titleScores(upload.title, existing)
   const topicBar = topic && existing.length >= TOPIC_MIN_LIBRARY ? median(topic) + TOPIC_LEAD : Infinity
-  const body = shingles(upload.markdown)
-  const round = (n: number) => Math.round(n * 100) / 100
 
   const scored = existing.map((r, i) => {
     const titleScore = round(titles[i])
-    const contentScore = r.markdown === null ? 0 : round(jaccard(body, shingles(r.markdown)))
+    const contentScore = r.markdown === null ? 0 : round(jaccard(body, shinglesOf(keep[i])))
     const topicScore = topic ? round(topic[i]) : null
     const titleMatch = titleScore >= 1 ? 'same' as const : titleScore >= TITLE_MIN ? 'similar' as const : null
     const contentMatch = contentScore >= CONTENT_MIN

@@ -203,3 +203,37 @@ test('同类子集不足 4 篇时不看主题(早期公司研报很少)', () => 
     findSimilarReports({ title: '某某投资研究报告', markdown: '# 某某\n', kind: 'company' }, lib, topic), [],
   )
 })
+
+// ── 评审:类型推断错了,不能因此漏掉正文一模一样的旧版本 ────────────────────
+
+test('类型不同但正文重合过线:照样当旧版本列出来(推断错了也不静默建出重复的一篇)', () => {
+  const body = '## 1 生意本质\n\n' + '高端白酒的定价权来自品牌与稀缺的产区,批价与终端动销共同决定渠道库存的消化节奏。'.repeat(8)
+  const old: ExistingReport = {
+    id: 'moutai', kind: 'company', title: '贵州茅台（600519.SH）投资研究报告', markdown: `# 贵州茅台（600519.SH）投资研究报告\n\n${body}`,
+  }
+  const lib = [...library.map(r => ({ ...r, kind: 'industry' as const })), old]
+  // 只把 H1 换了:标题上和旧版本几乎没有共同的字,被推断成行业研报
+  const title = '白酒龙头的护城河'
+  const hits = findSimilarReports({ title, markdown: `# ${title}\n\n${body}`, kind: 'industry' }, lib)
+  assert.equal(hits[0]?.id, 'moutai')
+  assert.equal(hits[0].contentMatch, true)
+  assert.equal(hits[0].likely, true)
+})
+
+test('类型不同且正文不重合:仍被排除(公司研报与同公司产业链报告互不打扰)', () => {
+  const lib = library.map(r => ({ ...r, kind: 'industry' as const }))
+  const title = '中国海洋石油（0883.HK / 600938.SH）投资研究报告'
+  // 正文与库里那篇产业链报告完全不同
+  assert.deepEqual(findSimilarReports({ title, markdown: `# ${title}\n\n${'桶油成本与分红。'.repeat(20)}`, kind: 'company' }, lib), [])
+})
+
+test('保留下来的跨类候选不打乱主题分与候选的对齐', () => {
+  // 偶数下标行业、奇数公司;上传是公司,且正文和 doc_2(行业)重合
+  const lib = library.map((r, i) => ({ ...r, kind: i % 2 ? 'company' as const : 'industry' as const }))
+  const topic = lib.map((_, i) => (i === 7 ? 0.7 : 0.4))
+  const body = '共同的一段正文'.repeat(30)
+  lib[2] = { ...lib[2], markdown: `# ${lib[2].title}\n\n${body}` }
+  const hits = findSimilarReports({ title: '某某', markdown: `# 某某\n\n${body}`, kind: 'company' }, lib, topic)
+  assert.deepEqual(hits.map(h => h.id), ['doc_2', 'doc_7'])
+  assert.equal(hits.find(h => h.id === 'doc_7')?.topicScore, 0.7)
+})

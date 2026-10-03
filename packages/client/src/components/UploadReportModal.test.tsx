@@ -261,3 +261,19 @@ test('查重失败:类型选择器照样给,默认行业研报', async () => {
   fireEvent.drop(zone, dt([md()]))
   expect((await kindRadio('行业研报')).checked).toBe(true)
 })
+
+test('候选和要上传的类型不同:依据里说明「库里是…」,方便判断是不是推断错了类型', async () => {
+  const moutai = { ...OLD, document: { ...OLD.document, id: 'doc_mt', filename: '贵州茅台（600519.SH）投资研究报告', kind: 'company' as const, latest_version: 1 }, titleScore: 0, titleMatch: null, contentScore: 1 }
+  mockCheckSimilar.mockResolvedValue({ title: '白酒龙头的护城河', suggestedKind: 'industry', candidates: [moutai] })
+  renderModal()
+  fireEvent.drop(screen.getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ }), dt([md('白酒.md')]))
+  expect(await screen.findByText('正文重合 100% · 库里是公司研报 · 目前 v1,2026/9/25 更新')).toBeTruthy()
+})
+
+test('同类候选不加「库里是…」', async () => {
+  mockCheckSimilar.mockResolvedValue({ title: '腾讯(Q4 更新)', suggestedKind: 'industry', candidates: [OLD] })
+  renderModal()
+  fireEvent.drop(screen.getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ }), dt([md('腾讯Q4.md')]))
+  await screen.findByText('库里可能已有这篇的旧版本')
+  expect(screen.queryByText(/库里是/)).toBeNull()
+})

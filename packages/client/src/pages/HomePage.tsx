@@ -76,8 +76,11 @@ const KIND_TABS: ReadonlyArray<{ key: ReportKind | null; label: string }> = [
   { key: 'company', label: '公司' },
 ]
 
-/** 桌面表格的列:日期 | 标题 | 段数 | 操作。表头、骨架、数据行三处共用 */
-const DESKTOP_COLS = 'md:grid md:grid-cols-[84px_minmax(0,1fr)_56px_104px] md:items-center md:gap-6 md:px-4 lg:grid-cols-[96px_minmax(0,1fr)_64px_104px]'
+/**
+ * 桌面表格的列:日期 | 标题 | 段数 | 操作。表头、骨架、数据行三处共用。
+ * 操作列 136px:管理员行是 3 个 32px 按钮 + 箭头 + 间距 ≈ 125px,104px 时 flex 会把按钮压到 25px。
+ */
+const DESKTOP_COLS = 'md:grid md:grid-cols-[84px_minmax(0,1fr)_56px_136px] md:items-center md:gap-6 md:px-4 lg:grid-cols-[96px_minmax(0,1fr)_64px_136px]'
 
 /**
  * 上一次拿到的研报列表。只为「刷新不抖」:有缓存就首帧直接画出列表,

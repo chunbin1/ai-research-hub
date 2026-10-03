@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Alert, Input, Radio } from 'antd'
 import { api } from '../api'
-import { REPORT_KIND_LABEL, type ReportKind, type SimilarReport } from '../types'
+import { REPORT_KIND_LABEL, docKind, type ReportKind, type SimilarReport } from '../types'
 import { ReportDropZone } from './ReportDropZone'
 import { UploadDialog } from './UploadDialog'
 
@@ -171,7 +171,7 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
                 <span className="text-[14px] text-ink">
                   作为「{c.document.filename}」的新版本 v{(c.document.latest_version ?? 1) + 1}
                 </span>
-                <span className="block text-[12px] text-ink-faint">{describe(c)}</span>
+                <span className="block text-[12px] text-ink-faint">{describe(c, kind)}</span>
               </Radio>
             ))}
             <Radio value="new">
@@ -210,7 +210,7 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
  * 「标题相近 · 正文重合 98% · 目前 v1,9/25 更新」—— 给人判断是不是同一篇的依据。
  * 过没过线由服务端判断;没过线的分数(正文重合 2%)不显示,只会让人困惑。
  */
-function describe(c: SimilarReport): string {
+function describe(c: SimilarReport, uploadKind: ReportKind): string {
   const parts: string[] = []
   if (c.titleMatch === 'same') parts.push('标题相同')
   else if (c.titleMatch === 'similar') parts.push('标题相近')
@@ -218,6 +218,8 @@ function describe(c: SimilarReport): string {
   // 服务端只在有主题分时才会列出不 likely 的候选,它就是按主题排进来的
   if (!c.likely && c.topicScore !== null) parts.push('主题相近')
   const d = c.document
+  // 类型不同还被列出来,只可能是正文重合过线(见服务端 similarReports):提醒一句,方便判断是不是推断错了类型
+  if (docKind(d) !== uploadKind) parts.push(`库里是${REPORT_KIND_LABEL[docKind(d)]}`)
   const at = d.updated_at ?? d.created_at
   const date = new Date(at)
   parts.push(`目前 v${d.latest_version ?? 1},${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} 更新`)
