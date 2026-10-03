@@ -149,3 +149,57 @@ test('空库没有候选;候选最多 3 篇', () => {
   assert.equal(hits[0].titleScore, 1)
   assert.equal(hits[0].titleMatch, 'same')
 })
+
+// ── 只在同类之间比 ────────────────────────────────────────────────────────
+
+test('同一家公司的公司研报不把库里的产业链报告当旧版本', () => {
+  const lib = library.map(r => ({ ...r, kind: 'industry' as const }))
+  const title = '中国海洋石油（0883.HK / 600938.SH）投资研究报告'
+  const upload = { title, markdown: `# ${title}\n\n全新的正文。\n` }
+
+  // 不分类时,共享「中国海洋石油」让产业链报告过线 —— 这就是要防的误报
+  const unscoped = findSimilarReports(upload, lib)
+  assert.equal(unscoped[0]?.id, idOf('中国海洋石油（CNOOC）产业链投资研究报告'))
+  assert.equal(unscoped[0].likely, true)
+
+  assert.deepEqual(findSimilarReports({ ...upload, kind: 'company' }, lib), [])
+})
+
+test('同类之间照常查重:公司研报出新版本认得出旧版本', () => {
+  const old: ExistingReport = {
+    id: 'co', kind: 'company', markdown: null, title: '中国海洋石油（0883.HK / 600938.SH）投资研究报告',
+  }
+  const lib = [...library.map(r => ({ ...r, kind: 'industry' as const })), old]
+  const title = '中国海洋石油（0883.HK / 600938.SH）投资研究报告（2027Q1 更新）'
+  const hits = findSimilarReports({ title, markdown: `# ${title}\n`, kind: 'company' }, lib)
+  assert.deepEqual(hits.map(h => h.id), ['co'])
+  assert.equal(hits[0].titleMatch, 'same')
+})
+
+test('任一边类型未知时不过滤:宁可多提示,不漏真正的旧版本', () => {
+  const tx = idOf('腾讯生态产业链投资研究报告')
+  const title = '腾讯控股投资研究报告'
+  const upload = { title, markdown: `# ${title}\n` }
+  // 上传方未知
+  assert.equal(findSimilarReports(upload, library.map(r => ({ ...r, kind: 'industry' as const })))[0]?.id, tx)
+  // 库里的未知
+  assert.equal(findSimilarReports({ ...upload, kind: 'company' }, library)[0]?.id, tx)
+})
+
+test('过滤后主题分仍与候选对齐,中位数只在同类上算', () => {
+  // 偶数下标是行业、奇数是公司;上传是公司。
+  const lib = library.map((r, i) => ({ ...r, kind: i % 2 ? 'company' as const : 'industry' as const }))
+  // 公司子集 = doc_1,3,5,7,9。让 doc_7 领先同类中位数,但不领先全库中位数之外的行业干扰项
+  const topic = lib.map((_, i) => (i === 7 ? 0.7 : i % 2 ? 0.4 : 0.9))
+  const hits = findSimilarReports({ title: '中海油:高股息的底气', markdown: '# 中海油\n', kind: 'company' }, lib, topic)
+  assert.deepEqual(hits.map(h => h.id), ['doc_7'])
+  assert.equal(hits[0].topicScore, 0.7)
+})
+
+test('同类子集不足 4 篇时不看主题(早期公司研报很少)', () => {
+  const lib = library.map((r, i) => ({ ...r, kind: i < 2 ? 'company' as const : 'industry' as const }))
+  const topic = lib.map((_, i) => (i === 0 ? 0.95 : 0.3))
+  assert.deepEqual(
+    findSimilarReports({ title: '某某投资研究报告', markdown: '# 某某\n', kind: 'company' }, lib, topic), [],
+  )
+})

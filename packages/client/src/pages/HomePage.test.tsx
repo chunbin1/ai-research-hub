@@ -31,9 +31,9 @@ function stubFetch(opts: { user?: unknown; docs?: unknown[] } = {}) {
 afterEach(() => { vi.unstubAllGlobals() })
 
 // 顶栏(上传入口、管理员栏目)挂在 SiteLayout 上,和线上一样套着渲染
-function renderHome() {
+function renderHome(url = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route element={<SiteLayout />}>
           <Route path="/" element={<HomePage />} />
@@ -210,4 +210,94 @@ test('管理员:研报行上的「上传新版本」打开带大拖拽区的弹�
   const dialog = await screen.findByRole('dialog')
   expect(within(dialog).getByText('上传新版本 v2')).toBeTruthy()
   expect(within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ })).toBeTruthy()
+})
+
+
+// ── 行业 / 公司 ───────────────────────────────────────────────────────────
+
+const WITH_COMPANY = [
+  ...DOCS,
+  { id: 'd4', filename: '中国海洋石油（0883.HK / 600938.SH）投资研究报告', size_bytes: 1, chunk_count: 30, created_at: '2026-10-02T00:00:00.000Z', kind: 'company' },
+  { id: 'd5', filename: 'SK海力士（KRX: 000660 / NASDAQ: SKHY）投资研究报告', size_bytes: 1, chunk_count: 30, created_at: '2026-10-02T00:00:00.000Z', kind: 'company' },
+]
+
+test('库里没有公司研报时不出类型筛选(旧缓存里没有 kind 的也算行业)', async () => {
+  stubFetch()
+  renderHome()
+  await screen.findByText('腾讯生态产业链投资研究报告')
+  expect(screen.queryByRole('navigation', { name: '研报类型' })).toBeNull()
+  expect(screen.queryByText('公司')).toBeNull()
+})
+
+test('有公司研报:出「全部 / 行业 / 公司」筛选并带计数,默认全部', async () => {
+  stubFetch({ docs: WITH_COMPANY })
+  renderHome()
+  const nav = await screen.findByRole('navigation', { name: '研报类型' })
+  expect(within(nav).getByRole('button', { name: /全部/ }).getAttribute('aria-pressed')).toBe('true')
+  expect(within(nav).getByRole('button', { name: /全部/ }).textContent).toBe('全部5')
+  expect(within(nav).getByRole('button', { name: /行业/ }).textContent).toBe('行业3')
+  expect(within(nav).getByRole('button', { name: /公司/ }).textContent).toBe('公司2')
+  expect(screen.getByText('共 5 篇')).toBeTruthy()
+})
+
+test('全部视图里公司研报挂「公司」小标,行业研报不挂', async () => {
+  stubFetch({ docs: WITH_COMPANY })
+  renderHome()
+  const co = (await screen.findByText(/^中国海洋石油（0883/)).closest('article')!
+  // 桌面跟在标题后、移动端在日期行里,各一份
+  expect(within(co).getAllByText('公司')).toHaveLength(2)
+  const ind = screen.getByText('腾讯生态产业链投资研究报告').closest('article')!
+  expect(within(ind).queryByText('公司')).toBeNull()
+})
+
+test('点「公司」只留公司研报,计数跟着变,URL 记住筛选', async () => {
+  stubFetch({ docs: WITH_COMPANY })
+  renderHome()
+  const nav = await screen.findByRole('navigation', { name: '研报类型' })
+  fireEvent.click(within(nav).getByRole('button', { name: /公司/ }))
+
+  await waitFor(() => expect(screen.queryByText('腾讯生态产业链投资研究报告')).toBeNull())
+  expect(screen.getByText(/^中国海洋石油（0883/)).toBeTruthy()
+  expect(screen.getByText(/^SK海力士/)).toBeTruthy()
+  expect(screen.getByText('共 2 篇')).toBeTruthy()
+  expect(within(nav).getByRole('button', { name: /公司/ }).getAttribute('aria-pressed')).toBe('true')
+  // 已经筛到公司了,行上不再重复挂「公司」
+  expect(screen.getByText(/^SK海力士/).closest('article')!.textContent).not.toContain('公司')
+})
+
+test('直接打开 /?kind=industry:只看行业;不认识的值当全部', async () => {
+  stubFetch({ docs: WITH_COMPANY })
+  const { unmount } = renderHome('/?kind=industry')
+  await screen.findByText('腾讯生态产业链投资研究报告')
+  expect(screen.queryByText(/^中国海洋石油（0883/)).toBeNull()
+  expect(screen.getByText('共 3 篇')).toBeTruthy()
+  unmount()
+
+  renderHome('/?kind=whatever')
+  expect(await screen.findByText('共 5 篇')).toBeTruthy()
+})
+
+test('筛到的那一类是空的:筛选留着,说明没有,不把人困住', async () => {
+  stubFetch({ docs: DOCS })
+  renderHome('/?kind=company')
+  expect(await screen.findByText('还没有公司研报')).toBeTruthy()
+  const nav = screen.getByRole('navigation', { name: '研报类型' })
+  fireEvent.click(within(nav).getByRole('button', { name: /全部/ }))
+  expect(await screen.findByText('腾讯生态产业链投资研究报告')).toBeTruthy()
+})
+
+test('管理员:桌面行上的「改为…」把类型改掉并刷新', async () => {
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (init?.method === 'PATCH') return { ok: true, json: async () => ({}) } as Response
+    return { ok: true, json: async () => ({ documents: WITH_COMPANY }) } as Response
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderHome()
+  fireEvent.click(await screen.findByRole('button', { name: '把「SK海力士（KRX: 000660 / NASDAQ: SKHY）投资研究报告」改为行业研报' }))
+  await waitFor(() => {
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH')
+    expect(patch?.[0]).toBe('/api/documents/d5')
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ kind: 'industry' })
+  })
 })

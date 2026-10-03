@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { initChunkFtsTable, searchBm25 } from './chunkFts.ts'
-import { initDocumentTable, getDocument } from './documentStore.ts'
+import { initDocumentTable, getDocument, setDocumentKind } from './documentStore.ts'
 import { importRawDocs } from './importRaw.ts'
 
 const MD_A = `# 腾讯生态产业链投资研究报告
@@ -98,4 +98,16 @@ test('一篇缺失不影响其他篇', () => {
   const out = importRawDocs(db, ['gone', 'doc_a'], reader({ doc_a: MD_A }))
   assert.equal(out[0].status, 'missing')
   assert.equal(out[1].status, 'ok')
+})
+
+test('新登记的行按标题推断类型;重导不把管理员改过的类型改回去', () => {
+  const db = freshDb()
+  const company = '# 中国海洋石油（0883.HK / 600938.SH）投资研究报告\n\n## 1 生意\n\n正文。\n'
+  importRawDocs(db, ['doc_a', 'doc_c'], reader({ doc_a: MD_A, doc_c: company }))
+  assert.equal(getDocument('doc_a')?.kind, 'industry')
+  assert.equal(getDocument('doc_c')?.kind, 'company')
+
+  setDocumentKind('doc_c', 'industry')
+  importRawDocs(db, ['doc_c'], reader({ doc_c: company }))
+  assert.equal(getDocument('doc_c')?.kind, 'industry')
 })

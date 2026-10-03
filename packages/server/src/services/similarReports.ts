@@ -20,13 +20,22 @@
  *   量过:真的旧版本、同题材的两篇领先 0.18~0.32;库里不相干的研报两两轮流比、
  *   宁德时代、中国大模型这类,最高只领先 0.124。门槛取 0.15。
  *
+ * **只在同类之间比。** 上传和候选两边的类型(行业 / 公司)都已知且不同,就整篇排除:
+ * 同一家公司的公司研报和产业链报告共享「中国海洋石油」这种高区分度的词,标题分会过线,
+ * 但它们是两篇不同的报告。任一边类型未知则不过滤 —— 宁可多提示,不可漏掉真正的旧版本。
+ * 主题中位数也只在同类子集上算(不同类的模板不同,混着算会把基线抬歪)。
+ *
  * 前两路过线的算「很可能是旧版本」(likely),排在最前;其余只有主题明显领先的才列,
  * 按主题相近度排。向量不可用时没有主题分,只返回 likely 的。
  */
 
+import type { ReportKind } from './reportKind.js'
+
 export interface ExistingReport {
   id: string
   title: string
+  /** 行业研报 / 公司研报;未知(旧数据、测试)时不参与分类过滤 */
+  kind?: ReportKind
   /** 最新版正文;原文缺失的老文档为 null,只比标题 */
   markdown: string | null
 }
@@ -205,10 +214,14 @@ function median(xs: number[]): number {
  * topic 是 topicScores 的结果;向量不可用时不传,这时只返回 likely 的。
  */
 export function findSimilarReports(
-  upload: { title: string; markdown: string },
-  existing: ExistingReport[],
-  topic?: number[],
+  upload: { title: string; markdown: string; kind?: ReportKind },
+  all: ExistingReport[],
+  allTopic?: number[],
 ): SimilarReport[] {
+  // topic 与 all 按下标对齐,过滤时两边同取子集
+  const keep = all.map((r, i) => i).filter(i => !upload.kind || !all[i].kind || all[i].kind === upload.kind)
+  const existing = keep.map(i => all[i])
+  const topic = allTopic && keep.map(i => allTopic[i])
   if (existing.length === 0) return []
   const titles = titleScores(upload.title, existing)
   const topicBar = topic && existing.length >= TOPIC_MIN_LIBRARY ? median(topic) + TOPIC_LEAD : Infinity

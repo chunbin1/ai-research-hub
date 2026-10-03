@@ -3,7 +3,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import type { MultipartFile } from '@fastify/multipart'
 import { parseMarkdown } from '../services/markdownParser.js'
 import {
-  saveDocument, getAllDocuments, getDocument, deleteDocument,
+  saveDocument, getAllDocuments, getDocument, deleteDocument, setDocumentKind,
   readVersionMarkdown, readRawMarkdown, deleteRawMarkdown,
 } from '../services/documentStore.js'
 import { upsertChunks, deleteByDocId, isDocVectorAvailable, stampLegacy } from '../services/documentVector.js'
@@ -11,6 +11,7 @@ import { deleteChunkFts } from '../services/chunkFts.js'
 import { deleteIndexState } from '../services/indexState.js'
 import { listVersions, latestVersion, deleteVersions } from '../services/versionStore.js'
 import { createVersion, SameContentError, type VersionDeps } from '../services/documentVersion.js'
+import { inferKind, isReportKind, type ReportKind } from '../services/reportKind.js'
 import { findSimilarReports, topicScores } from '../services/similarReports.js'
 import { embeddingModel, embedBatch, isEmbeddingAvailable } from '../services/embeddings.js'
 import { getDb } from '../services/db.js'
@@ -31,25 +32,39 @@ function versionDeps(): VersionDeps {
 /** 读上传的 markdown。出错时已经回了 4xx,返回 null。 */
 async function readUpload(
   request: FastifyRequest, reply: FastifyReply,
-): Promise<{ md: string; baseName: string; note: string | null } | null> {
+): Promise<{ md: string; baseName: string; note: string | null; kind: ReportKind | null } | null> {
   const data = await request.file()
   if (!data) { reply.status(400).send({ error: '未上传文件' }); return null }
   if (!/\.(md|markdown|txt)$/i.test(data.filename)) {
     reply.status(400).send({ error: '只支持 .md / .markdown / .txt 文件' })
     return null
   }
+  // 先读字段再 toBuffer:文件之前的字段此时已经解析完
+  const kind = readKind(data)
+  if (kind === 'invalid') { reply.status(400).send({ error: 'invalid_kind' }); return null }
   const md = (await data.toBuffer()).toString('utf8')
   if (!md.trim()) { reply.status(422).send({ error: '文件内容为空' }); return null }
-  return { md, baseName: data.filename.replace(/\.(md|markdown|txt)$/i, ''), note: readNote(data) }
+  return { md, baseName: data.filename.replace(/\.(md|markdown|txt)$/i, ''), note: readNote(data), kind }
 }
 
-/** 更新说明是文件前面的普通表单字段;客户端必须先 append note 再 append file,否则这里读不到。 */
-function readNote(data: MultipartFile): string | null {
-  const f = data.fields.note
+/** 文件前面的普通表单字段;客户端必须先 append 它再 append file,否则这里读不到。 */
+function readField(data: MultipartFile, name: string): string | null {
+  const f = data.fields[name]
   const field = Array.isArray(f) ? f[0] : f
   if (!field || field.type !== 'field') return null
-  const note = String(field.value ?? '').trim().slice(0, NOTE_MAX)
+  return String(field.value ?? '')
+}
+
+function readNote(data: MultipartFile): string | null {
+  const note = (readField(data, 'note') ?? '').trim().slice(0, NOTE_MAX)
   return note || null
+}
+
+/** 没传返回 null;传了但不是合法类型返回 'invalid' */
+function readKind(data: MultipartFile): ReportKind | null | 'invalid' {
+  const v = readField(data, 'kind')?.trim()
+  if (!v) return null
+  return isReportKind(v) ? v : 'invalid'
 }
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
@@ -81,8 +96,11 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     if (!up) return
 
     const { displayName, chunks } = parseMarkdown(up.md)
+    const filename = displayName || up.baseName
     const doc = saveDocument({
-      filename: displayName || up.baseName,
+      filename,
+      // 弹窗里管理员选的为准;脚本 / curl 不带就按标题推断,拿不准按行业研报
+      kind: up.kind ?? inferKind(filename) ?? 'industry',
       size_bytes: Buffer.byteLength(up.md, 'utf8'),
       chunk_count: chunks.length,
     })
@@ -100,10 +118,14 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     if (!up) return
 
     const title = parseMarkdown(up.md).displayName || up.baseName
+    const suggestedKind = inferKind(title)
+    // 只在同类之间查重。上传方类型:管理员在弹窗里选的 > 按标题推断的建议 > 未知(不过滤)
+    const kind = up.kind ?? suggestedKind ?? undefined
     const docs = getAllDocuments()
     const existing = docs.map(d => ({
       id: d.id,
       title: d.filename,
+      kind: d.kind,
       // 迁移不出版本记录的老文档只有 raw 原文
       markdown: readVersionMarkdown(d.id, d.latest_version) ?? readRawMarkdown(d.id),
     }))
@@ -117,9 +139,20 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       }
     }
     const byId = new Map(docs.map(d => [d.id, d]))
-    const candidates = findSimilarReports({ title, markdown: up.md }, existing, topic)
+    const candidates = findSimilarReports({ title, markdown: up.md, kind }, existing, topic)
       .map(({ id, ...scores }) => ({ document: byId.get(id)!, ...scores }))
-    return { title, candidates }
+    return { title, suggestedKind, candidates }
+  })
+
+  /** 改研报类型。预填错了可以改,不用删掉重传 —— 删除会连版本和问答记录一起丢。 */
+  app.patch<{ Params: { id: string }; Body: { kind?: unknown } }>('/documents/:id', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return
+    const doc = getDocument(request.params.id)
+    if (!doc) return reply.status(404).send({ error: 'not_found' })
+    const kind = request.body?.kind
+    if (!isReportKind(kind)) return reply.status(400).send({ error: 'invalid_kind' })
+    setDocumentKind(doc.id, kind)
+    return { document: getDocument(doc.id) }
   })
 
   app.post<{ Params: { id: string } }>('/documents/:id/versions', async (request, reply) => {

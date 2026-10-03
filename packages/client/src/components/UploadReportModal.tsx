@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Alert, Input, Radio } from 'antd'
 import { api } from '../api'
-import type { SimilarReport } from '../types'
+import { REPORT_KIND_LABEL, type ReportKind, type SimilarReport } from '../types'
 import { ReportDropZone } from './ReportDropZone'
 import { UploadDialog } from './UploadDialog'
 
@@ -21,6 +21,9 @@ type Choice = 'new' | string
  * 选好文件先查重:库里有像的(标题相近、正文重合、或主题明显更近,最多 3 篇)就列出来,
  * 让管理员自己选「作为其中一篇的新版本」还是「新建一篇」—— 标题常常只改了一部分,
  * 甚至整篇重写,光凭记忆很容易把同一篇传成两篇。有候选时不选不让传;没有就直接上传。
+ *
+ * 新建一篇时要选研报类型(行业 / 公司),预填服务端按标题推断的建议值,管理员可改。
+ * 查重只在同类之间比,所以改选类型会用新类型重查一次。作为新版本上传时类型继承原文档,不选。
  */
 export function UploadReportModal({ open, onClose, onUploaded }: {
   open: boolean
@@ -31,6 +34,9 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
   const [check, setCheck] = useState<Check>({ status: 'idle' })
   const [choice, setChoice] = useState<Choice | null>(null)
   const [note, setNote] = useState('')
+  const [kind, setKind] = useState<ReportKind>('industry')
+  /** 第一次查重回来之前,建议类型还没到,先不显示选择器(免得先闪一下默认值) */
+  const [kindKnown, setKindKnown] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   // 连着换文件时,只认最后一次查重的结果
@@ -47,6 +53,8 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
     setCheck({ status: 'idle' })
     setChoice(null)
     setNote('')
+    setKind('industry')
+    setKindKnown(false)
     setError('')
   }
 
@@ -54,10 +62,30 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
     setFile(f)
     setChoice(null)
     setError('')
+    setKindKnown(false)
     const seq = ++checkSeq.current
     setCheck({ status: 'checking' })
     try {
-      const { candidates } = await api.checkSimilar(f)
+      // 第一次不带类型:让服务端按标题推断,并把推断结果带回来预填
+      const { candidates, suggestedKind } = await api.checkSimilar(f)
+      if (seq !== checkSeq.current) return
+      setKind(suggestedKind ?? 'industry')
+      setKindKnown(true)
+      setCheck({ status: 'done', candidates })
+    } catch {
+      if (seq === checkSeq.current) { setKind('industry'); setKindKnown(true); setCheck({ status: 'failed' }) }
+    }
+  }
+
+  /** 改选类型:查重只在同类之间比,换了类型候选就不一样了,用新类型重查 */
+  async function changeKind(next: ReportKind) {
+    if (!file || next === kind) return
+    setKind(next)
+    setChoice(null)
+    const seq = ++checkSeq.current
+    setCheck({ status: 'checking' })
+    try {
+      const { candidates } = await api.checkSimilar(file, next)
       if (seq === checkSeq.current) setCheck({ status: 'done', candidates })
     } catch {
       if (seq === checkSeq.current) setCheck({ status: 'failed' })
@@ -69,7 +97,7 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
     setBusy(true)
     setError('')
     try {
-      if (target === 'new') await api.uploadDocument(file)
+      if (target === 'new') await api.uploadDocument(file, kind)
       else await api.uploadVersion(target, file, note)
       reset()
       onUploaded()
@@ -100,6 +128,21 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
         disabled={busy}
         onFile={f => void pick(f)}
       />
+
+      {file && kindKnown && !targetDoc && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <span className="text-[13px] text-[#555]">研报类型</span>
+          <Radio.Group
+            value={kind}
+            onChange={e => void changeKind(e.target.value as ReportKind)}
+            disabled={busy}
+            aria-label="研报类型"
+          >
+            <Radio value="industry">{REPORT_KIND_LABEL.industry}</Radio>
+            <Radio value="company">{REPORT_KIND_LABEL.company}</Radio>
+          </Radio.Group>
+        </div>
+      )}
 
       {check.status === 'checking' && (
         <p className="m-0 mt-3 text-[13px] text-ink-mute">正在查找库里有没有这篇的旧版本…</p>

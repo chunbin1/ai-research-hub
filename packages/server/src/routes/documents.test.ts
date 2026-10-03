@@ -31,12 +31,15 @@ await app.register(multipart)
 await app.register(documentRoutes, { prefix: '/api' })
 await app.ready()
 
-/** 手拼 multipart。note 必须在 file 前面 —— 服务端只读得到文件之前的字段。 */
-function form(filename: string, content: string, note?: string) {
+/** 手拼 multipart。note / kind 必须在 file 前面 —— 服务端只读得到文件之前的字段。 */
+function form(filename: string, content: string, note?: string, kind?: string) {
   const boundary = '----arhtest'
   const parts: string[] = []
   if (note !== undefined) {
     parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="note"\r\n\r\n${note}\r\n`)
+  }
+  if (kind !== undefined) {
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="kind"\r\n\r\n${kind}\r\n`)
   }
   parts.push(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
@@ -159,4 +162,82 @@ test('查重:报出可能是旧版本的那篇,且不落任何东西', async () 
 test('查重:格式不对照样 400', async () => {
   const res = await app.inject({ method: 'POST', url: '/api/documents/similar', ...form('a.pdf', '%PDF') })
   assert.equal(res.statusCode, 400)
+})
+
+// ── 研报类型(行业 / 公司)────────────────────────────────────────────────
+
+const CNOOC_INDUSTRY = '# 中国海洋石油（CNOOC）产业链投资研究报告\n\n## 2.2 生意特征\n\n上游毛利率 30-50%。\n'
+const CNOOC_COMPANY = '# 中国海洋石油（0883.HK / 600938.SH）投资研究报告\n\n## 1 生意本质\n\n桶油成本 $27.9。\n'
+
+async function uploadKind(md: string, kind?: string) {
+  const res = await app.inject({ method: 'POST', url: '/api/documents', ...form('x.md', md, undefined, kind) })
+  assert.equal(res.statusCode, 200, res.body)
+  return res.json().document as { id: string; kind: string }
+}
+
+test('上传:管理员选的类型为准,覆盖按标题的推断', async () => {
+  assert.equal((await uploadKind(CNOOC_COMPANY, 'industry')).kind, 'industry')
+  assert.equal((await uploadKind(CNOOC_INDUSTRY, 'company')).kind, 'company')
+})
+
+test('上传:不带类型时按标题推断,推不出来按行业研报', async () => {
+  assert.equal((await uploadKind(CNOOC_COMPANY)).kind, 'company')
+  assert.equal((await uploadKind(CNOOC_INDUSTRY)).kind, 'industry')
+  assert.equal((await uploadKind('# 投研方法论\n\n正文。\n')).kind, 'industry')
+})
+
+test('上传:非法类型 400,什么都不落', async () => {
+  const before = (await app.inject({ method: 'GET', url: '/api/documents' })).json().documents.length
+  const res = await app.inject({ method: 'POST', url: '/api/documents', ...form('x.md', CNOOC_COMPANY, undefined, 'other') })
+  assert.equal(res.statusCode, 400)
+  assert.equal(res.json().error, 'invalid_kind')
+  assert.equal((await app.inject({ method: 'GET', url: '/api/documents' })).json().documents.length, before)
+})
+
+test('列表带出 kind;上传新版本继承原文档的类型', async () => {
+  const doc = await uploadKind(CNOOC_COMPANY)
+  const v2 = CNOOC_COMPANY.replace('27.9', '28.5')
+  const res = await app.inject({ method: 'POST', url: `/api/documents/${doc.id}/versions`, ...form('x.md', v2, undefined, 'industry') })
+  assert.equal(res.statusCode, 200)
+  assert.equal(res.json().document.kind, 'company', '新版本不改类型,即使带了 kind')
+  const row = (await app.inject({ method: 'GET', url: '/api/documents' })).json().documents
+    .find((d: { id: string }) => d.id === doc.id)
+  assert.equal(row.kind, 'company')
+})
+
+test('查重:公司研报不把同一家公司的产业链报告当旧版本,但建议类型随响应返回', async () => {
+  // 用库里别的测试没碰过的公司,免得它们留下的同名研报挤掉候选的 3 个名额
+  const industryMd = '# 宁德时代产业链投资研究报告\n\n## 1 电池\n\n动力电池装机量。\n'
+  const companyMd = '# 宁德时代（300750.SZ）投资研究报告\n\n## 1 生意本质\n\n储能毛利率。\n'
+  const industry = await uploadKind(industryMd, 'industry')
+
+  const res = await app.inject({ method: 'POST', url: '/api/documents/similar', ...form('co.md', companyMd) })
+  assert.equal(res.statusCode, 200)
+  assert.equal(res.json().suggestedKind, 'company')
+  const ids = (b: { candidates: { document: { id: string } }[] }) => b.candidates.map(c => c.document.id)
+  assert.ok(!ids(res.json()).includes(industry.id), '推断为公司研报 → 不和产业链报告比')
+
+  // 管理员在弹窗里把它改选成行业研报,再查就能看到那篇
+  const asIndustry = await app.inject({ method: 'POST', url: '/api/documents/similar', ...form('co.md', companyMd, undefined, 'industry') })
+  assert.ok(ids(asIndustry.json()).includes(industry.id))
+})
+
+test('查重:类型推不出来时不过滤', async () => {
+  const doc = await upload()
+  const res = await app.inject({ method: 'POST', url: '/api/documents/similar', ...form('tx-q3.md', V2) })
+  assert.equal(res.json().suggestedKind, null)
+  assert.ok(res.json().candidates.some((c: { document: { id: string } }) => c.document.id === doc.id))
+})
+
+test('PATCH 改类型;不存在 404,非法值 400', async () => {
+  const doc = await uploadKind(CNOOC_INDUSTRY, 'industry')
+  const ok = await app.inject({ method: 'PATCH', url: `/api/documents/${doc.id}`, payload: { kind: 'company' } })
+  assert.equal(ok.statusCode, 200)
+  assert.equal(ok.json().document.kind, 'company')
+
+  const bad = await app.inject({ method: 'PATCH', url: `/api/documents/${doc.id}`, payload: { kind: 'x' } })
+  assert.equal(bad.statusCode, 400)
+  const missing = await app.inject({ method: 'PATCH', url: '/api/documents/doc_nope', payload: { kind: 'company' } })
+  assert.equal(missing.statusCode, 404)
+  assert.equal((await app.inject({ method: 'GET', url: `/api/documents/${doc.id}` })).json().document.kind, 'company')
 })

@@ -5,6 +5,7 @@ import type { DB } from './db.js'
 import type { Document } from '../types.js'
 import { initVersionTable } from './versionStore.js'
 import { runOnce } from './migrations.js'
+import { inferKind, type ReportKind } from './reportKind.js'
 
 const RAW_DIR = process.env.RAW_DIR ?? 'data/raw'
 let _db: DB | null = null
@@ -24,6 +25,12 @@ export function initDocumentTable(db: DB): void {
       created_at  TEXT NOT NULL
     );
   `)
+  // kind 是后加的列:老库没有就补上。默认 industry —— 库里绝大多数是产业链报告;
+  // 其中的公司研报由 backfillDocumentKinds 一次性改过来。
+  const cols = db.prepare('PRAGMA table_info(documents)').all() as { name: string }[]
+  if (!cols.some(c => c.name === 'kind')) {
+    db.exec(`ALTER TABLE documents ADD COLUMN kind TEXT NOT NULL DEFAULT 'industry' CHECK (kind IN ('industry', 'company'))`)
+  }
   // 列表要带出最新版本号,两张表总是一起建。
   initVersionTable(db)
 }
@@ -90,15 +97,39 @@ function fixCreatedAt(db: DB): string[] {
 
 type DocSummary = { filename: string; size_bytes: number; chunk_count: number }
 
-/** 只建 documents 行。版本记录由 documentVersion.createVersion 负责。 */
-export function saveDocument(opts: DocSummary): Document {
+/** 只建 documents 行。版本记录由 documentVersion.createVersion 负责。kind 缺省按行业研报。 */
+export function saveDocument(opts: DocSummary & { kind?: ReportKind }): Document {
   const now = Date.now()
   const id = genId(now)
   const created_at = new Date(now).toISOString()
+  const kind = opts.kind ?? 'industry'
   db().prepare(
-    'INSERT INTO documents (id, filename, size_bytes, chunk_count, created_at) VALUES (?, ?, ?, ?, ?)',
-  ).run(id, opts.filename, opts.size_bytes, opts.chunk_count, created_at)
-  return { id, ...opts, created_at, latest_version: 1, updated_at: created_at }
+    'INSERT INTO documents (id, filename, size_bytes, chunk_count, created_at, kind) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, opts.filename, opts.size_bytes, opts.chunk_count, created_at, kind)
+  return { id, filename: opts.filename, size_bytes: opts.size_bytes, chunk_count: opts.chunk_count, kind, created_at, latest_version: 1, updated_at: created_at }
+}
+
+export function setDocumentKind(id: string, kind: ReportKind): void {
+  db().prepare('UPDATE documents SET kind = ? WHERE id = ?').run(kind, id)
+}
+
+/**
+ * 一次性迁移:加 kind 列时存量全是默认的 industry,但库里已经有公司研报
+ *(《贵州茅台(600519.SH)投资研究报告》),这里按标题把它们改成 company。
+ * 只改推得出 company 的 —— 推不出来的(方法论、主题文章)留在 industry,不猜。
+ * 经 runOnce 执行:之后管理员手动改过的类型不会被这条规则改回去。
+ * 返回被改成 company 的研报 id;已经跑过返回 null。
+ */
+export function backfillDocumentKinds(db: DB): string[] | null {
+  return runOnce(db, 'backfill_document_kinds', () => {
+    const rows = db.prepare('SELECT id, filename FROM documents').all() as { id: string; filename: string }[]
+    const set = db.prepare("UPDATE documents SET kind = 'company' WHERE id = ?")
+    const changed: string[] = []
+    for (const r of rows) {
+      if (inferKind(r.filename) === 'company') { set.run(r.id); changed.push(r.id) }
+    }
+    return changed
+  })
 }
 
 /** 新版本落地后,把 documents 行刷成最新版的摘要。created_at 不动 —— 那是文档首次上传的时间。 */

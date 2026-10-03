@@ -17,6 +17,7 @@ import type { DB } from './db.js'
 import { parseMarkdown } from './markdownParser.js'
 import type { MdChunk } from './markdownParser.js'
 import { uploadedAtFromId } from './documentStore.js'
+import { inferKind } from './reportKind.js'
 
 export interface ImportOutcome {
   docId: string
@@ -47,8 +48,8 @@ export function importRawDocs(
   readMarkdown: (docId: string) => string | null,
 ): ImportOutcome[] {
   const upsert = db.prepare(`
-    INSERT INTO documents (id, filename, size_bytes, chunk_count, created_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO documents (id, filename, size_bytes, chunk_count, created_at, kind)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       filename    = excluded.filename,
       size_bytes  = excluded.size_bytes,
@@ -66,7 +67,8 @@ export function importRawDocs(
 
     // 字节数而非字符数:中文一个字三字节,用 md.length 会把体积算少三分之二。
     const createdAt = uploadedAtFromId(docId) ?? new Date().toISOString()
-    upsert.run(docId, filename, Buffer.byteLength(md, 'utf8'), chunks.length, createdAt)
+    // kind 只在新登记时按标题推断;冲突更新时不动,免得重导把管理员改过的类型改回去。
+    upsert.run(docId, filename, Buffer.byteLength(md, 'utf8'), chunks.length, createdAt, inferKind(filename) ?? 'industry')
 
     return { docId, filename, chunks: chunks.length, status: 'ok' as const, parsed: chunks }
   })
