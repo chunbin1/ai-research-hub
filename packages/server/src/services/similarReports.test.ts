@@ -237,3 +237,32 @@ test('保留下来的跨类候选不打乱主题分与候选的对齐', () => {
   assert.deepEqual(hits.map(h => h.id), ['doc_2', 'doc_7'])
   assert.equal(hits.find(h => h.id === 'doc_7')?.topicScore, 0.7)
 })
+
+// ── 标题分在整库上算:同类子集很小时,模板标题不能互相「相近」(#36 复审) ──────────
+
+/** 茅台是库里唯一一篇公司研报,其余都是行业研报 —— 公司研报刚起步时的真实情形 */
+const moutaiOnlyCompany = () => library.map(r => ({ ...r, kind: r.title.startsWith('贵州茅台') ? 'company' as const : 'industry' as const }))
+
+test('公司子集只有茅台一篇:新的公司研报不因「投资研究报告」模板和茅台「标题相近」', () => {
+  for (const title of ['宁德时代（300750.SZ）投资研究报告', '中国海洋石油（0883.HK）投资研究报告']) {
+    const hits = findSimilarReports({ title, markdown: `# ${title}\n\n全新的正文。\n`, kind: 'company' }, moutaiOnlyCompany())
+    assert.equal(hits.some(h => h.likely), false, title)
+    assert.deepEqual(hits, [], title)
+  }
+})
+
+test('公司子集只有茅台一篇:茅台真正的新版本照样认得出', () => {
+  const lib = moutaiOnlyCompany()
+  const moutai = idOf('贵州茅台（600519.SH）投资研究报告')
+  // 只改了 H1、被推断成行业研报:靠正文重合跨类认出来
+  const body = lib.find(r => r.id === moutai)!.markdown!.replace(/^#.*$/m, '')
+  const retitled = '贵州茅台：白酒行业龙头的护城河'
+  const byBody = findSimilarReports({ title: retitled, markdown: `# ${retitled}\n${body}`, kind: 'industry' }, lib)
+  assert.equal(byBody[0]?.id, moutai)
+  assert.equal(byBody[0].likely, true)
+  assert.equal(byBody[0].contentMatch, true)
+  // 正文全换了、标题带同一个代码:靠标题认出来
+  const byTitle = findSimilarReports({ title: '贵州茅台（600519.SH）2026Q3 更新', markdown: '# 贵州茅台\n\n全新的正文。\n', kind: 'company' }, lib)
+  assert.equal(byTitle[0]?.id, moutai)
+  assert.notEqual(byTitle[0].titleMatch, null)
+})

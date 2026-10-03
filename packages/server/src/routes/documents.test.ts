@@ -184,6 +184,9 @@ test('上传:不带类型时按标题推断,推不出来按行业研报', async 
   assert.equal((await uploadKind(CNOOC_COMPANY)).kind, 'company')
   assert.equal((await uploadKind(CNOOC_INDUSTRY)).kind, 'industry')
   assert.equal((await uploadKind('# 投研方法论\n\n正文。\n')).kind, 'industry')
+  // 「年份 + HK」不是港股代码
+  assert.equal((await uploadKind('# 2026 HK 科技股中期策略\n\n正文。\n')).kind, 'industry')
+  assert.equal((await uploadKind('# 港股 2026 hk 展望\n\n正文。\n')).kind, 'industry')
 })
 
 test('上传:非法类型 400,什么都不落', async () => {
