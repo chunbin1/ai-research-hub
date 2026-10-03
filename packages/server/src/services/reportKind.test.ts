@@ -33,6 +33,15 @@ test('产业链标题里带了代码,仍是行业研报', () => {
   assert.equal(inferKind('腾讯控股（0700.HK）产业链投资研究报告'), 'industry')
 })
 
+test('空格形式的港股代码不认年份;点号形式照认(2020.HK 是安踏)', () => {
+  // 推不出返回 null,上传接口兜底为行业研报
+  assert.equal(inferKind('2026 HK 科技股中期策略'), null)
+  assert.equal(inferKind('港股 2026 hk 展望'), null)
+  assert.equal(inferKind('腾讯控股 0700 HK'), 'company')
+  assert.equal(inferKind('安踏体育（2020.HK）投资研究报告'), 'company')
+  assert.equal(inferKind('安踏体育 2020.HK'), 'company')
+})
+
 test('其他写法的代码:港股「0700 HK」、路透式「NVDA.O」', () => {
   assert.equal(inferKind('腾讯控股 0700 HK 投资研究报告'), 'company')
   assert.equal(inferKind('英伟达（NVDA.O）投资研究报告'), 'company')

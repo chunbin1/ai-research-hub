@@ -239,7 +239,11 @@ export function findSimilarReports(
   const existing = keep.map(i => all[i])
   const topic = allTopic && keep.map(i => allTopic[i])
   if (existing.length === 0) return []
-  const titles = titleScores(upload.title, existing)
+  // 标题分在整库上算,再取保留下来的子集。「太常见的 bigram 不计分」靠的是整库的文档频率:
+  // 同类子集很小时(早期公司研报只有一两篇),「投资」「研究」「报告」这类模板字会被当成稀有字,
+  // 任何新的公司研报都会和库里唯一那篇公司研报「标题相近」。
+  const allTitles = titleScores(upload.title, all)
+  const titles = keep.map(i => allTitles[i])
   const topicBar = topic && existing.length >= TOPIC_MIN_LIBRARY ? median(topic) + TOPIC_LEAD : Infinity
 
   const scored = existing.map((r, i) => {
