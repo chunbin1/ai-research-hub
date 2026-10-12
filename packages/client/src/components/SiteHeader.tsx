@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { DownOutlined, GithubOutlined, GoogleOutlined, UploadOutlined } from '@ant-design/icons'
 import { useState } from 'react'
-import { Avatar, Dropdown } from 'antd'
+import { Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
 import { UploadReportModal } from './UploadReportModal'
 import { useAuth } from '../hooks/useAuth'
@@ -34,6 +34,30 @@ const NAV_ITEMS: readonly NavItem[] = [
  * 由关心的页面(首页列表)自己监听。与 useAuth 的 auth:refresh 同一个套路。
  */
 export const REPORT_UPLOADED_EVENT = 'report:uploaded'
+
+/**
+ * Google 头像在带上本站 Referer 时会 429，图片加载失败，圆圈就是空的。
+ * no-referrer 让浏览器不去带这个头，lh3.googleusercontent.com 才会返回图片。
+ */
+function UserAvatar({ url, name }: { url: string | null; name: string }) {
+  const [failed, setFailed] = useState(false)
+  if (!url || failed) {
+    return (
+      <span className="flex size-[26px] items-center justify-center rounded-full bg-navy text-[12px] font-medium text-page">
+        {name.slice(0, 1).toUpperCase()}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      referrerPolicy="no-referrer"
+      className="size-[26px] rounded-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  )
+}
 
 /** 当前栏目的 to;不属于任何栏目(如 /settings)时为 null */
 function activeTab(pathname: string): string | null {
@@ -110,13 +134,7 @@ export function SiteHeader() {
           {user ? (
             <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
               <button type="button" className="tap-44 flex items-center gap-[9px]" aria-label="账号菜单">
-                {user.avatarUrl
-                  ? <Avatar size={26} src={user.avatarUrl} />
-                  : (
-                    <span className="flex size-[26px] items-center justify-center rounded-full bg-navy text-[12px] font-medium text-page">
-                      {user.username.slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
+                <UserAvatar url={user.avatarUrl} name={user.username} />
                 <span className="hidden text-[13px] text-ink-soft md:inline">{user.username}</span>
                 <DownOutlined className="hidden text-[14px] text-ink-faint md:inline" aria-hidden />
               </button>
@@ -127,10 +145,10 @@ export function SiteHeader() {
             null
           ) : (
             <span className="flex items-center gap-1">
-              <button type="button" aria-label="GitHub 登录" title="GitHub 登录" onClick={() => login('github')} className="tap-44 flex size-11 items-center justify-center text-[18px] text-navy hover:text-brick">
+              <button type="button" aria-label="GitHub 登录" title="GitHub 登录" onClick={() => login('github')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy">
                 <GithubOutlined />
               </button>
-              <button type="button" aria-label="Google 登录" title="Google 登录" onClick={() => login('google')} className="tap-44 flex size-11 items-center justify-center text-[18px] text-navy hover:text-brick">
+              <button type="button" aria-label="Google 登录" title="Google 登录" onClick={() => login('google')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy">
                 <GoogleOutlined />
               </button>
             </span>
