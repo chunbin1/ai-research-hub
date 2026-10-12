@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { changedSections, diffMarkdown, diffStats, inlineDiff, segment, splitLines } from './versionDiff'
 
 describe('splitLines', () => {
+  it('``` 块里的 ~~~ 不会提前关块,块里的 # 不算标题', () => {
+    const lines = splitLines('```\n~~~\n# 还在代码里\n```\n# 标题')
+    expect(lines.map(l => [l.code, l.heading])).toEqual([
+      [true, false], [true, false], [true, false], [true, false], [false, true],
+    ])
+  })
+
   it('去掉空行,识别标题,代码块里的 # 不算标题', () => {
     const lines = splitLines('# 标题\n\n正文\n\n```\n# 注释\n```\n## 二级  \n')
     expect(lines.map(l => l.text)).toEqual(['# 标题', '正文', '```', '# 注释', '```', '## 二级'])
