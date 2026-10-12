@@ -72,7 +72,12 @@ const answer = (version: number): ChatMessage => ({
 
 function setupVersioned(messages: ChatMessage[], version: number, slugs: string[], onCite = vi.fn()) {
   mockMessages.mockReturnValue(messages)
-  mockUseAuth.mockReturnValue({ user: null, login: vi.fn() })
+  mockUseAuth.mockReturnValue({
+    user: null,
+    login: vi.fn(),
+    providers: { github: true, google: true },
+    providersLoading: false,
+  })
   mockUseLLMConfig.mockReturnValue({ data: null })
   render(
     <MemoryRouter>
@@ -131,7 +136,12 @@ test('面板打开时消息列表滚到最底', () => {
 // ---------- 去 Claude / Codex / Grok 里问 ----------
 
 function renderWithTitle(user: AuthUser | null) {
-  mockUseAuth.mockReturnValue({ user, login: vi.fn() })
+  mockUseAuth.mockReturnValue({
+    user,
+    login: vi.fn(),
+    providers: { github: true, google: true },
+    providersLoading: false,
+  })
   mockUseLLMConfig.mockReturnValue({ data: null })
   return render(
     <MemoryRouter>

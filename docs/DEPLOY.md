@@ -29,6 +29,13 @@ GitHub → Settings → Developer settings → OAuth Apps → New OAuth App:
 
 创建后拿到 **Client ID**,再 Generate 一个 **Client Secret**。
 
+### 1b. 注册 Google OAuth 客户端
+Google Cloud Console → APIs & Services → Credentials → Create credentials → OAuth client ID:
+- Application type: Web application
+- Authorized redirect URI: `https://your-domain.example/api/auth/google/callback`
+
+创建前如果还没有 OAuth consent screen,按提示建一个 External 的同意屏幕。scope 用默认的 `openid`、`email`、`profile` 即可。创建后拿到 **Client ID** 和 **Client Secret**。
+
 ### 2. 生产环境变量 `packages/server/.env.prod`
 与本地 `.env` 分开,已被 gitignore。
 ```bash
@@ -36,7 +43,8 @@ cp packages/server/.env.prod.example packages/server/.env.prod
 ```
 填:
 - `ZHIPU_API_KEY` = 你的智谱 key
-- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` = 上一步拿到的
+- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` = GitHub OAuth App 拿到的
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` = Google OAuth 客户端拿到的
 - `APP_URL` = `https://your-domain.example`(无尾斜杠)
 - `COOKIE_SECRET` = `openssl rand -hex 32` 生成
 - `AUTH_DISABLED` 保持 `false`(生产严禁开启——开了任何人都是无限管理员)
@@ -105,13 +113,13 @@ GitHub 也持有一份。其中 `LLM_KEY_SECRET` 是用户自带 API key 的解�
   它是 0.6 秒空转,一次 embedding 都不会发。
 
 ## 三、设管理员
-管理员靠手动改 DB(无写 API)。首次用你的 GitHub 账号登录一次(在站点点"GitHub 登录"),
-让 users 表里有你这行,然后在服务器上:
+管理员靠手动改 DB(无写 API)。首次用 GitHub 或 Google 登录一次,
+让 users 表里有你这行。GitHub 的用户名是 GitHub login,Google 的用户名是邮箱。然后在服务器上:
 ```bash
 # 进 server 容器改 SQLite(数据在 server_data 卷 → /app/data/research.db)
 docker --context ai-research-hub compose -f docker-compose.prod.yml exec server \
   sh -c "apk add --no-cache sqlite >/dev/null 2>&1; sqlite3 /app/data/research.db \
-  \"UPDATE users SET is_admin=1, unlimited=1 WHERE username='你的GitHub用户名';\""
+  \"UPDATE users SET is_admin=1, unlimited=1 WHERE username='你的GitHub用户名或Google邮箱';\""
 ```
 刷新页面即成管理员(可传删研报、看 trace、无限次)。
 

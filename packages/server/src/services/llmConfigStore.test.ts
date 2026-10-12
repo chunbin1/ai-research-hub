@@ -19,7 +19,7 @@ delete process.env.ANTHROPIC_API_KEY
 delete process.env.LLM_PROVIDER
 
 const USER: User = {
-  id: 'usr_1', github_id: 1, username: 'a', avatar_url: null,
+  id: 'usr_1', github_id: 1, google_sub: null, username: 'a', avatar_url: null,
   message_count: 0, unlimited: 0, is_admin: 0, created_at: '',
 }
 
