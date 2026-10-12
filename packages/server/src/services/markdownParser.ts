@@ -78,6 +78,25 @@ function buildSections(md: string): RawSection[] {
   return sections
 }
 
+export interface OutlineEntry {
+  level: number
+  title: string
+  /** 与阅读页 rehype-slug 生成的锚点一致(同一个 github-slugger,同样按出现顺序去重) */
+  slug: string
+  /** 整节(含子节)在原文中的范围:从标题行行首到下一个同级或更高级标题 */
+  start: number
+  end: number
+}
+
+/** 研报目录。给 MCP 用:先看目录挑章节,再按 slug 读,不用把几万字整篇塞给模型。 */
+export function outlineOf(md: string): OutlineEntry[] {
+  const heads = scanHeadings(md)
+  return heads.map((h, i) => {
+    const next = heads.slice(i + 1).find(n => n.level <= h.level)
+    return { level: h.level, title: h.title, slug: h.slug, start: h.lineStart, end: next ? next.lineStart : md.length }
+  })
+}
+
 /** 分隔线不算正文 —— 「标题 + --- + 子标题」里的 --- 不该让父标题当成有内容。 */
 const RULE_RE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/
 

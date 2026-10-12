@@ -6,17 +6,16 @@ import type { FastifyPluginAsync } from 'fastify'
 import { requireAdmin } from './auth.js'
 import {
   listWatchlist, addWatchlistEntry, softDeleteWatchlistEntry, reviveWatchlistEntry,
-  type WatchlistEntry,
 } from '../services/watchlistStore.js'
 import {
-  getLatestState, getStates, getLatestEvent, countEventsSince, getRecentEvents,
+  getStates, getRecentEvents,
   replaceStates, replaceEvents, type Timeframe,
 } from '../services/signalStore.js'
 import { scanAll, isSignalsEnabled } from '../services/signals/scanner.js'
 import { syncWatchlistFromAllDocuments } from '../services/signals/watchlistSync.js'
 import { probeSymbol, ProbeError } from '../services/signals/probeSymbol.js'
 import { searchYahooSymbols, YahooError, type SymbolSearchHit } from '../services/market/yahooClient.js'
-import { getDocument } from '../services/documentStore.js'
+import { signalBoard, daysAgoIso } from '../services/signals/board.js'
 
 export interface SignalsRoutesOptions {
   /** 测试注入假实现,避免真的打 Yahoo */
@@ -29,58 +28,6 @@ export interface SignalsRoutesOptions {
 
 const TIMEFRAMES: Timeframe[] = ['1d', '1wk']
 
-function daysAgoIso(days: number): string {
-  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10)
-}
-
-function diffDays(from: string, to: string): number {
-  return Math.round((Date.parse(to) - Date.parse(from)) / 86400000)
-}
-
-/** 一个周期的当前状态 + 派生指标。没有日志时返回 null。 */
-function sideOf(symbol: string, timeframe: Timeframe) {
-  const state = getLatestState(symbol, timeframe)
-  if (!state) return null
-  const flip = getLatestEvent(symbol, timeframe)
-  return {
-    trend: state.trend,
-    barDate: state.bar_date,
-    stopLine: state.stop_line,
-    closeAdj: state.close_adj,
-    atr: state.atr,
-    distPct: (state.close_adj - state.stop_line) / state.stop_line * 100,
-    flipDate: flip?.bar_date ?? null,
-    flipPrice: flip?.price ?? null,
-    heldDays: flip ? diffDays(flip.bar_date, state.bar_date) : null,
-    sinceFlipPct: flip ? (state.close_adj - flip.price) / flip.price * 100 : null,
-  }
-}
-
-function rowOf(entry: WatchlistEntry) {
-  const daily = sideOf(entry.symbol, '1d')
-  const weekly = sideOf(entry.symbol, '1wk')
-  const doc = entry.source_doc ? getDocument(entry.source_doc) : null
-  return {
-    symbol: entry.symbol,
-    name: entry.name,
-    market: entry.market,
-    currency: entry.currency,
-    // 展示用原始未复权价 —— 与券商界面对得上
-    closeRaw: getLatestState(entry.symbol, '1d')?.close_raw ?? null,
-    daily,
-    weekly,
-    divergent: !!daily && !!weekly && daily.trend !== weekly.trend,
-    // whipsaw 警示:近 90 天日线翻了几次
-    flips90d: countEventsSince(entry.symbol, '1d', daysAgoIso(90)),
-    sourceDoc: doc ? { id: doc.id, filename: doc.filename } : null,
-    sourceText: entry.source_text,
-    enabled: entry.enabled === 1,
-    status: entry.status,
-    lastError: entry.last_error,
-    lastScanAt: entry.last_scan_at,
-  }
-}
-
 export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app, opts) => {
   const scan = opts.scan ?? scanAll
   const probe = opts.probe ?? probeSymbol
@@ -91,10 +38,7 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
   })
 
   app.get('/signals', async () => {
-    const rows = listWatchlist().map(e => rowOf(e))
-    // 最近翻转的排最前 —— 一眼看到「今天谁动了」
-    rows.sort((a, b) => (b.daily?.flipDate ?? '').localeCompare(a.daily?.flipDate ?? ''))
-    return { rows }
+    return { rows: signalBoard() }
   })
 
   app.get<{ Params: { symbol: string }; Querystring: { timeframe?: string; limit?: string } }>(

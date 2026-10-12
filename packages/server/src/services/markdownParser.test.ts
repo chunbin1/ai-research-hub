@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseMarkdown } from './markdownParser.ts'
+import { parseMarkdown, outlineOf } from './markdownParser.ts'
 
 const SAMPLE = `# 碳酸锂产业链投资研究报告
 
@@ -120,4 +120,20 @@ test('纯导航标题后面跟一条分隔线,仍算没有正文', () => {
   const { chunks } = parseMarkdown(`# 第四步：头部公司分析\n\n---\n\n## 4.1 神华\n\n神华正文。\n`)
   assert.equal(chunks.length, 1)
   assert.ok(chunks[0].content.includes('第四步：头部公司分析'))
+})
+
+test('outlineOf:每节范围含子节,止于下一个同级或更高级标题', () => {
+  const md = '# 总\n\n## 一\n\n正文一\n\n### 一.1\n\n细节\n\n## 二\n\n正文二\n'
+  const out = outlineOf(md)
+  assert.deepEqual(out.map(o => [o.level, o.title]), [[1, '总'], [2, '一'], [3, '一.1'], [2, '二']])
+  const one = out[1]
+  assert.equal(md.slice(one.start, one.end), '## 一\n\n正文一\n\n### 一.1\n\n细节\n\n')
+  const two = out[3]
+  assert.equal(md.slice(two.start, two.end), '## 二\n\n正文二\n')
+  assert.equal(out[0].end, md.length)
+})
+
+test('outlineOf:slug 与切块用的一致(同名标题按顺序去重)', () => {
+  const md = '## 风险\n\na\n\n## 风险\n\nb\n'
+  assert.deepEqual(outlineOf(md).map(o => o.slug), ['风险', '风险-1'])
 })
