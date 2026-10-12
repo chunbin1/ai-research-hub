@@ -40,9 +40,10 @@ function scanHeadings(md: string) {
   for (const line of md.split('\n')) {
     const f = FENCE_RE.exec(line)
     if (f) {
-      // 闭围栏须同字符、不短于开围栏;``` 块里的 ~~~ 只是代码
+      // 闭围栏须同字符、不短于开围栏,且后面只能有空白(CommonMark):
+      // ``` 块里的 ~~~、```python 都只是代码,不会提前把块关掉
       if (fence === null) fence = f[1]
-      else if (f[1][0] === fence[0] && f[1].length >= fence.length) fence = null
+      else if (f[1][0] === fence[0] && f[1].length >= fence.length && !line.slice(f[0].length).trim()) fence = null
     }
     const m = fence === null && !f ? HEADING_RE.exec(line) : null
     if (m) {

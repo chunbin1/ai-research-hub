@@ -161,3 +161,9 @@ test('outlineOf:首个标题前有引言时,目录第一条是引言', () => {
   // 没有引言(或只有空白)就不出这一条
   assert.equal(outlineOf('\n\n# 标题\n').some(o => o.slug === INTRO_SLUG), false)
 })
+
+test('带信息字符串的 ```python 在代码块里只是内容,不会关块(复查复现)', () => {
+  const md = '# 一\n\n```\n```python\n# 注释\n```\n\n## 二\n'
+  // 阅读页渲染出 [一, 二];之前会得到 [一, 注释] 而「二」丢失
+  assert.deepEqual(outlineOf(md).map(o => [o.level, o.title]), [[1, '一'], [2, '二']])
+})
