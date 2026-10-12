@@ -127,3 +127,27 @@ test('面板打开时消息列表滚到最底', () => {
   heightSpy.mockRestore()
   mockMessages.mockReturnValue([])
 })
+
+// ---------- 去 Claude / Codex / Grok 里问 ----------
+
+function renderWithTitle(user: AuthUser | null) {
+  mockUseAuth.mockReturnValue({ user, login: vi.fn() })
+  mockUseLLMConfig.mockReturnValue({ data: null })
+  return render(
+    <MemoryRouter>
+      <ChatPanel docId="doc-1" onCite={() => {}} title="锂电产业链" version={1} isLatest={false} />
+    </MemoryRouter>,
+  )
+}
+
+test('未登录时不出「去 Claude 里问」入口', () => {
+  renderWithTitle(null)
+  expect(screen.queryByText('去 Claude / Codex / Grok 里问')).toBeNull()
+})
+
+test('登录后点入口,弹窗里的文案带标题、id 和历史版本', () => {
+  renderWithTitle(quotaExhaustedUser)
+  fireEvent.click(screen.getByText('去 Claude / Codex / Grok 里问'))
+  const text = (screen.getByLabelText('提问文案') as HTMLTextAreaElement).value
+  expect(text).toContain('《锂电产业链》(id: doc-1,看 v1 这个历史版本)')
+})

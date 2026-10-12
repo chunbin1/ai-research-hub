@@ -7,6 +7,7 @@ import { useLLMConfig } from '../hooks/useLLMConfig'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkCjkFriendly from 'remark-cjk-friendly'
+import { AskElsewhereDialog } from './AskElsewhereDialog'
 
 interface Props {
   docId: string
@@ -27,12 +28,19 @@ interface Props {
    * 这时设不了 scrollTop,只能在重新可见的那一刻滚到底。默认可见。
    */
   open?: boolean
+  /** 报告标题,写进「去 Claude 里问」的文案;不传就不出这个入口 */
+  title?: string
+  /** 正在看的是不是最新版。历史版本的文案要点名版本 */
+  isLatest?: boolean
 }
 
-export default function ChatPanel({ docId, onCite, version, slugs, variant = 'panel', onClose, open = true }: Props) {
+export default function ChatPanel({
+  docId, onCite, version, slugs, variant = 'panel', onClose, open = true, title, isLatest = true,
+}: Props) {
   const { messages, send, streaming } = useDocChat(docId, version)
   const { user, login } = useAuth()
   const [input, setInput] = useState('')
+  const [askElsewhere, setAskElsewhere] = useState(false)
   const { data: llm } = useLLMConfig()
   const effective = llm?.effective ?? null
   const sheet = variant === 'sheet'
@@ -110,6 +118,17 @@ export default function ChatPanel({ docId, onCite, version, slugs, variant = 'pa
               <span>{effective.source === 'user' ? '自带 key' : '公共额度'}</span>
               {onServerQuota && <span>· 剩余 {user?.remaining} 次</span>}
             </Link>
+          )}
+          {/* 外部 AI 用的 MCP 本身是公开只读的,入口只对登录用户露出 */}
+          {user && title && (
+            <button
+              type="button"
+              onClick={() => setAskElsewhere(true)}
+              className="flex cursor-pointer items-center gap-1 self-start p-0 text-[12px] text-navy hover:underline"
+            >
+              去 Claude / Codex / Grok 里问
+              <RightOutlined aria-hidden className="text-[10px]" />
+            </button>
           )}
         </div>
         {onClose && (sheet
@@ -232,6 +251,17 @@ export default function ChatPanel({ docId, onCite, version, slugs, variant = 'pa
             GitHub 登录
           </button>
         </div>
+      )}
+
+      {user && title && (
+        <AskElsewhereDialog
+          open={askElsewhere}
+          onClose={() => setAskElsewhere(false)}
+          docId={docId}
+          title={title}
+          version={version}
+          isLatest={isLatest}
+        />
       )}
     </div>
   )
