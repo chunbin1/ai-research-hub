@@ -157,7 +157,7 @@ test('GitHub 登录成功后回到首页并建号', async () => {
     const jar = cookieJar(start.headers['set-cookie'])
     const done = await app.inject({
       method: 'GET',
-      url: `/api/auth/github/callback?code=abc&state=${encodeURIComponent(jar.oauth_state_github)}`,
+      url: `/api/auth/github/callback?code=abc&state=${encodeURIComponent(jar.oauth_state_github)}&iss=${encodeURIComponent('https://github.com/login/oauth')}`,
       cookies: {
         oauth_state_github: jar.oauth_state_github,
         oauth_verifier_github: jar.oauth_verifier_github,
