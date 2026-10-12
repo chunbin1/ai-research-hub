@@ -1,11 +1,15 @@
 import GithubSlugger from 'github-slugger'
+import { fenceTracker } from './codeFence'
 
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*#*\s*$/
 
 export function extractToc(md: string): Array<{ level: number; title: string; slug: string }> {
   const slugger = new GithubSlugger()
   const out: Array<{ level: number; title: string; slug: string }> = []
+  const track = fenceTracker()
   for (const line of md.split('\n')) {
+    // 代码块里的 # 注释不是标题:阅读页上没有它的锚点,算进来会让目录多一节、后面同名标题的 slug 错位
+    if (track(line).inCode) continue
     const m = HEADING_RE.exec(line)
     if (m) out.push({ level: m[1].length, title: m[2].trim(), slug: slugger.slug(m[2].trim()) })
   }

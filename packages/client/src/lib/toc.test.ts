@@ -43,3 +43,13 @@ test('深层标题归到它前面最近的目录项', () => {
   // 不存在的 slug 原样返回
   expect(outlineOwner(toc, items, '没有这个')).toBe('没有这个')
 })
+
+test('代码块里的 # 注释不进目录,后面同名标题的 slug 与阅读页锚点一致', () => {
+  const md = '# 一\n\n```python\n# 风险\n```\n\n## 风险\n\n~~~\n```\n# 也是代码\n~~~\n\n## 二'
+  expect(extractToc(md).map(t => [t.level, t.title, t.slug])).toEqual([
+    [1, '一', '一'],
+    // 若把代码里的「# 风险」算进来,这里会变成 风险-1,点目录跳不过去
+    [2, '风险', '风险'],
+    [2, '二', '二'],
+  ])
+})

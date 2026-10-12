@@ -1,4 +1,5 @@
 import { diffArrays } from 'diff'
+import { fenceTracker } from './codeFence'
 
 /**
  * 两个版本的研报原文对比。
@@ -33,17 +34,15 @@ type RowBody =
 export type DiffRow = RowBody & { section: string }
 
 const HEADING = /^#{1,6}\s/
-const FENCE = /^\s*(```|~~~)/
 
 export function splitLines(md: string): MdLine[] {
   const out: MdLine[] = []
-  let inFence = false
+  const track = fenceTracker()
   for (const raw of md.split(/\r?\n/)) {
     const text = raw.trimEnd()
-    const fence = FENCE.test(text)
-    if (fence) inFence = !inFence
+    const { inCode } = track(text)
     if (text.trim() === '') continue
-    out.push({ text, heading: !inFence && HEADING.test(text), code: inFence || fence })
+    out.push({ text, heading: !inCode && HEADING.test(text), code: inCode })
   }
   return out
 }
