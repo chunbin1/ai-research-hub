@@ -187,7 +187,7 @@ export default function ReaderPage() {
     )
   }
 
-  const chatProps = { docId: id, onCite: jump, version, slugs }
+  const chatProps = { docId: id, onCite: jump, version, slugs, title: filename, isLatest: !isOld }
   const segments = viewing?.chunk_count
 
   /**

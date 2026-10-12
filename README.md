@@ -37,6 +37,10 @@ pnpm dev:client   # http://localhost:5173
 - [x] 用户自带模型(BYOK):设置页填自己的 API key + 选模型,自带 key 的提问豁免次数限制
 - [x] 站点默认模型切换:管理员在 /admin 改公共额度用的模型,保存前自动验证,改完即时生效不重启
 - [x] 股票信号追踪:研报标题自动抽标的,每日收盘后算日线/周线 SuperTrend,`/signals` 看板
+- [x] 在 Claude / Codex / Grok 里问:站点挂一个只读 MCP 服务器(`/api/mcp`,Streamable HTTP,无状态),
+  工具有列出研报、看目录、按章节读正文(超长自动分页)、股票信号;登录用户在「问这篇报告」面板里
+  点「去 Claude / Codex / Grok 里问」,复制一段带研报 id 的提问文案,粘到已添加连接器的 AI 里接着问。
+  接口与公开的 `GET /documents`、`GET /signals` 同权限,不鉴权;不做全库检索,模型先看目录再按章节读。流程图见 [docs/mcp-flow.svg](docs/mcp-flow.svg)
 - [ ] 全库问答 / 上线部署(后续)
 
 ## Trace / 可观测
