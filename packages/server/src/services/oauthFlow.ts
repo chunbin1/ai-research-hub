@@ -10,7 +10,8 @@ export class OAuthRejected extends Error {
 }
 
 export const githubAuthorizationServer: oauth.AuthorizationServer = {
-  issuer: 'https://github.com',
+  // 回调里的 iss 是这个值（RFC 9207），不是 https://github.com。对不上会被拒，然后跳回首页。
+  issuer: 'https://github.com/login/oauth',
   authorization_endpoint: 'https://github.com/login/oauth/authorize',
   token_endpoint: 'https://github.com/login/oauth/access_token',
 }
