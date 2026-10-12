@@ -1,30 +1,35 @@
 // packages/server/src/routes/auth.ts
-import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify'
-import { randomBytes } from 'node:crypto'
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
+import * as oauth from 'oauth4webapi'
 import {
   upsertGithubUser,
+  upsertGoogleUser,
   getUserById,
   remaining,
   MESSAGE_LIMIT,
   type User,
 } from '../services/userStore.js'
+import {
+  OAuthRejected,
+  authorizationUrl,
+  exchangeGithubCode,
+  exchangeGoogleCode,
+  getGoogleAuthorizationServer,
+  githubAuthorizationServer,
+} from '../services/oauthFlow.js'
 
-const CLIENT_ID = process.env.GITHUB_CLIENT_ID ?? ''
-const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET ?? ''
-// Base public URL of the app, e.g. https://your-domain.example (no trailing slash).
-const APP_URL = (process.env.APP_URL ?? 'http://localhost:5173').replace(/\/$/, '')
-const CALLBACK_URL = `${APP_URL}/api/auth/github/callback`
-const IS_HTTPS = APP_URL.startsWith('https://')
-// Escape hatch for local dev without a GitHub OAuth app: every request is an
+// Escape hatch for local dev without an OAuth app: every request is an
 // unlimited synthetic user, so login is skipped entirely.
 const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true'
 
 const COOKIE_UID = 'uid'
-const COOKIE_STATE = 'oauth_state'
+
+type Provider = 'github' | 'google'
 
 const DEV_USER: User = {
   id: 'dev',
   github_id: 0,
+  google_sub: null,
   username: 'dev',
   avatar_url: null,
   message_count: 0,
@@ -33,11 +38,38 @@ const DEV_USER: User = {
   created_at: '',
 }
 
-const baseCookie = {
-  httpOnly: true as const,
-  sameSite: 'lax' as const,
-  secure: IS_HTTPS,
-  path: '/',
+function appUrl(): string {
+  return (process.env.APP_URL ?? 'http://localhost:5173').replace(/\/$/, '')
+}
+
+function cookieBase() {
+  return {
+    httpOnly: true as const,
+    sameSite: 'lax' as const,
+    secure: appUrl().startsWith('https://'),
+    path: '/',
+  }
+}
+
+function creds(provider: Provider): { id: string; secret: string } {
+  if (provider === 'github') {
+    return {
+      id: process.env.GITHUB_CLIENT_ID ?? '',
+      secret: process.env.GITHUB_CLIENT_SECRET ?? '',
+    }
+  }
+  return {
+    id: process.env.GOOGLE_CLIENT_ID ?? '',
+    secret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+  }
+}
+
+function stateCookie(provider: Provider): string {
+  return `oauth_state_${provider}`
+}
+
+function verifierCookie(provider: Provider): string {
+  return `oauth_verifier_${provider}`
 }
 
 /** Resolve the logged-in user from the signed `uid` cookie (or dev user). */
@@ -78,95 +110,125 @@ function publicUser(user: User) {
   }
 }
 
+function clearOAuthCookies(reply: FastifyReply, provider: Provider): void {
+  const opts = { path: '/' }
+  reply.clearCookie(stateCookie(provider), opts)
+  reply.clearCookie(verifierCookie(provider), opts)
+  if (provider === 'google') reply.clearCookie('oauth_nonce_google', opts)
+}
+
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  // 1) Kick off GitHub OAuth
-  app.get('/auth/github', async (_request, reply) => {
-    if (AUTH_DISABLED) return reply.redirect(`${APP_URL}/`)
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-      return reply.status(503).send({ error: 'GitHub OAuth not configured on the server' })
+  async function begin(reply: FastifyReply, provider: Provider) {
+    if (AUTH_DISABLED) return reply.redirect(`${appUrl()}/`)
+    const { id, secret } = creds(provider)
+    if (!id || !secret) {
+      const name = provider === 'github' ? 'GitHub' : 'Google'
+      return reply.status(503).send({ error: `${name} OAuth not configured on the server` })
     }
-    const state = randomBytes(16).toString('hex')
-    reply.setCookie(COOKIE_STATE, state, { ...baseCookie, maxAge: 600 })
 
-    const url = new URL('https://github.com/login/oauth/authorize')
-    url.searchParams.set('client_id', CLIENT_ID)
-    url.searchParams.set('redirect_uri', CALLBACK_URL)
-    url.searchParams.set('scope', 'read:user')
-    url.searchParams.set('state', state)
-    return reply.redirect(url.toString())
-  })
+    const state = oauth.generateRandomState()
+    const codeVerifier = oauth.generateRandomCodeVerifier()
+    const nonce = provider === 'google' ? oauth.generateRandomNonce() : undefined
+    const pending = { ...cookieBase(), maxAge: 600 }
+    reply.setCookie(stateCookie(provider), state, pending)
+    reply.setCookie(verifierCookie(provider), codeVerifier, pending)
+    if (nonce) reply.setCookie('oauth_nonce_google', nonce, pending)
 
-  // 2) GitHub redirects back here with ?code & ?state
+    try {
+      const as = provider === 'google'
+        ? await getGoogleAuthorizationServer()
+        : githubAuthorizationServer
+      const url = await authorizationUrl({
+        as,
+        clientId: id,
+        redirectUri: `${appUrl()}/api/auth/${provider}/callback`,
+        scope: provider === 'google' ? 'openid email profile' : 'read:user',
+        state,
+        codeVerifier,
+        nonce,
+      })
+      return reply.redirect(url.toString())
+    } catch (err) {
+      app.log.error(err instanceof Error ? err.message : 'oauth failed')
+      return reply.status(502).send({ error: `${provider}_oauth_failed` })
+    }
+  }
+
+  async function finish(
+    request: FastifyRequest<{ Querystring: { code?: string; state?: string } }>,
+    reply: FastifyReply,
+    provider: Provider,
+  ) {
+    const expected = request.cookies?.[stateCookie(provider)]
+    const codeVerifier = request.cookies?.[verifierCookie(provider)]
+    const nonce = request.cookies?.oauth_nonce_google
+    const state = request.query.state
+    clearOAuthCookies(reply, provider)
+
+    if (!expected || !codeVerifier || !state || state !== expected || (provider === 'google' && !nonce)) {
+      return reply.status(400).send({ error: 'invalid_oauth_state' })
+    }
+
+    const { id, secret } = creds(provider)
+    if (!id || !secret) {
+      return reply.status(503).send({ error: `${provider === 'github' ? 'GitHub' : 'Google'} OAuth not configured on the server` })
+    }
+
+    try {
+      const callbackUrl = new URL(request.url, appUrl())
+      const redirectUri = `${appUrl()}/api/auth/${provider}/callback`
+      const user = provider === 'github'
+        ? upsertGithubUser(await exchangeGithubCode({
+          clientId: id,
+          clientSecret: secret,
+          redirectUri,
+          callbackUrl,
+          expectedState: expected,
+          codeVerifier,
+        }))
+        : upsertGoogleUser(await exchangeGoogleCode({
+          clientId: id,
+          clientSecret: secret,
+          redirectUri,
+          callbackUrl,
+          expectedState: expected,
+          codeVerifier,
+          nonce: nonce as string,
+        }))
+
+      reply.setCookie(COOKIE_UID, user.id, {
+        ...cookieBase(),
+        signed: true,
+        maxAge: 60 * 60 * 24 * 30,
+      })
+      return reply.redirect(`${appUrl()}/`)
+    } catch (err) {
+      if (err instanceof OAuthRejected) {
+        return reply.status(err.status).send({ error: err.error })
+      }
+      // 只记失败原因,不记授权码和 token。
+      app.log.error(err instanceof Error ? err.message : 'oauth failed')
+      return reply.status(502).send({ error: `${provider}_oauth_failed` })
+    }
+  }
+
+  app.get('/auth/github', async (_request, reply) => begin(reply, 'github'))
+  app.get('/auth/google', async (_request, reply) => begin(reply, 'google'))
   app.get<{ Querystring: { code?: string; state?: string } }>(
     '/auth/github/callback',
-    async (request, reply) => {
-      const { code, state } = request.query
-      const expected = request.cookies?.[COOKIE_STATE]
-      reply.clearCookie(COOKIE_STATE, { path: '/' })
-
-      if (!code || !state || !expected || state !== expected) {
-        return reply.status(400).send({ error: 'invalid_oauth_state' })
-      }
-
-      try {
-        // Exchange the code for an access token
-        const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({
-            client_id: CLIENT_ID,
-            client_secret: CLIENT_SECRET,
-            code,
-            redirect_uri: CALLBACK_URL,
-          }),
-        })
-        const tokenJson = (await tokenRes.json()) as { access_token?: string }
-        const accessToken = tokenJson.access_token
-        if (!accessToken) throw new Error('no access_token from GitHub')
-
-        // Fetch the GitHub profile
-        const userRes = await fetch('https://api.github.com/user', {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'User-Agent': 'ai-research-hub',
-            Accept: 'application/vnd.github+json',
-          },
-        })
-        const profile = (await userRes.json()) as {
-          id: number
-          login: string
-          avatar_url: string
-        }
-        if (!profile?.id) throw new Error('failed to load GitHub profile')
-
-        const user = upsertGithubUser({
-          githubId: profile.id,
-          username: profile.login,
-          avatarUrl: profile.avatar_url ?? null,
-        })
-
-        // Issue the session cookie (signed) and bounce back to the app
-        reply.setCookie(COOKIE_UID, user.id, {
-          ...baseCookie,
-          signed: true,
-          maxAge: 60 * 60 * 24 * 30, // 30 days
-        })
-        return reply.redirect(`${APP_URL}/`)
-      } catch (err) {
-        app.log.error(err)
-        return reply.status(502).send({ error: 'github_oauth_failed' })
-      }
-    },
+    async (request, reply) => finish(request, reply, 'github'),
+  )
+  app.get<{ Querystring: { code?: string; state?: string } }>(
+    '/auth/google/callback',
+    async (request, reply) => finish(request, reply, 'google'),
   )
 
-  // 3) Current user (used by the frontend to gate the UI)
   app.get('/auth/me', async (request, reply) => {
     const user = currentUser(request)
     if (!user) return reply.status(401).send({ error: 'unauthorized' })
     return publicUser(user)
   })
 
-  // 4) Logout
   app.post('/auth/logout', async (_request, reply) => {
     reply.clearCookie(COOKIE_UID, { path: '/' })
     return { ok: true }

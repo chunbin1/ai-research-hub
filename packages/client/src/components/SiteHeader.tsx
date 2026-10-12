@@ -122,13 +122,18 @@ export function SiteHeader() {
               </button>
             </Dropdown>
           ) : authLoading ? (
-            // 登录态未知:先留白。抢先画「GitHub 登录」的话,已登录的人每次刷新都会
+            // 登录态未知:先留白。抢先画登录按钮的话,已登录的人每次刷新都会
             // 看见它闪一下再换成头像——宽度不同,右侧这一簇跟着横向跳。
             null
           ) : (
-            <button type="button" onClick={login} className="tap-44 text-[13px] text-navy hover:text-brick">
-              GitHub 登录
-            </button>
+            <span className="flex items-center gap-3">
+              <button type="button" onClick={() => login('github')} className="tap-44 text-[13px] text-navy hover:text-brick">
+                GitHub 登录
+              </button>
+              <button type="button" onClick={() => login('google')} className="tap-44 text-[13px] text-navy hover:text-brick">
+                Google 登录
+              </button>
+            </span>
           )}
         </div>
       </header>

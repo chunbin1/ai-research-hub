@@ -17,7 +17,7 @@ export interface UseAuthReturn {
   user: AuthUser | null
   /** 还没向服务端确认过登录态。user 有值(来自缓存)时它仍可能为 true */
   loading: boolean
-  login: () => void
+  login: (provider: 'github' | 'google') => void
   logout: () => Promise<void>
   refresh: () => Promise<void>
 }
@@ -69,8 +69,8 @@ export function useAuth(): UseAuthReturn {
     return () => window.removeEventListener('auth:refresh', handler)
   }, [refresh])
 
-  const login = useCallback((): void => {
-    window.location.href = '/api/auth/github'
+  const login = useCallback((provider: 'github' | 'google'): void => {
+    window.location.href = `/api/auth/${provider}`
   }, [])
 
   const logout = useCallback(async (): Promise<void> => {

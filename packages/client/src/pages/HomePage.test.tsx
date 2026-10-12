@@ -137,10 +137,13 @@ test('管理员能看到上传入口与管理员栏目', async () => {
   expect(screen.getAllByRole('link', { name: 'trace' }).length).toBeGreaterThan(0)
 })
 
-test('未登录显示 GitHub 登录', async () => {
+test('未登录显示 GitHub 和 Google 登录', async () => {
   stubFetch()
   renderHome()
-  await waitFor(() => { expect(screen.getByRole('button', { name: 'GitHub 登录' })).toBeTruthy() })
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'GitHub 登录' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Google 登录' })).toBeTruthy()
+  })
 })
 
 test('空列表保留栏目头,正文只给一行说明', async () => {

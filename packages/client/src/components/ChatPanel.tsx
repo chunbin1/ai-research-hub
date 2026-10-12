@@ -244,12 +244,22 @@ export default function ChatPanel({
       ) : (
         <div className="flex flex-none flex-col items-center gap-2.5 border-t border-row-rule px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-[14px] text-ink-mute">
           <span>登录后即可就本篇报告提问</span>
-          <button
-            className="cursor-pointer rounded bg-navy px-4 py-[9px] text-[13px] font-medium text-page"
-            onClick={login}
-          >
-            GitHub 登录
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="cursor-pointer rounded bg-navy px-4 py-[9px] text-[13px] font-medium text-page"
+              onClick={() => login('github')}
+            >
+              GitHub 登录
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer rounded bg-navy px-4 py-[9px] text-[13px] font-medium text-page"
+              onClick={() => login('google')}
+            >
+              Google 登录
+            </button>
+          </div>
         </div>
       )}
 

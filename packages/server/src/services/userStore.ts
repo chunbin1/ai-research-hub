@@ -6,7 +6,8 @@ export const MESSAGE_LIMIT = Number(process.env.MESSAGE_LIMIT) || 10
 
 export interface User {
   id: string
-  github_id: number
+  github_id: number | null
+  google_sub: string | null
   username: string
   avatar_url: string | null
   message_count: number
@@ -27,25 +28,51 @@ export interface User {
 
 let _db: DB | null = null
 
-export function initUserTables(db: DB): void {
-  _db = db
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
+function usersDdl(table: string, ifNotExists: boolean): string {
+  const create = ifNotExists ? 'CREATE TABLE IF NOT EXISTS' : 'CREATE TABLE'
+  return `
+    ${create} ${table} (
       id            TEXT PRIMARY KEY,
-      github_id     INTEGER UNIQUE NOT NULL,
+      github_id     INTEGER UNIQUE,
+      google_sub    TEXT UNIQUE,
       username      TEXT NOT NULL,
       avatar_url    TEXT,
       message_count INTEGER NOT NULL DEFAULT 0,
       unlimited     INTEGER NOT NULL DEFAULT 0,
       is_admin      INTEGER NOT NULL DEFAULT 0,
-      created_at    TEXT NOT NULL
+      created_at    TEXT NOT NULL,
+      CHECK (
+        (github_id IS NOT NULL AND google_sub IS NULL) OR
+        (github_id IS NULL AND google_sub IS NOT NULL)
+      )
     );
-  `)
+  `
+}
+
+export function initUserTables(db: DB): void {
+  _db = db
+  db.exec(usersDdl('users', true))
   // Migrate DBs created before the admin flag existed.
   const cols = db.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>
   if (!cols.some(c => c.name === 'is_admin')) {
     db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0')
   }
+  // SQLite 不能把已有的 NOT NULL 列改成可空,所以旧表整表重建。
+  const after = db.prepare('PRAGMA table_info(users)').all() as Array<{ name: string; notnull: number }>
+  const github = after.find(c => c.name === 'github_id')
+  const hasGoogle = after.some(c => c.name === 'google_sub')
+  if (hasGoogle && github && github.notnull === 0) return
+
+  db.transaction(() => {
+    db.exec('DROP TABLE IF EXISTS users_next')
+    db.exec(usersDdl('users_next', false))
+    db.prepare(
+      `INSERT INTO users_next (id, github_id, google_sub, username, avatar_url, message_count, unlimited, is_admin, created_at)
+       SELECT id, github_id, NULL, username, avatar_url, message_count, unlimited, is_admin, created_at FROM users`,
+    ).run()
+    db.exec('DROP TABLE users')
+    db.exec('ALTER TABLE users_next RENAME TO users')
+  })()
 }
 
 function db(): DB {
@@ -77,6 +104,7 @@ export function upsertGithubUser(p: {
   const user: User = {
     id: genId(),
     github_id: p.githubId,
+    google_sub: null,
     username: p.username,
     avatar_url: p.avatarUrl,
     message_count: 0,
@@ -86,8 +114,45 @@ export function upsertGithubUser(p: {
   }
   db()
     .prepare(
-      `INSERT INTO users (id, github_id, username, avatar_url, message_count, unlimited, is_admin, created_at)
-       VALUES (@id, @github_id, @username, @avatar_url, @message_count, @unlimited, @is_admin, @created_at)`,
+      `INSERT INTO users (id, github_id, google_sub, username, avatar_url, message_count, unlimited, is_admin, created_at)
+       VALUES (@id, @github_id, @google_sub, @username, @avatar_url, @message_count, @unlimited, @is_admin, @created_at)`,
+    )
+    .run(user)
+  return user
+}
+
+/** Insert the user on first Google login, or refresh email/avatar on return. */
+export function upsertGoogleUser(p: {
+  googleSub: string
+  email: string
+  avatarUrl: string | null
+}): User {
+  const existing = db()
+    .prepare('SELECT * FROM users WHERE google_sub = ?')
+    .get(p.googleSub) as User | undefined
+
+  if (existing) {
+    db()
+      .prepare('UPDATE users SET username = ?, avatar_url = ? WHERE google_sub = ?')
+      .run(p.email, p.avatarUrl, p.googleSub)
+    return { ...existing, username: p.email, avatar_url: p.avatarUrl }
+  }
+
+  const user: User = {
+    id: genId(),
+    github_id: null,
+    google_sub: p.googleSub,
+    username: p.email,
+    avatar_url: p.avatarUrl,
+    message_count: 0,
+    unlimited: 0,
+    is_admin: 0,
+    created_at: new Date().toISOString(),
+  }
+  db()
+    .prepare(
+      `INSERT INTO users (id, github_id, google_sub, username, avatar_url, message_count, unlimited, is_admin, created_at)
+       VALUES (@id, @github_id, @google_sub, @username, @avatar_url, @message_count, @unlimited, @is_admin, @created_at)`,
     )
     .run(user)
   return user

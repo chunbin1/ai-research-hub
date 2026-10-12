@@ -34,7 +34,7 @@ jobs:
           # 只校验键存在,绝不回显值。缺键的话站点会以一种很难查的方式坏掉
           # (比如 COOKIE_SECRET 空 → 登录态全失效)。
           missing=""
-          for k in ZHIPU_API_KEY GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET APP_URL COOKIE_SECRET LLM_KEY_SECRET; do
+          for k in ZHIPU_API_KEY GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET APP_URL COOKIE_SECRET LLM_KEY_SECRET; do
             grep -qE "^${k}=.+" packages/server/.env.prod || missing="$missing $k"
           done
           if [ -n "$missing" ]; then
