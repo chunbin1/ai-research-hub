@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { DownOutlined, GithubOutlined, GoogleOutlined, UploadOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import { Dropdown } from 'antd'
@@ -39,12 +39,18 @@ export const REPORT_UPLOADED_EVENT = 'report:uploaded'
  * Google 头像在带上本站 Referer 时会 429，图片加载失败，圆圈就是空的。
  * no-referrer 让浏览器不去带这个头，lh3.googleusercontent.com 才会返回图片。
  */
+/** Google 用户名是完整邮箱。顶栏只显示 @ 前面，避免把邮箱摊在页面上。 */
+function displayName(username: string): string {
+  const at = username.indexOf('@')
+  return at > 0 ? username.slice(0, at) : username
+}
+
 function UserAvatar({ url, name }: { url: string | null; name: string }) {
   const [failed, setFailed] = useState(false)
   if (!url || failed) {
     return (
       <span className="flex size-[26px] items-center justify-center rounded-full bg-navy text-[12px] font-medium text-page">
-        {name.slice(0, 1).toUpperCase()}
+        {displayName(name).slice(0, 1).toUpperCase()}
       </span>
     )
   }
@@ -68,7 +74,14 @@ function activeTab(pathname: string): string | null {
 export function SiteHeader() {
   const navigate = useNavigate()
   const active = activeTab(useLocation().pathname)
-  const { user, loading: authLoading, login, logout } = useAuth()
+  const { user, loading: authLoading, providers, providersLoading, login, logout } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const loginError = searchParams.get('login_error')
+  const loginErrorText = loginError === 'email_unverified'
+    ? '这个 Google 账号的邮箱还没验证，不能登录'
+    : loginError
+      ? '登录没有完成，请再试一次'
+      : null
   const isAdmin = user?.isAdmin === true
 
   /** 「上传研报」弹窗开关:点按钮打开,在弹窗里拖拽或点选文件再提交 */
@@ -135,26 +148,47 @@ export function SiteHeader() {
             <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
               <button type="button" className="tap-44 flex items-center gap-[9px]" aria-label="账号菜单">
                 <UserAvatar url={user.avatarUrl} name={user.username} />
-                <span className="hidden text-[13px] text-ink-soft md:inline">{user.username}</span>
+                <span className="hidden text-[13px] text-ink-soft md:inline">{displayName(user.username)}</span>
                 <DownOutlined className="hidden text-[14px] text-ink-faint md:inline" aria-hidden />
               </button>
             </Dropdown>
-          ) : authLoading ? (
+          ) : authLoading || providersLoading ? (
             // 登录态未知:先留白。抢先画登录按钮的话,已登录的人每次刷新都会
             // 看见它闪一下再换成头像——宽度不同,右侧这一簇跟着横向跳。
             null
           ) : (
             <span className="flex items-center gap-1">
-              <button type="button" aria-label="GitHub 登录" title="GitHub 登录" onClick={() => login('github')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy">
-                <GithubOutlined />
-              </button>
-              <button type="button" aria-label="Google 登录" title="Google 登录" onClick={() => login('google')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy">
-                <GoogleOutlined />
-              </button>
+              {providers.github && (
+                <button type="button" aria-label="GitHub 登录" title="GitHub 登录" onClick={() => login('github')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy">
+                  <GithubOutlined />
+                </button>
+              )}
+              {providers.google && (
+                <button type="button" aria-label="Google 登录" title="Google 登录" onClick={() => login('google')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy">
+                  <GoogleOutlined />
+                </button>
+              )}
             </span>
           )}
         </div>
       </header>
+
+      {loginErrorText && (
+        <p className="flex items-center justify-between gap-3 border-b border-rule bg-aside px-[18px] py-2 text-[13px] text-ink-soft md:px-7">
+          <span>{loginErrorText}</span>
+          <button
+            type="button"
+            className="cursor-pointer text-navy"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams)
+              next.delete('login_error')
+              setSearchParams(next, { replace: true })
+            }}
+          >
+            知道了
+          </button>
+        </p>
+      )}
 
       {isAdmin && (
         <UploadReportModal

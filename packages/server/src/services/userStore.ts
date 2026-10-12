@@ -70,6 +70,8 @@ export function initUserTables(db: DB): void {
       `INSERT INTO users_next (id, github_id, google_sub, username, avatar_url, message_count, unlimited, is_admin, created_at)
        SELECT id, github_id, NULL, username, avatar_url, message_count, unlimited, is_admin, created_at FROM users`,
     ).run()
+    // 现在没有表 REFERENCES users。开着 foreign_keys 时 DROP 会隐式 DELETE，
+    // 以后若有 ON DELETE CASCADE 指向 users，这里会把子表数据一起清掉。
     db.exec('DROP TABLE users')
     db.exec('ALTER TABLE users_next RENAME TO users')
   })()

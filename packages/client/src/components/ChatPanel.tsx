@@ -38,7 +38,7 @@ export default function ChatPanel({
   docId, onCite, version, slugs, variant = 'panel', onClose, open = true, title, isLatest = true,
 }: Props) {
   const { messages, send, streaming } = useDocChat(docId, version)
-  const { user, login } = useAuth()
+  const { user, login, providers, providersLoading } = useAuth()
   const [input, setInput] = useState('')
   const [askElsewhere, setAskElsewhere] = useState(false)
   const { data: llm } = useLLMConfig()
@@ -244,26 +244,32 @@ export default function ChatPanel({
       ) : (
         <div className="flex flex-none flex-col items-center gap-2.5 border-t border-row-rule px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-[14px] text-ink-mute">
           <span>登录后即可就本篇报告提问</span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              aria-label="GitHub 登录"
-              title="GitHub 登录"
-              className="flex size-9 cursor-pointer items-center justify-center rounded bg-navy text-[16px] text-page"
-              onClick={() => login('github')}
-            >
-              <GithubOutlined />
-            </button>
-            <button
-              type="button"
-              aria-label="Google 登录"
-              title="Google 登录"
-              className="flex size-9 cursor-pointer items-center justify-center rounded bg-navy text-[16px] text-page"
-              onClick={() => login('google')}
-            >
-              <GoogleOutlined />
-            </button>
-          </div>
+          {!providersLoading && (providers.github || providers.google) && (
+            <div className="flex gap-2">
+              {providers.github && (
+                <button
+                  type="button"
+                  aria-label="GitHub 登录"
+                  title="GitHub 登录"
+                  className="tap-44 flex size-11 cursor-pointer items-center justify-center rounded bg-navy text-[18px] text-page"
+                  onClick={() => login('github')}
+                >
+                  <GithubOutlined />
+                </button>
+              )}
+              {providers.google && (
+                <button
+                  type="button"
+                  aria-label="Google 登录"
+                  title="Google 登录"
+                  className="tap-44 flex size-11 cursor-pointer items-center justify-center rounded bg-navy text-[18px] text-page"
+                  onClick={() => login('google')}
+                >
+                  <GoogleOutlined />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -203,14 +203,29 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       })
       return reply.redirect(`${appUrl()}/`)
     } catch (err) {
-      if (err instanceof OAuthRejected) {
-        return reply.status(err.status).send({ error: err.error })
+      // 用户在授权页点了取消。这不是服务器故障，跳回首页，也不记 error。
+      if (err instanceof oauth.AuthorizationResponseError) {
+        return reply.redirect(`${appUrl()}/`)
       }
-      // 只记失败原因,不记授权码和 token。
+      if (err instanceof OAuthRejected && err.error === 'email_unverified') {
+        return reply.redirect(`${appUrl()}/?login_error=email_unverified`)
+      }
+      // 只记失败原因,不记授权码和 token。浏览器里不要停在一段 JSON 上。
       app.log.error(err instanceof Error ? err.message : 'oauth failed')
-      return reply.status(502).send({ error: `${provider}_oauth_failed` })
+      return reply.redirect(`${appUrl()}/?login_error=oauth_failed`)
     }
   }
+
+  function providers() {
+    const github = creds('github')
+    const google = creds('google')
+    return {
+      github: Boolean(github.id && github.secret),
+      google: Boolean(google.id && google.secret),
+    }
+  }
+
+  app.get('/auth/providers', async () => providers())
 
   app.get('/auth/github', async (_request, reply) => begin(reply, 'github'))
   app.get('/auth/google', async (_request, reply) => begin(reply, 'google'))

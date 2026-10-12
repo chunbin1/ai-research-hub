@@ -38,7 +38,7 @@ export async function authorizationUrl(opts: {
   codeVerifier: string
   nonce?: string
 }): Promise<URL> {
-  if (!opts.as.authorization_endpoint) throw new OAuthRejected(502, 'google_oauth_failed')
+  if (!opts.as.authorization_endpoint) throw new Error('missing authorization_endpoint')
   const url = new URL(opts.as.authorization_endpoint)
   const challenge = await oauth.calculatePKCECodeChallenge(opts.codeVerifier)
   url.searchParams.set('client_id', opts.clientId)

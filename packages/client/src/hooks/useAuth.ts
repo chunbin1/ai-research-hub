@@ -13,10 +13,18 @@ export interface AuthUser {
   remaining: number | null
 }
 
+export interface AuthProviders {
+  github: boolean
+  google: boolean
+}
+
 export interface UseAuthReturn {
   user: AuthUser | null
   /** 还没向服务端确认过登录态。user 有值(来自缓存)时它仍可能为 true */
   loading: boolean
+  /** 还没确认服务端配了哪些登录方式。没配的按钮不画，避免点进去 503 */
+  providersLoading: boolean
+  providers: AuthProviders
   login: (provider: 'github' | 'google') => void
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -38,6 +46,9 @@ const CACHE_KEY = 'arh.auth.user'
  * 这里共享在途请求:先到的发起,后到的搭车,拿到结果各自 setState(同一帧内)。
  */
 let inflight: Promise<AuthUser | null> | null = null
+let providersInflight: Promise<AuthProviders> | null = null
+
+const BOTH_PROVIDERS: AuthProviders = { github: true, google: true }
 
 function fetchMe(): Promise<AuthUser | null> {
   inflight ??= fetch('/api/auth/me')
@@ -48,9 +59,26 @@ function fetchMe(): Promise<AuthUser | null> {
   return inflight
 }
 
+function fetchProviders(): Promise<AuthProviders> {
+  providersInflight ??= fetch('/api/auth/providers')
+    .then(async res => {
+      if (!res.ok) return BOTH_PROVIDERS
+      const body = await res.json() as Partial<AuthProviders>
+      return {
+        github: body.github !== false,
+        google: body.google !== false,
+      }
+    })
+    .catch(() => BOTH_PROVIDERS)
+    .finally(() => { providersInflight = null })
+  return providersInflight
+}
+
 export function useAuth(): UseAuthReturn {
   const [user, setUser] = useState<AuthUser | null>(() => readCache<AuthUser>(CACHE_KEY))
   const [loading, setLoading] = useState(true)
+  const [providers, setProviders] = useState<AuthProviders>(BOTH_PROVIDERS)
+  const [providersLoading, setProvidersLoading] = useState(true)
 
   const refresh = useCallback(async (): Promise<void> => {
     const next = await fetchMe()
@@ -61,6 +89,16 @@ export function useAuth(): UseAuthReturn {
   }, [])
 
   useEffect(() => { void refresh() }, [refresh])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchProviders().then(next => {
+      if (cancelled) return
+      setProviders(next)
+      setProvidersLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [])
 
   // Re-fetch the remaining quota after each send (useChat dispatches this).
   useEffect(() => {
@@ -82,5 +120,5 @@ export function useAuth(): UseAuthReturn {
     }
   }, [])
 
-  return { user, loading, login, logout, refresh }
+  return { user, loading, providersLoading, providers, login, logout, refresh }
 }
