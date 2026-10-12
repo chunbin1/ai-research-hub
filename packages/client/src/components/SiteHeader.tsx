@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { DownOutlined, UploadOutlined } from '@ant-design/icons'
+import { DownOutlined, GithubOutlined, GoogleOutlined, UploadOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import { Avatar, Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
@@ -126,12 +126,12 @@ export function SiteHeader() {
             // 看见它闪一下再换成头像——宽度不同,右侧这一簇跟着横向跳。
             null
           ) : (
-            <span className="flex items-center gap-3">
-              <button type="button" onClick={() => login('github')} className="tap-44 text-[13px] text-navy hover:text-brick">
-                GitHub 登录
+            <span className="flex items-center gap-1">
+              <button type="button" aria-label="GitHub 登录" title="GitHub 登录" onClick={() => login('github')} className="tap-44 flex size-11 items-center justify-center text-[18px] text-navy hover:text-brick">
+                <GithubOutlined />
               </button>
-              <button type="button" onClick={() => login('google')} className="tap-44 text-[13px] text-navy hover:text-brick">
-                Google 登录
+              <button type="button" aria-label="Google 登录" title="Google 登录" onClick={() => login('google')} className="tap-44 flex size-11 items-center justify-center text-[18px] text-navy hover:text-brick">
+                <GoogleOutlined />
               </button>
             </span>
           )}

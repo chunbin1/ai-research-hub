@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowUpOutlined, CloseOutlined, RightOutlined } from '@ant-design/icons'
+import { ArrowUpOutlined, CloseOutlined, GithubOutlined, GoogleOutlined, RightOutlined } from '@ant-design/icons'
 import { useDocChat } from '../hooks/useDocChat'
 import { useAuth } from '../hooks/useAuth'
 import { useLLMConfig } from '../hooks/useLLMConfig'
@@ -247,17 +247,21 @@ export default function ChatPanel({
           <div className="flex gap-2">
             <button
               type="button"
-              className="cursor-pointer rounded bg-navy px-4 py-[9px] text-[13px] font-medium text-page"
+              aria-label="GitHub 登录"
+              title="GitHub 登录"
+              className="flex size-9 cursor-pointer items-center justify-center rounded bg-navy text-[16px] text-page"
               onClick={() => login('github')}
             >
-              GitHub 登录
+              <GithubOutlined />
             </button>
             <button
               type="button"
-              className="cursor-pointer rounded bg-navy px-4 py-[9px] text-[13px] font-medium text-page"
+              aria-label="Google 登录"
+              title="Google 登录"
+              className="flex size-9 cursor-pointer items-center justify-center rounded bg-navy text-[16px] text-page"
               onClick={() => login('google')}
             >
-              Google 登录
+              <GoogleOutlined />
             </button>
           </div>
         </div>
