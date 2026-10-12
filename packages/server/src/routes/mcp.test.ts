@@ -167,3 +167,19 @@ test('get_signals 按代码过滤,来源研报带链接;不在自选股里时报
   const miss = await call('get_signals', { symbol: 'TSLA' })
   assert.ok(miss.isError)
 })
+
+test('offset 超出正文长度时报错,而不是返回空正文说「已读完」', async () => {
+  const r = await call('read_report', { id: docId, section: '2-需求', offset: 9999 })
+  assert.ok(r.isError)
+  assert.match(r.text, /超出范围/)
+})
+
+test('首个标题前的引言能单独读,链接指向篇首', async () => {
+  const id = await upload('数据截至 2026-09,单位亿元。\n\n# 有引言的研报\n\n## 1 正文\n\n内容。\n')
+  const o = JSON.parse((await call('get_report_outline', { id })).text)
+  assert.deepEqual(o.outline[0], { level: 0, title: '引言', slug: '_intro', chars: '数据截至 2026-09,单位亿元。\n\n'.length })
+  const { text } = await call('read_report', { id, section: '_intro' })
+  assert.match(text, /单位亿元/)
+  assert.doesNotMatch(text, /内容。/)
+  assert.match(text, new RegExp(`链接:https://arh\\.example/reports/${id}\\n`))
+})

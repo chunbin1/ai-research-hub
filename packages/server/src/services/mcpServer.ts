@@ -9,7 +9,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { getAllDocuments, getDocument, readRawMarkdown, readVersionMarkdown } from './documentStore.js'
 import { listVersions, latestVersion } from './versionStore.js'
-import { outlineOf } from './markdownParser.js'
+import { outlineOf, INTRO_SLUG } from './markdownParser.js'
 import { signalBoard } from './signals/board.js'
 import { isSignalsEnabled } from './signals/scanner.js'
 import { getDb } from './db.js'
@@ -85,7 +85,9 @@ export function buildMcpServer(): McpServer {
 
   server.registerTool('get_report_outline', {
     title: '研报目录',
-    description: '一篇研报的章节目录(层级、标题、slug、每节字数)和版本历史。读正文前先看目录,再用 read_report 按 slug 只读需要的章节。',
+    description:
+      '一篇研报的章节目录(层级、标题、slug、每节字数)和版本历史。读正文前先看目录,再用 read_report 按 slug 只读需要的章节。' +
+      `首个标题之前若有引言,目录第一条是 level 0、slug 为 ${INTRO_SLUG} 的「引言」。`,
     inputSchema: {
       id: z.string().describe('研报 id,来自 list_reports'),
       version: z.number().int().positive().optional().describe('版本号;不传就是最新版'),
@@ -128,11 +130,15 @@ export function buildMcpServer(): McpServer {
       if (!hit) return fail(`研报 ${id} v${r.version} 里没有章节 ${section}。用 get_report_outline 查可用的 slug。`)
       body = r.md.slice(hit.start, hit.end)
     }
+    if (offset > 0 && offset >= body.length) {
+      return fail(`offset ${offset} 超出范围:${section ? `章节 ${section}` : '全文'}共 ${body.length} 字。`)
+    }
     const page = body.slice(offset, offset + PAGE_CHARS)
     const end = offset + page.length
     const head = [
       `研报:${r.doc.filename}(v${r.version}${r.version === r.latest ? ',最新版' : `,最新是 v${r.latest}`})`,
-      `链接:${reportUrl(r.doc.id, r.version, r.latest, section)}`,
+      // 引言在阅读页上没有锚点,链到篇首
+      `链接:${reportUrl(r.doc.id, r.version, r.latest, section === INTRO_SLUG ? undefined : section)}`,
       end < body.length
         ? `本次返回第 ${offset}–${end} 字,共 ${body.length} 字。继续读传 offset=${end}。`
         : offset > 0 ? `本次返回第 ${offset}–${end} 字,已读完。` : null,

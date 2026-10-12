@@ -23,13 +23,28 @@ interface RawSection {
 
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*#*\s*$/
 
-/** 扫描所有 ATX 标题,返回 {level,title,slug,lineStart(行首偏移),bodyStart(该行末尾+1)} */
+/** 围栏代码块的开/闭行:最多缩进 3 格,3 个以上 ` 或 ~ */
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/
+
+/**
+ * 扫描所有 ATX 标题,返回 {level,title,slug,lineStart(行首偏移),bodyStart(该行末尾+1)}。
+ *
+ * 跳过围栏代码块:代码块里的 `# 注释` 在阅读页不是标题(rehype-slug 不给它锚点),
+ * 当成标题的话,前一节会在代码块中间被截断,后面的 slug 也会和阅读页错位。
+ */
 function scanHeadings(md: string) {
   const slugger = new GithubSlugger()
   const heads: Array<{ level: number; title: string; slug: string; lineStart: number; bodyStart: number }> = []
   let offset = 0
+  let fence: string | null = null // 当前所在代码块的开围栏(如 ```、~~~~);不在代码块里为 null
   for (const line of md.split('\n')) {
-    const m = HEADING_RE.exec(line)
+    const f = FENCE_RE.exec(line)
+    if (f) {
+      // 闭围栏须同字符、不短于开围栏;``` 块里的 ~~~ 只是代码
+      if (fence === null) fence = f[1]
+      else if (f[1][0] === fence[0] && f[1].length >= fence.length) fence = null
+    }
+    const m = fence === null && !f ? HEADING_RE.exec(line) : null
     if (m) {
       const title = m[2].trim()
       heads.push({
@@ -88,13 +103,23 @@ export interface OutlineEntry {
   end: number
 }
 
+/**
+ * 首个标题之前的引言。阅读页上它没有锚点,这个 slug 只用于按章节读;
+ * 只有标题原文恰好写成 `_intro` 才会和它撞上,研报里不会出现。
+ */
+export const INTRO_SLUG = '_intro'
+
 /** 研报目录。给 MCP 用:先看目录挑章节,再按 slug 读,不用把几万字整篇塞给模型。 */
 export function outlineOf(md: string): OutlineEntry[] {
   const heads = scanHeadings(md)
-  return heads.map((h, i) => {
+  const introEnd = heads.length ? heads[0].lineStart : md.length
+  const intro: OutlineEntry[] = md.slice(0, introEnd).trim()
+    ? [{ level: 0, title: '引言', slug: INTRO_SLUG, start: 0, end: introEnd }]
+    : []
+  return intro.concat(heads.map((h, i) => {
     const next = heads.slice(i + 1).find(n => n.level <= h.level)
     return { level: h.level, title: h.title, slug: h.slug, start: h.lineStart, end: next ? next.lineStart : md.length }
-  })
+  }))
 }
 
 /** 分隔线不算正文 —— 「标题 + --- + 子标题」里的 --- 不该让父标题当成有内容。 */

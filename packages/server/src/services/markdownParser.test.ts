@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseMarkdown, outlineOf } from './markdownParser.ts'
+import { parseMarkdown, outlineOf, INTRO_SLUG } from './markdownParser.ts'
 
 const SAMPLE = `# 碳酸锂产业链投资研究报告
 
@@ -136,4 +136,28 @@ test('outlineOf:每节范围含子节,止于下一个同级或更高级标题', 
 test('outlineOf:slug 与切块用的一致(同名标题按顺序去重)', () => {
   const md = '## 风险\n\na\n\n## 风险\n\nb\n'
   assert.deepEqual(outlineOf(md).map(o => o.slug), ['风险', '风险-1'])
+})
+
+test('代码块里的 # 注释不算标题(评审复现)', () => {
+  const md = '# 一\n\n```python\n# 注释\n```\n\n## 二\n\n正文\n'
+  const out = outlineOf(md)
+  assert.deepEqual(out.map(o => [o.level, o.title]), [[1, '一'], [2, '二']])
+  // 「一」整节含代码块,不在代码块中间截断
+  assert.equal(out[0].end, md.length)
+  // 切块同样不把代码注释当章节
+  assert.ok(parseMarkdown(md).chunks.every(c => c.section_title !== '注释'))
+})
+
+test('围栏须同字符闭合:``` 块里的 ~~~ 只是代码', () => {
+  const md = '```\n~~~\n# 还在代码里\n```\n\n## 真标题\n'
+  // 开头的代码块落在引言里,标题只有一个
+  assert.deepEqual(outlineOf(md).filter(o => o.slug !== INTRO_SLUG).map(o => o.title), ['真标题'])
+})
+
+test('outlineOf:首个标题前有引言时,目录第一条是引言', () => {
+  const md = '数据截至 2026-09。\n\n# 标题\n\n正文\n'
+  const out = outlineOf(md)
+  assert.deepEqual(out[0], { level: 0, title: '引言', slug: INTRO_SLUG, start: 0, end: md.indexOf('# 标题') })
+  // 没有引言(或只有空白)就不出这一条
+  assert.equal(outlineOf('\n\n# 标题\n').some(o => o.slug === INTRO_SLUG), false)
 })
