@@ -64,12 +64,69 @@ function joinLines(s: string): string {
 }
 
 /**
- * 字段行 / 加粗小标题:「**报告日期**:2026-08-01」「**信息丰富度评级:A级**」「**核心结论**」。
+ * 字段行 / 加粗小标题:以加粗开头,冒号在加粗外(「**报告日期**:2026-08-01」)、
+ * 加粗内(「**报告日期:2026年10月6日**(价格截至…)」)或干脆没有(「**核心结论**」)。
  * 判据是值里没有句末标点、不成句;「**一句话定性**:碳酸锂是……生意。」是完整的句子,算正文。
  */
-function isFieldLine(line: string): boolean {
-  const m = /^\*\*[^*]+\*\*\s*[:：]\s*(.*)$/.exec(line) ?? /^\*\*([^*]+)\*\*$/.exec(line)
-  return !!m && !/[。！？!?]|\.(\s|$)/.test(m[1])
+function fieldValue(line: string): string | null {
+  const m = /^\*\*([^*]+)\*\*(.*)$/.exec(line.trim())
+  if (!m) return null
+  const [, inner, rest] = m
+  let value: string
+  if (/[:：]/.test(inner)) value = inner.replace(/^[^:：]*[:：]/, '') + rest
+  else if (/^\s*[:：]/.test(rest)) value = rest.replace(/^\s*[:：]/, '')
+  else if (!rest.trim()) value = inner
+  else return null             // 「**重点**后面接着一句话」:加粗只是强调,不是字段
+  // 以逗号、顿号这类结尾的是在句中硬换行,句子还没完,不是字段
+  return /[。！？!?]|\.(\s|$)/.test(value) || /[，,、；;：:]\s*$/.test(value) ? null : value
+}
+
+/** 字段值短到这个程度(日期、评级)才可能是独自一行的字段,再长就可能是在句中硬换行 */
+const SHORT_FIELD = 12
+
+/**
+ * 按行去掉字段行。字段行后面紧跟普通正文时分不清是「字段 + 下一段」还是一句话在中间
+ * 硬换行(「**核心观点**:公司营收增长 30%⏎主要来自海外市场。」)—— 只有连着两行以上
+ * 都是字段(Ginkgo 那种开头)、后面没有正文,或值短到像日期 / 评级,才当字段去掉;
+ * 否则整句留着。
+ */
+function dropFieldLines(lines: string[]): string[] {
+  const values = lines.map(fieldValue)
+  const isField = (i: number) => values[i] != null
+  return lines.filter((_, i) => {
+    if (!isField(i)) return true
+    const next = lines[i + 1]
+    if (next === undefined || !next.trim()) return false
+    if (isField(i - 1) || isField(i + 1)) return false
+    // 整行加粗、没有冒号的是小标题,不会是半句话,多长都去掉
+    if (/^\*\*[^*:：]+\*\*\s*$/.test(lines[i].trim())) return false
+    return [...values[i]!.trim()].length > SHORT_FIELD
+  })
+}
+
+/** 表格下面的「来源:SEC XBRL…」「注:…」—— 出处说明,不是正文 */
+function isCaptionLine(line: string): boolean {
+  return /^[*_]*(数据|资料)?(来源|出处|注|说明)[*_]*\s*[:：]/.test(line.trim())
+}
+
+/**
+ * 去掉出处说明行。用 * / _ 包起来又跨了行的(「*注:…⏎…*」),一直去到收尾标记那行;
+ * 之后的行照常保留 —— 说明下面紧跟正文的也有。
+ */
+function dropCaptionLines(lines: string[]): string[] {
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim()
+    if (!isCaptionLine(l)) { out.push(lines[i]); continue }
+    // 只有开头的 * / _ 在本行没闭合(「**来源**:SEC」这种只包住标签的不算),
+    // 而且后面真有收尾那行,才算跨行;畸形的未闭合说明只去掉这一行
+    const mark = /^([*_]+)/.exec(l)?.[1]
+    if (mark && !l.includes(mark, mark.length)) {
+      const end = lines.findIndex((x, j) => j > i && x.trim().endsWith(mark))
+      if (end > 0) i = end
+    }
+  }
+  return out
 }
 
 /** 分隔线,或 setext 标题(上一行文字 + 下一行 === / ---)的下划线 */
@@ -102,17 +159,21 @@ export function excerpt(md: string, max = DESCRIPTION_MAX): string {
   const paragraphs: string[] = []
   const fallback: string[] = []
   for (const block of blocks) {
-    // 标题、表格、分隔线按行去掉而不是整块丢:「# 标题」或 --- 下一行紧跟正文的也有
-    const lines = dropNonProseLines(block.split('\n'))
+    // 标题、表格、分隔线、字段行、出处说明都按行去掉而不是整块丢:「# 标题」「**报告日期**:…」
+    // 下一行紧跟正文、中间没空行的也有。字段行拼进摘要读不通
+    // 出处说明先去掉,不然字段行会把下一行的「来源:…」当成紧跟的正文
+    const lines = dropFieldLines(dropCaptionLines(dropNonProseLines(block.split('\n'))))
     const b = lines.join('\n').trim()
     if (!b || b.startsWith('<')) continue
-    // 字段行拼进摘要读不通
-    if (lines.every(l => isFieldLine(l.trim()))) continue
     if (/^(>|[-*+]\s|\d+[.)]\s)/.test(b)) {
       fallback.push(lines.map(l => l.replace(/^(>\s?|[-*+]\s+|\d+[.)]\s+)/, '')).join('\n'))
       continue
     }
-    paragraphs.push(b)
+    // 正文段落中间夹着的引用行(> ⚠️ 提示之类)不拼进去
+    // 引用允许下一行省掉 >(懒续行),所以从第一行 > 起到块尾都算引用
+    const quoteAt = lines.findIndex(l => /^\s*>/.test(l))
+    const prose = (quoteAt < 0 ? lines : lines.slice(0, quoteAt)).join('\n').trim()
+    if (prose) paragraphs.push(prose)
   }
   let out = ''
   for (const b of (paragraphs.length ? paragraphs : fallback)) {

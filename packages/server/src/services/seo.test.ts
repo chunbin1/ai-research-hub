@@ -61,6 +61,66 @@ test('excerpt:分隔线和 setext 标题紧跟正文时按行去掉', () => {
   assert.equal(excerpt('小节\n---\n正文。'), '正文。')
 })
 
+test('excerpt:字段行和正文同段时按行去掉;冒号在加粗里、加粗后还跟着说明的也算字段', () => {
+  assert.equal(excerpt('**报告日期**:2026-08-01\n锂价完成了第二次探底。'), '锂价完成了第二次探底。')
+  const md = [
+    '# Ginkgo 投资研究报告',
+    '',
+    '**报告日期:2026年10月6日**(价格数据截至 10月5日收盘)',
+    '**研究框架:四大师综合分析**',
+    '**前序研究**:[合成生物学](../a.md)(一个月前给出 ★★☆☆☆)',
+    '',
+    '自主实验室是真实存在的新业务。',
+  ].join('\n')
+  assert.equal(excerpt(md), '自主实验室是真实存在的新业务。')
+})
+
+test('excerpt:表格下的出处说明不当正文', () => {
+  assert.equal(excerpt('| a |\n|---|\n\n来源:SEC XBRL;10-K 第 70 页。\n\n*注:单位百万美元。*\n\n营收连续三年下滑。'), '营收连续三年下滑。')
+})
+
+test('excerpt:段落中间夹的引用行不拼进摘要', () => {
+  assert.equal(excerpt('营收 9501 万。\n> ⚠️ 别用 TTM 口径'), '营收 9501 万。')
+})
+
+test('excerpt:字段行后面紧跟正文、值又不短的,当成句中硬换行整句保留', () => {
+  assert.equal(excerpt('**核心观点**:公司 2026 年营收增长 30%\n主要来自海外市场。'), '核心观点:公司 2026 年营收增长 30%主要来自海外市场。')
+})
+
+test('excerpt:加粗小标题 + 列表不进摘要', () => {
+  assert.equal(excerpt('**AI研究局限性声明**:\n1. 本报告的判断基于公开信息。\n\n茅台被研究得最透彻。'), '茅台被研究得最透彻。')
+})
+
+test('excerpt:跨行的出处说明整块丢掉', () => {
+  assert.equal(excerpt('*注:单位百万美元;\n汇率按 7.1 计。*\n\n营收连续三年下滑。'), '营收连续三年下滑。')
+})
+
+test('excerpt:出处说明后面紧跟的正文保留', () => {
+  assert.equal(excerpt('*来源:公司财报*\n公司营收连续三年增长。'), '公司营收连续三年增长。')
+})
+
+test('excerpt:只加粗标签的出处说明、未闭合的出处说明,都不吞后面的正文', () => {
+  assert.equal(excerpt('**来源**:SEC\n营收连续三年增长。'), '营收连续三年增长。')
+  assert.equal(excerpt('*来源*:SEC\n营收连续三年增长。'), '营收连续三年增长。')
+  assert.equal(excerpt('*来源:SEC\n营收连续三年增长。'), '营收连续三年增长。')
+})
+
+test('excerpt:长的加粗小标题后面紧跟正文时,标题照样去掉', () => {
+  assert.equal(excerpt('**一、为什么这家公司的护城河比市场想象得更深**\n因为转换成本极高。'), '因为转换成本极高。')
+})
+
+test('excerpt:字段行下一行是出处说明,字段照样去掉', () => {
+  assert.equal(excerpt('**报告日期**:2026 年 10 月 6 日(收盘价口径)\n来源:SEC\n\n营收连续三年下滑。'), '营收连续三年下滑。')
+})
+
+test('excerpt:引用的懒续行也不拼进正文', () => {
+  assert.equal(excerpt('营收 9501 万。\n> ⚠️ 别用 TTM\n口径会失真'), '营收 9501 万。')
+})
+
+test('excerpt:加粗只是句首强调、后面接着正文的行不当字段', () => {
+  assert.equal(excerpt('**重点**在于现金流是否转正'), '重点在于现金流是否转正')
+})
+
 test('excerpt:跳过表格和代码块;英文换行合成空格', () => {
   const md = '| a | b |\n|---|---|\n\n```\ncode\n```\n\nRevenue grew\n`fast` this year.'
   assert.equal(excerpt(md), 'Revenue grew fast this year.')
