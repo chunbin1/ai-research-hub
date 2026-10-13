@@ -99,6 +99,12 @@ test('excerpt:出处说明后面紧跟的正文保留', () => {
   assert.equal(excerpt('*来源:公司财报*\n公司营收连续三年增长。'), '公司营收连续三年增长。')
 })
 
+test('excerpt:只加粗标签的出处说明、未闭合的出处说明,都不吞后面的正文', () => {
+  assert.equal(excerpt('**来源**:SEC\n营收连续三年增长。'), '营收连续三年增长。')
+  assert.equal(excerpt('*来源*:SEC\n营收连续三年增长。'), '营收连续三年增长。')
+  assert.equal(excerpt('*来源:SEC\n营收连续三年增长。'), '营收连续三年增长。')
+})
+
 test('excerpt:长的加粗小标题后面紧跟正文时,标题照样去掉', () => {
   assert.equal(excerpt('**一、为什么这家公司的护城河比市场想象得更深**\n因为转换成本极高。'), '因为转换成本极高。')
 })

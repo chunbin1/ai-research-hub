@@ -118,10 +118,12 @@ function dropCaptionLines(lines: string[]): string[] {
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i].trim()
     if (!isCaptionLine(l)) { out.push(lines[i]); continue }
+    // 只有开头的 * / _ 在本行没闭合(「**来源**:SEC」这种只包住标签的不算),
+    // 而且后面真有收尾那行,才算跨行;畸形的未闭合说明只去掉这一行
     const mark = /^([*_]+)/.exec(l)?.[1]
-    if (mark && !l.endsWith(mark)) {
-      while (i + 1 < lines.length && !lines[i + 1].trim().endsWith(mark)) i++
-      i++
+    if (mark && !l.includes(mark, mark.length)) {
+      const end = lines.findIndex((x, j) => j > i && x.trim().endsWith(mark))
+      if (end > 0) i = end
     }
   }
   return out
