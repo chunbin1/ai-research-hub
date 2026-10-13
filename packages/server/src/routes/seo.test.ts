@@ -13,9 +13,11 @@ process.env.APP_URL = 'https://example.test/'
 
 const { initDb } = await import('../services/db.ts')
 const { initDocumentTable, saveDocument, saveRawMarkdown } = await import('../services/documentStore.ts')
+const { insertVersion } = await import('../services/versionStore.ts')
 const { seoRoutes } = await import('./seo.ts')
 
-initDocumentTable(initDb())
+const db = initDb()
+initDocumentTable(db)
 const doc = saveDocument({ filename: '碳酸锂 <深度>', size_bytes: 10, chunk_count: 1 })
 saveRawMarkdown(doc.id, '# 碳酸锂\n\n> 免责声明\n\n锂价完成了第二次探底。')
 
@@ -54,4 +56,19 @@ test('robots.txt 与 sitemap.xml', async () => {
   const sitemap = await app.inject({ url: '/api/seo/sitemap.xml' })
   assert.match(sitemap.headers['content-type'] as string, /^application\/xml/)
   assert.ok(sitemap.body.includes(`<loc>https://example.test/reports/${doc.id}</loc>`))
+})
+
+test('head:摘要按 updated_at 缓存,传了新版本才重新读原文', async () => {
+  const d = saveDocument({ filename: '缓存', size_bytes: 1, chunk_count: 1 })
+  saveRawMarkdown(d.id, '第一版正文。')
+  const url = `/api/seo/head/reports/${d.id}`
+  assert.ok((await app.inject({ url })).body.includes('第一版正文。'))
+
+  // 原文变了但 updated_at 没变:还是缓存里的
+  saveRawMarkdown(d.id, '第二版正文。')
+  assert.ok((await app.inject({ url })).body.includes('第一版正文。'))
+
+  // 登记了新版本,updated_at 变了:重新读
+  insertVersion(db, { doc_id: d.id, filename: '缓存', size_bytes: 1, chunk_count: 1, created_at: '2099-01-01T00:00:00.000Z' })
+  assert.ok((await app.inject({ url })).body.includes('第二版正文。'))
 })

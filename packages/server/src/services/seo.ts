@@ -31,7 +31,9 @@ export function classifyPath(path: string): PageMeta {
   if (p === '') return { kind: 'home' }
   if (p === 'signals') return { kind: 'signals' }
   const m = /^reports\/([^/]+)$/.exec(p)
-  if (m) return { kind: 'report', id: safeDecode(m[1]) }
+  // 解码后再校验一遍:%2F..%2F 这种解出来带 / 或 . 的不是研报 id
+  const id = m && safeDecode(m[1])
+  if (id && /^[\w-]+$/.test(id)) return { kind: 'report', id }
   // 其余一律不进索引:后台、设置、观测与评测、版本对比(正文与研报页重复),
   // 以及前端根本没有的路由 —— 免得收进一堆空壳页
   return { kind: 'noindex' }
@@ -60,25 +62,36 @@ function joinLines(s: string): string {
 }
 
 /**
+ * 字段行 / 加粗小标题:「**报告日期**:2026-08-01」「**信息丰富度评级:A级**」「**核心结论**」。
+ * 判据是值里没有句末标点、不成句;「**一句话定性**:碳酸锂是……生意。」是完整的句子,算正文。
+ */
+function isFieldLine(line: string): boolean {
+  const m = /^\*\*[^*]+\*\*\s*[:：]\s*(.*)$/.exec(line) ?? /^\*\*([^*]+)\*\*$/.exec(line)
+  return !!m && !/[。！？!?]|\.(\s|$)/.test(m[1])
+}
+
+/**
  * 从研报正文里取一段摘要,做 meta description。
  *
  * 研报开头通常是「# 标题」+ 一段引用块(研究框架 / 免责声明 / 演示数据提示),
- * 有的还跟着一块「**报告日期**:…」式的字段列表。真正的内容从第一个普通段落
- * 开始 —— 所以先找普通段落;全篇都没有普通段落时才退回到引用块和列表。
- * 标题、表格、分隔线、代码块、字段列表一律跳过。
+ * 有的还跟着「**报告日期**:…」式的字段(连成一块或空行隔开都有)。真正的内容
+ * 从第一个普通段落开始 —— 所以先找普通段落;全篇都没有普通段落时才退回到
+ * 引用块和列表。标题行、表格行、分隔线、代码块、字段行一律跳过。
  */
 export function excerpt(md: string, max = DESCRIPTION_MAX): string {
   const body = md.replace(/\r\n?/g, '\n').replace(/^```[\s\S]*?^```/gm, '')
   const blocks = body.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean)
   const paragraphs: string[] = []
   const fallback: string[] = []
-  for (const b of blocks) {
-    if (/^(#|\||[-*_]{3,}\s*$|<)/.test(b)) continue
-    // 「**报告日期**:2026-08-01」这种一行一个字段的元信息块,拼起来读不通
-    const lines = b.split('\n')
-    if (lines.length > 1 && lines.every(l => /^\*\*[^*]+\*\*\s*[:：]/.test(l))) continue
+  for (const block of blocks) {
+    // 标题、表格按行去掉而不是整块丢:「# 标题」下一行紧跟正文、中间没空行的也有
+    const lines = block.split('\n').filter(l => !/^\s*(#{1,6}(\s|$)|\|)/.test(l))
+    const b = lines.join('\n').trim()
+    if (!b || /^([-*_]{3,}\s*$|<)/.test(b)) continue
+    // 字段行拼进摘要读不通
+    if (lines.every(l => isFieldLine(l.trim()))) continue
     if (/^(>|[-*+]\s|\d+[.)]\s)/.test(b)) {
-      fallback.push(b.split('\n').map(l => l.replace(/^(>\s?|[-*+]\s+|\d+[.)]\s+)/, '')).join('\n'))
+      fallback.push(lines.map(l => l.replace(/^(>\s?|[-*+]\s+|\d+[.)]\s+)/, '')).join('\n'))
       continue
     }
     paragraphs.push(b)

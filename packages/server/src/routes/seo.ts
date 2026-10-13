@@ -8,6 +8,7 @@
 // 后两个放后端而不是 public/ 静态文件,是因为里面要写绝对地址,域名只有 APP_URL 知道。
 import type { FastifyPluginAsync } from 'fastify'
 import { getAllDocuments, getDocument, readRawMarkdown } from '../services/documentStore.js'
+import type { Document } from '../types.js'
 import {
   SITE_NAME, SITE_DESCRIPTION, classifyPath, excerpt, renderHead, robotsTxt, sitemapXml,
   type HeadInput,
@@ -15,6 +16,21 @@ import {
 
 function appUrl(): string {
   return (process.env.APP_URL ?? 'http://localhost:5173').replace(/\/$/, '')
+}
+
+/**
+ * 每篇的摘要缓存。每次打开页面都会走一次 head 子请求,不缓存就是每次把整篇
+ * markdown 读进来只为截 150 字。按 updated_at 失效:传了新版本它就变,
+ * 下一次请求自然重算。条目数等于研报篇数,不用淘汰。
+ */
+const descriptionCache = new Map<string, { updatedAt: string; text: string }>()
+
+function reportDescription(doc: Document): string {
+  const hit = descriptionCache.get(doc.id)
+  if (hit?.updatedAt === doc.updated_at) return hit.text
+  const text = excerpt(readRawMarkdown(doc.id) ?? '') || SITE_DESCRIPTION
+  descriptionCache.set(doc.id, { updatedAt: doc.updated_at, text })
+  return text
 }
 
 function headFor(path: string, site: string): HeadInput {
@@ -32,11 +48,10 @@ function headFor(path: string, site: string): HeadInput {
       const doc = getDocument(page.id)
       // 研报不存在时页面照样是 200(SPA),只能靠 noindex 让它别进索引
       if (!doc) return { title: SITE_NAME, noindex: true }
-      const md = readRawMarkdown(doc.id) ?? ''
       return {
         // 与 ReaderPage 里 document.title 的写法一致,免得渲染前后标题不同
         title: `${doc.filename} — ${SITE_NAME}`,
-        description: excerpt(md) || SITE_DESCRIPTION,
+        description: reportDescription(doc),
         url: `${site}/reports/${encodeURIComponent(doc.id)}`,
         article: { publishedAt: doc.created_at, modifiedAt: doc.updated_at },
       }

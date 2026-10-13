@@ -11,7 +11,7 @@ test('classifyPath:首页 / 信号 / 研报页可收录,其余一律 noindex', (
   assert.deepEqual(classifyPath('signals'), { kind: 'signals' })
   assert.deepEqual(classifyPath('reports/doc_1_ab'), { kind: 'report', id: 'doc_1_ab' })
   assert.deepEqual(classifyPath('/reports/doc_1_ab?version=2'), { kind: 'report', id: 'doc_1_ab' })
-  for (const p of ['admin', 'settings', 'traces', 'traces/t1', 'eval', 'eval/doc_1', 'reports/doc_1/diff', 'nope']) {
+  for (const p of ['reports/..%2F..%2Fadmin', 'reports/a%2Fb', 'admin', 'settings', 'traces', 'traces/t1', 'eval', 'eval/doc_1', 'reports/doc_1/diff', 'nope']) {
     assert.deepEqual(classifyPath(p), { kind: 'noindex' }, p)
   }
 })
@@ -36,6 +36,20 @@ test('excerpt:跳过标题和开头的引用块,取第一个普通段落', () =>
 test('excerpt:跳过一行一个字段的元信息块,单行的加粗标签句照常保留', () => {
   const md = '**报告日期**:2026-08-01\n**数据基准**:2025 年年报\n\n**一句话**:内存成了稀缺资源。'
   assert.equal(excerpt(md), '一句话:内存成了稀缺资源。')
+})
+
+test('excerpt:空行隔开的单个字段也跳过', () => {
+  const md = '**报告日期**:2026-08-01\n\n**数据基准**:2025 年年报\n\n锂价完成了第二次探底。'
+  assert.equal(excerpt(md), '锂价完成了第二次探底。')
+})
+
+test('excerpt:整行加粗的字段和小标题跳过,整行加粗的句子保留', () => {
+  assert.equal(excerpt('**信息丰富度评级:A级(信息极度充裕)**\n\n**核心结论**\n\n茅台被研究得最透彻。'), '茅台被研究得最透彻。')
+  assert.equal(excerpt('**锂价将在 2027 年见底。**'), '锂价将在 2027 年见底。')
+})
+
+test('excerpt:标题和首段之间没有空行,照样取到首段', () => {
+  assert.equal(excerpt('# 锂资源回顾\n锂价完成了第二次探底。'), '锂价完成了第二次探底。')
 })
 
 test('excerpt:跳过表格和代码块;英文换行合成空格', () => {
