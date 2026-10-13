@@ -11,7 +11,10 @@ test('classifyPath:首页 / 信号 / 研报页可收录,其余一律 noindex', (
   assert.deepEqual(classifyPath('signals'), { kind: 'signals' })
   assert.deepEqual(classifyPath('reports/doc_1_ab'), { kind: 'report', id: 'doc_1_ab' })
   assert.deepEqual(classifyPath('/reports/doc_1_ab?version=2'), { kind: 'report', id: 'doc_1_ab' })
-  for (const p of ['reports/..%2F..%2Fadmin', 'reports/a%2Fb', 'admin', 'settings', 'traces', 'traces/t1', 'eval', 'eval/doc_1', 'reports/doc_1/diff', 'nope']) {
+  // import:raw 的 id 取自文件名,可能带中文或 .
+  assert.deepEqual(classifyPath(`reports/${encodeURIComponent('茅台')}`), { kind: 'report', id: '茅台' })
+  assert.deepEqual(classifyPath('reports/doc_1.v2'), { kind: 'report', id: 'doc_1.v2' })
+  for (const p of ['reports/..%2F..%2Fadmin', 'reports/a%2Fb', 'reports/a%5Cb', 'reports/..', 'admin', 'settings', 'traces', 'traces/t1', 'eval', 'eval/doc_1', 'reports/doc_1/diff', 'nope']) {
     assert.deepEqual(classifyPath(p), { kind: 'noindex' }, p)
   }
 })
@@ -50,6 +53,12 @@ test('excerpt:整行加粗的字段和小标题跳过,整行加粗的句子保�
 
 test('excerpt:标题和首段之间没有空行,照样取到首段', () => {
   assert.equal(excerpt('# 锂资源回顾\n锂价完成了第二次探底。'), '锂价完成了第二次探底。')
+})
+
+test('excerpt:分隔线和 setext 标题紧跟正文时按行去掉', () => {
+  assert.equal(excerpt('---\n锂价完成了第二次探底。'), '锂价完成了第二次探底。')
+  assert.equal(excerpt('标题\n===\n\n正文。'), '正文。')
+  assert.equal(excerpt('小节\n---\n正文。'), '正文。')
 })
 
 test('excerpt:跳过表格和代码块;英文换行合成空格', () => {

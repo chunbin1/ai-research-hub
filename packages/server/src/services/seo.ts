@@ -31,9 +31,11 @@ export function classifyPath(path: string): PageMeta {
   if (p === '') return { kind: 'home' }
   if (p === 'signals') return { kind: 'signals' }
   const m = /^reports\/([^/]+)$/.exec(p)
-  // 解码后再校验一遍:%2F..%2F 这种解出来带 / 或 . 的不是研报 id
+  // 解码后再校验一遍:%2F..%2F 这种解出来带路径分隔符的不是研报 id。
+  // 别收窄成 ASCII —— import:raw 的 id 取自文件名,可能带中文或 .,
+  // 而 sitemap 列的是全部研报,这里拒掉就成了「提交了却 noindex」
   const id = m && safeDecode(m[1])
-  if (id && /^[\w-]+$/.test(id)) return { kind: 'report', id }
+  if (id && !/[/\\]/.test(id) && id !== '.' && id !== '..') return { kind: 'report', id }
   // 其余一律不进索引:后台、设置、观测与评测、版本对比(正文与研报页重复),
   // 以及前端根本没有的路由 —— 免得收进一堆空壳页
   return { kind: 'noindex' }
@@ -70,6 +72,22 @@ function isFieldLine(line: string): boolean {
   return !!m && !/[。！？!?]|\.(\s|$)/.test(m[1])
 }
 
+/** 分隔线,或 setext 标题(上一行文字 + 下一行 === / ---)的下划线 */
+const RULE_LINE = /^\s*([-*_=]\s*){3,}$/
+
+/** 去掉标题行(ATX 与 setext)、表格行、分隔线。 */
+function dropNonProseLines(lines: string[]): string[] {
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]
+    // 「标题\n===」:标题文字和下划线一起去掉
+    if (l.trim() && !RULE_LINE.test(l) && /^\s*(=+|-+)\s*$/.test(lines[i + 1] ?? '')) { i++; continue }
+    if (/^\s*(#{1,6}(\s|$)|\|)/.test(l) || RULE_LINE.test(l)) continue
+    out.push(l)
+  }
+  return out
+}
+
 /**
  * 从研报正文里取一段摘要,做 meta description。
  *
@@ -84,10 +102,10 @@ export function excerpt(md: string, max = DESCRIPTION_MAX): string {
   const paragraphs: string[] = []
   const fallback: string[] = []
   for (const block of blocks) {
-    // 标题、表格按行去掉而不是整块丢:「# 标题」下一行紧跟正文、中间没空行的也有
-    const lines = block.split('\n').filter(l => !/^\s*(#{1,6}(\s|$)|\|)/.test(l))
+    // 标题、表格、分隔线按行去掉而不是整块丢:「# 标题」或 --- 下一行紧跟正文的也有
+    const lines = dropNonProseLines(block.split('\n'))
     const b = lines.join('\n').trim()
-    if (!b || /^([-*_]{3,}\s*$|<)/.test(b)) continue
+    if (!b || b.startsWith('<')) continue
     // 字段行拼进摘要读不通
     if (lines.every(l => isFieldLine(l.trim()))) continue
     if (/^(>|[-*+]\s|\d+[.)]\s)/.test(b)) {
