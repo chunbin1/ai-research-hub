@@ -1,6 +1,7 @@
 # 研报站 部署指南
 
-本地一条命令 `./deploy.sh` 部署到远程服务器,**全程不需手动 SSH 登录服务器**。
+日常部署走 GitHub Actions:PR 合并进 `master` 自动上线(见「二、部署」)。
+底层仍是 `./deploy.sh` 这一条命令,本地也能直接跑,**全程不需手动 SSH 登录服务器**。
 
 原理:本地建一个指向服务器的 Docker context,`deploy.sh` 通过 SSH 把构建和运行都交给
 服务器上的 Docker daemon。镜像和数据卷都在远程;密钥只读自本地 `packages/server/.env.prod`,
@@ -13,7 +14,8 @@
   └─ Cloudflare(证书 / 强制 HTTPS / CDN / 隐藏源站 IP)
        └─ 服务器 host nginx :443(源站证书,Cloudflare SSL=Full)
             └─ 127.0.0.1:8080  client 容器(nginx,仅回环,公网不可直连)
-                 ├─ /     → SPA
+                 ├─ /     → SPA(index.html 经 SSI 向 /api/seo/head 取每页的 <head>)
+                 ├─ /robots.txt、/sitemap.xml → server 容器 /api/seo/*
                  └─ /api  → server 容器 :3001 → ChromaDB 容器 :8000
 ```
 
@@ -124,7 +126,8 @@ docker --context ai-research-hub compose -f docker-compose.prod.yml exec server 
 刷新页面即成管理员(可传删研报、看 trace、无限次)。
 
 ## 四、更新
-改完代码 `git pull` 后再 `./deploy.sh` 即可(增量重建)。数据在卷里不丢。
+开 PR → CI(类型检查 + 测试)绿 → 合并进 `master`,`deploy.yml` 自动部署并在之后重建索引。
+不走 Actions 时,本地 `git pull` 后再 `./deploy.sh` 也行(增量重建)。数据都在卷里不丢。
 
 ### 改了切块规则之后:重建索引
 
@@ -162,7 +165,29 @@ BM25,状态表如实记录,trace 里看得到)。
 
 ## 密钥怎么到服务器
 `deploy.sh` 用本地 docker CLI 通过 SSH 操作远程 daemon;compose 读本地 `.env.prod` 把值作为
-环境变量注入远程容器。`.env.prod` 文件本身不离开你的机器、不进镜像、不进 git。
+环境变量注入远程容器。`.env.prod` 文件本身不进镜像、不进 git,也不落到服务器磁盘:
+本地部署时它只在你的机器上;走 Actions 时由 secret `ENV_PROD` 临时写在 runner 上,job 结束即销毁。
+
+## 搜索引擎收录
+
+站点是 SPA,为了让爬虫不跑 JS 也看得懂,做了三件事(代码在 `packages/server/src/services/seo.ts`):
+
+- `/robots.txt`、`/sitemap.xml` 由后端按 `APP_URL` 生成,client 的 nginx 转过去。sitemap 列首页、
+  `/signals` 和每篇研报,新研报自动进。**`/api` 不能在 robots 里拦** —— Google 渲染研报页要靠它取正文
+- `index.html` 里有一条 SSI include,nginx 按原始请求路径向 `/api/seo/head/<路径>` 取标题 / 正文摘要 /
+  canonical / og 标签拼进 `<head>`。后端挂了退回固定的「研报站」标题,页面照常能开
+- 只有首页、`/signals`、研报页可收录,其余(后台、版本对比、不存在的研报)一律 `noindex`
+
+部署后自查:
+
+```bash
+curl -s https://ai-report-hub.cbsama.uk/robots.txt
+curl -s https://ai-report-hub.cbsama.uk/ | grep canonical
+```
+
+**Google Search Console**(一次性,网页上手动做):添加「网域」资源 → 把给的 TXT 记录加到 Cloudflare DNS
+完成验证 → 「站点地图」里提交 `/sitemap.xml` → 用「网址检查」对首页和几篇研报「请求编入索引」。
+之后新研报靠 sitemap 自动被发现,不用再手动提交。
 
 ## 更换 LLM_KEY_SECRET
 
