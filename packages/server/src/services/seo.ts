@@ -98,6 +98,8 @@ function dropFieldLines(lines: string[]): string[] {
     const next = lines[i + 1]
     if (next === undefined || !next.trim()) return false
     if (isField(i - 1) || isField(i + 1)) return false
+    // 整行加粗、没有冒号的是小标题,不会是半句话,多长都去掉
+    if (/^\*\*[^*:：]+\*\*\s*$/.test(lines[i].trim())) return false
     return [...values[i]!.trim()].length > SHORT_FIELD
   })
 }
@@ -105,6 +107,24 @@ function dropFieldLines(lines: string[]): string[] {
 /** 表格下面的「来源:SEC XBRL…」「注:…」—— 出处说明,不是正文 */
 function isCaptionLine(line: string): boolean {
   return /^[*_]*(数据|资料)?(来源|出处|注|说明)[*_]*\s*[:：]/.test(line.trim())
+}
+
+/**
+ * 去掉出处说明行。用 * / _ 包起来又跨了行的(「*注:…⏎…*」),一直去到收尾标记那行;
+ * 之后的行照常保留 —— 说明下面紧跟正文的也有。
+ */
+function dropCaptionLines(lines: string[]): string[] {
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].trim()
+    if (!isCaptionLine(l)) { out.push(lines[i]); continue }
+    const mark = /^([*_]+)/.exec(l)?.[1]
+    if (mark && !l.endsWith(mark)) {
+      while (i + 1 < lines.length && !lines[i + 1].trim().endsWith(mark)) i++
+      i++
+    }
+  }
+  return out
 }
 
 /** 分隔线,或 setext 标题(上一行文字 + 下一行 === / ---)的下划线 */
@@ -139,9 +159,8 @@ export function excerpt(md: string, max = DESCRIPTION_MAX): string {
   for (const block of blocks) {
     // 标题、表格、分隔线、字段行、出处说明都按行去掉而不是整块丢:「# 标题」「**报告日期**:…」
     // 下一行紧跟正文、中间没空行的也有。字段行拼进摘要读不通
-    // 出处说明可能跨好几行(「*注:…⏎…*」),第一行是说明就整块丢
-    if (isCaptionLine(block.split('\n')[0])) continue
-    const lines = dropFieldLines(dropNonProseLines(block.split('\n'))).filter(l => !isCaptionLine(l))
+    // 出处说明先去掉,不然字段行会把下一行的「来源:…」当成紧跟的正文
+    const lines = dropFieldLines(dropCaptionLines(dropNonProseLines(block.split('\n'))))
     const b = lines.join('\n').trim()
     if (!b || b.startsWith('<')) continue
     if (/^(>|[-*+]\s|\d+[.)]\s)/.test(b)) {
