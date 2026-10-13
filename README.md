@@ -41,6 +41,9 @@ pnpm dev:client   # http://localhost:5173
   工具有列出研报、看目录、按章节读正文(超长自动分页)、股票信号;登录用户在「问这篇报告」面板里
   点「去 Claude / Codex / Grok 里问」,复制一段带研报 id 的提问文案,粘到已添加连接器的 AI 里接着问。
   接口与公开的 `GET /documents`、`GET /signals` 同权限,不鉴权;不做全库检索,模型先看目录再按章节读。流程图见 [docs/mcp-flow.svg](docs/mcp-flow.svg)
+- [x] 搜索引擎收录:`/robots.txt`、`/sitemap.xml`(新研报自动进)由后端按 `APP_URL` 生成;研报页的标题 / 正文摘要 /
+  canonical 由 client 的 nginx 用 SSI 向 `/api/seo/head/<路径>` 取来拼进 index.html,爬虫不跑 JS 也看得到。
+  只有首页、`/signals`、研报页可收录,其余页面 `noindex`
 - [ ] 全库问答 / 上线部署(后续)
 
 ## Trace / 可观测

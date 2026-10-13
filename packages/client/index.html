@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>研报站</title>
+    <!-- 每页的 <title> / 摘要 / canonical 由 nginx SSI 按请求路径向后端取
+         (/api/seo/head/...,见 nginx.conf)。后端不可用时退回下面这个固定标题;
+         vite dev 不处理 SSI,这几行注释被原样忽略,block 里的标题照常生效。 -->
+    <!--# block name="seo_fallback" --><title>研报站</title><!--# endblock -->
+    <!--# include virtual="/api/seo/head$request_uri" stub="seo_fallback" -->
     <!-- 站点图标:design_handoff_homepage/favicon 定稿的一套(深蓝底 + 三根递增柱,
          最右一根用站内强调红,与顶栏当前项下划线同色)。SVG 给现代浏览器,PNG 兜底,
          maskable 与 192/512 走 manifest 供 Android 主屏使用。 -->

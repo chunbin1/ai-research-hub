@@ -32,6 +32,7 @@ import { llmConfigRoutes } from './routes/llmConfig.js'
 import { siteSettingsRoutes } from './routes/siteSettings.js'
 import { signalRoutes } from './routes/signals.js'
 import { mcpRoutes } from './routes/mcp.js'
+import { seoRoutes } from './routes/seo.js'
 
 const app = Fastify({
   logger: { transport: { target: 'pino-pretty', options: { colorize: true } } },
@@ -101,6 +102,7 @@ await app.register(llmConfigRoutes, { prefix: '/api' })
 await app.register(siteSettingsRoutes, { prefix: '/api' })
 await app.register(signalRoutes, { prefix: '/api' })
 await app.register(mcpRoutes, { prefix: '/api' })
+await app.register(seoRoutes, { prefix: '/api' })
 
 app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 
