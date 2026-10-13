@@ -61,6 +61,32 @@ test('excerpt:分隔线和 setext 标题紧跟正文时按行去掉', () => {
   assert.equal(excerpt('小节\n---\n正文。'), '正文。')
 })
 
+test('excerpt:字段行和正文同段时按行去掉;冒号在加粗里、加粗后还跟着说明的也算字段', () => {
+  assert.equal(excerpt('**报告日期**:2026-08-01\n锂价完成了第二次探底。'), '锂价完成了第二次探底。')
+  const md = [
+    '# Ginkgo 投资研究报告',
+    '',
+    '**报告日期:2026年10月6日**(价格数据截至 10月5日收盘)',
+    '**研究框架:四大师综合分析**',
+    '**前序研究**:[合成生物学](../a.md)(一个月前给出 ★★☆☆☆)',
+    '',
+    '自主实验室是真实存在的新业务。',
+  ].join('\n')
+  assert.equal(excerpt(md), '自主实验室是真实存在的新业务。')
+})
+
+test('excerpt:表格下的出处说明不当正文', () => {
+  assert.equal(excerpt('| a |\n|---|\n\n来源:SEC XBRL;10-K 第 70 页。\n\n*注:单位百万美元。*\n\n营收连续三年下滑。'), '营收连续三年下滑。')
+})
+
+test('excerpt:段落中间夹的引用行不拼进摘要', () => {
+  assert.equal(excerpt('营收 9501 万。\n> ⚠️ 别用 TTM 口径'), '营收 9501 万。')
+})
+
+test('excerpt:加粗只是句首强调、后面接着正文的行不当字段', () => {
+  assert.equal(excerpt('**重点**在于现金流是否转正'), '重点在于现金流是否转正')
+})
+
 test('excerpt:跳过表格和代码块;英文换行合成空格', () => {
   const md = '| a | b |\n|---|---|\n\n```\ncode\n```\n\nRevenue grew\n`fast` this year.'
   assert.equal(excerpt(md), 'Revenue grew fast this year.')

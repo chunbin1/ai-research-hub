@@ -64,12 +64,26 @@ function joinLines(s: string): string {
 }
 
 /**
- * 字段行 / 加粗小标题:「**报告日期**:2026-08-01」「**信息丰富度评级:A级**」「**核心结论**」。
+ * 字段行 / 加粗小标题:以加粗开头,冒号在加粗外(「**报告日期**:2026-08-01」)、
+ * 加粗内(「**报告日期:2026年10月6日**(价格截至…)」)或干脆没有(「**核心结论**」)。
  * 判据是值里没有句末标点、不成句;「**一句话定性**:碳酸锂是……生意。」是完整的句子,算正文。
  */
 function isFieldLine(line: string): boolean {
-  const m = /^\*\*[^*]+\*\*\s*[:：]\s*(.*)$/.exec(line) ?? /^\*\*([^*]+)\*\*$/.exec(line)
-  return !!m && !/[。！？!?]|\.(\s|$)/.test(m[1])
+  const m = /^\*\*([^*]+)\*\*(.*)$/.exec(line.trim())
+  if (!m) return false
+  const [, inner, rest] = m
+  let value: string
+  if (/[:：]/.test(inner)) value = inner.replace(/^[^:：]*[:：]/, '') + rest
+  else if (/^\s*[:：]/.test(rest)) value = rest.replace(/^\s*[:：]/, '')
+  else if (!rest.trim()) value = inner
+  else return false            // 「**重点**后面接着一句话」:加粗只是强调,不是字段
+  // 以逗号、顿号这类结尾的是在句中硬换行,句子还没完,不是字段
+  return !/[。！？!?]|\.(\s|$)/.test(value) && !/[，,、；;：:]\s*$/.test(value)
+}
+
+/** 表格下面的「来源:SEC XBRL…」「注:…」—— 出处说明,不是正文 */
+function isCaptionLine(line: string): boolean {
+  return /^[*_]*(数据|资料)?(来源|出处|注|说明)[*_]*\s*[:：]/.test(line.trim())
 }
 
 /** 分隔线,或 setext 标题(上一行文字 + 下一行 === / ---)的下划线 */
@@ -102,17 +116,18 @@ export function excerpt(md: string, max = DESCRIPTION_MAX): string {
   const paragraphs: string[] = []
   const fallback: string[] = []
   for (const block of blocks) {
-    // 标题、表格、分隔线按行去掉而不是整块丢:「# 标题」或 --- 下一行紧跟正文的也有
-    const lines = dropNonProseLines(block.split('\n'))
+    // 标题、表格、分隔线、字段行、出处说明都按行去掉而不是整块丢:「# 标题」「**报告日期**:…」
+    // 下一行紧跟正文、中间没空行的也有。字段行拼进摘要读不通
+    const lines = dropNonProseLines(block.split('\n')).filter(l => !isFieldLine(l) && !isCaptionLine(l))
     const b = lines.join('\n').trim()
     if (!b || b.startsWith('<')) continue
-    // 字段行拼进摘要读不通
-    if (lines.every(l => isFieldLine(l.trim()))) continue
     if (/^(>|[-*+]\s|\d+[.)]\s)/.test(b)) {
       fallback.push(lines.map(l => l.replace(/^(>\s?|[-*+]\s+|\d+[.)]\s+)/, '')).join('\n'))
       continue
     }
-    paragraphs.push(b)
+    // 正文段落中间夹着的引用行(> ⚠️ 提示之类)不拼进去
+    const prose = lines.filter(l => !/^\s*>/.test(l)).join('\n').trim()
+    if (prose) paragraphs.push(prose)
   }
   let out = ''
   for (const b of (paragraphs.length ? paragraphs : fallback)) {
