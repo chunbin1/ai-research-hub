@@ -235,6 +235,16 @@ test('搜索结果去重,同代码只留第一次', async () => {
   assert.equal(hits[0].symbol, 'ALB')
 })
 
+test('纯中文被 Yahoo 400 时当空结果,不当故障', async () => {
+  const hits = await searchYahooSymbols('智谱', {
+    fetchImpl: (async () => new Response(
+      JSON.stringify({ finance: { result: null, error: { code: 'Bad Request', description: 'Invalid Search Query' } } }),
+      { status: 400 },
+    )) as unknown as typeof fetch,
+  })
+  assert.deepEqual(hits, [])
+})
+
 test('搜索 429 退避后仍失败抛 rate_limited', async () => {
   let calls = 0
   const slept: number[] = []
