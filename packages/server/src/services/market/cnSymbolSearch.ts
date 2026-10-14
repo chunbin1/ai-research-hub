@@ -9,6 +9,8 @@ import { normalizeSymbol } from './symbol.js'
 import { YahooError, type SymbolSearchHit, type YahooDeps } from './yahooClient.js'
 
 const SUGGEST_URL = 'https://smartbox.gtimg.cn/s3/'
+/** 单次 smartbox 请求的上限。缩短候选最多再打 4 次,不能让一路挂起拖住 Yahoo。 */
+const CN_FETCH_TIMEOUT_MS = 3000
 
 /**
  * 用户经常在简称后面再接组织形式(阿里巴巴集团、腾讯控股有限公司)。
@@ -85,14 +87,23 @@ function decodeUnicodeEscapes(text: string): string {
 }
 
 /**
- * `腾讯控股r` / `美团wr` 是人民币柜台。`美团w`、`腾讯音乐sw` 是正股,要留。
+ * 港股人民币柜台的代码在 8xxxx(80700、83690、89988)。
+ * 名字以 r / wr 结尾不是柜台的充分条件:Uber、Star 这类名字也会撞上。
  */
-function isRmbCounter(name: string): boolean {
-  return /wr$/i.test(name) || /(?<!s)r$/i.test(name)
+function isRmbCounter(market: string, code: string): boolean {
+  if (market !== 'hk') return false
+  const digits = code.replace(/\D/g, '')
+  if (!digits) return false
+  const normalized = digits.length >= 5 ? digits : digits.padStart(5, '0')
+  return normalized.length === 5 && normalized.startsWith('8')
 }
 
-/** `美团w` → `美团-W`,方便和 Yahoo 的 -W / -SW 写成一样,简称匹配也只看这一套。 */
-function displayName(name: string): string {
+/**
+ * smartbox 把港股投票权 / 次级上市写成名字尾巴:`美团w` → `美团-W`。
+ * 只动港股。美股名字(Snow)末尾的 w 是拼写,不是后缀。
+ */
+function displayName(market: string, name: string): string {
+  if (market !== 'hk') return name
   if (/sw$/i.test(name)) return `${name.slice(0, -2)}-SW`
   if (/w$/i.test(name)) return `${name.slice(0, -1)}-W`
   return name
@@ -101,13 +112,13 @@ function displayName(name: string): string {
 function classifyHint(market: string, code: string, name: string, type: string): SymbolSearchHit | null {
   if (!code || !name || type !== 'GP') return null
   if (/[购沽]|etf|做空|做多/i.test(name)) return null
-  if (isRmbCounter(name)) return null
+  if (isRmbCounter(market, code)) return null
 
   if (market === 'hk') {
     if (!/^\d{1,5}$/.test(code)) return null
     const norm = normalizeSymbol(`${code}.HK`)
     if (!norm) return null
-    return { symbol: norm.symbol, name: displayName(name), market: 'HK', exchange: 'Hong Kong' }
+    return { symbol: norm.symbol, name: displayName(market, name), market: 'HK', exchange: 'Hong Kong' }
   }
 
   if (market === 'us') {
@@ -116,7 +127,7 @@ function classifyHint(market: string, code: string, name: string, type: string):
     const prefix = US_SUFFIX[m[2].toLowerCase()]
     const norm = normalizeSymbol(`${prefix}: ${m[1]}`)
     if (!norm) return null
-    return { symbol: norm.symbol, name: displayName(name), market: 'US', exchange: prefix }
+    return { symbol: norm.symbol, name: displayName(market, name), market: 'US', exchange: prefix }
   }
 
   return null
@@ -145,10 +156,33 @@ function parseHint(body: string): SymbolSearchHit[] {
   return hits
 }
 
+function isAbortLike(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const name = (err as { name?: unknown }).name
+  return name === 'AbortError' || name === 'TimeoutError'
+}
+
+function cnTimeoutMs(deps: YahooDeps): number {
+  const ms = deps.cnTimeoutMs
+  if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) return ms
+  return CN_FETCH_TIMEOUT_MS
+}
+
 async function fetchCnOnce(query: string, deps: YahooDeps): Promise<SymbolSearchHit[]> {
   const doFetch = deps.fetchImpl ?? fetch
   const url = `${SUGGEST_URL}?v=2&q=${encodeURIComponent(query)}&t=all`
-  const res = await doFetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  let res: Response
+  try {
+    res = await doFetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(cnTimeoutMs(deps)),
+    })
+  } catch (err) {
+    if (isAbortLike(err)) {
+      throw new YahooError(`搜索「${query}」: 中文行情源超时`, 'bad_response')
+    }
+    throw err
+  }
   if (res.status === 404) return []
   if (!res.ok) {
     throw new YahooError(`搜索「${query}」: 中文行情源 HTTP ${res.status}`, 'bad_response')

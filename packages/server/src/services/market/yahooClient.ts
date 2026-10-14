@@ -34,6 +34,8 @@ export interface YahooDeps {
   fetchImpl?: typeof fetch
   nowMs?: () => number
   sleep?: (ms: number) => Promise<void>
+  /** 中文 smartbox 单次请求超时(毫秒)。默认 3000,测试可缩短。 */
+  cnTimeoutMs?: number
 }
 
 const RETRY_DELAYS = [1000, 2000]

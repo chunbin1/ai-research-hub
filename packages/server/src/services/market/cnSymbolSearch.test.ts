@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { searchCnSymbols, shortenCandidates } from './cnSymbolSearch.ts'
+import { YahooError } from './yahooClient.ts'
 
 function hintResponse(rows: string[]) {
   const hint = rows.length === 0 ? 'N' : rows.join('^')
@@ -166,5 +167,71 @@ test('没有 v_hint 时当成上游坏响应', async () => {
       fetchImpl: (async () => new Response('<html>nope</html>', { status: 200 })) as unknown as typeof fetch,
     }),
     (err: unknown) => err instanceof Error && /v_hint/.test(err.message),
+  )
+})
+
+test('名字以 r 结尾但代码不是 8 字头港股时保留,8 字头柜台仍丢掉', async () => {
+  const hits = await searchCnSymbols('对照', {
+    fetchImpl: (async () => hintResponse([
+      'us~uber.n~Uber~uber~GP',
+      'hk~00700~腾讯控股r~txkgr~GP',
+      'hk~80700~腾讯控股~txkg~GP',
+      'hk~83690~美团~mt~GP',
+      'hk~89988~阿里巴巴~albb~GP',
+    ])) as unknown as typeof fetch,
+  })
+  assert.deepEqual(hits.map(h => h.symbol), ['UBER', '0700.HK'])
+  assert.equal(hits[0].name, 'Uber')
+  assert.equal(hits[1].name, '腾讯控股r')
+})
+
+test('美股名字以 w 结尾时不改写成 -W', async () => {
+  const hits = await searchCnSymbols('Snow', {
+    fetchImpl: (async () => hintResponse([
+      'us~snow.oq~Snow~snow~GP',
+    ])) as unknown as typeof fetch,
+  })
+  assert.equal(hits[0]?.symbol, 'SNOW')
+  assert.equal(hits[0]?.name, 'Snow')
+})
+
+test('smartbox 请求超时按上游坏响应处理', async () => {
+  await assert.rejects(
+    () => searchCnSymbols('智谱', {
+      cnTimeoutMs: 30,
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        const signal = init?.signal
+        if (!(signal instanceof AbortSignal)) {
+          throw new Error('missing AbortSignal')
+        }
+        // AbortSignal.timeout 的计时器不占住事件循环,这里另留一个 ref 住的定时器,
+        // 让 abort 有机会触发;到点还没中断就失败。
+        await new Promise((_resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('signal did not abort')), 500)
+          const fail = (reason: unknown) => {
+            clearTimeout(timer)
+            reject(reason)
+          }
+          if (signal.aborted) {
+            fail(signal.reason)
+            return
+          }
+          signal.addEventListener('abort', () => fail(signal.reason), { once: true })
+        })
+        return hintResponse([])
+      }) as unknown as typeof fetch,
+    }),
+    (err: unknown) => err instanceof YahooError && err.kind === 'bad_response' && /超时/.test(err.message),
+  )
+})
+
+test('fetch 被 AbortError 打断时按上游坏响应处理', async () => {
+  await assert.rejects(
+    () => searchCnSymbols('智谱', {
+      fetchImpl: (async () => {
+        throw new DOMException('The operation was aborted', 'AbortError')
+      }) as unknown as typeof fetch,
+    }),
+    (err: unknown) => err instanceof YahooError && err.kind === 'bad_response' && /超时/.test(err.message),
   )
 })
