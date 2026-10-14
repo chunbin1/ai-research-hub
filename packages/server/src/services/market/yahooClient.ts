@@ -211,6 +211,9 @@ export async function searchYahooSymbols(
   for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
     res = await doFetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
     if (res.status === 404) return []
+    // 纯中文（「智谱」「腾讯」）会被判成 Invalid Search Query 并 400。
+    // 这不是故障:这个接口不索引中文简称。当空结果,交给上层补另一路数据源。
+    if (res.status === 400) return []
     if (res.status !== 429) break
     if (attempt === RETRY_DELAYS.length) {
       throw new YahooError(`搜索「${q}」: 被限流,重试后仍失败`, 'rate_limited')

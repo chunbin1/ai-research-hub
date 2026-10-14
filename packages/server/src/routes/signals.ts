@@ -14,7 +14,8 @@ import {
 import { scanAll, isSignalsEnabled } from '../services/signals/scanner.js'
 import { syncWatchlistFromAllDocuments } from '../services/signals/watchlistSync.js'
 import { probeSymbol, ProbeError } from '../services/signals/probeSymbol.js'
-import { searchYahooSymbols, YahooError, type SymbolSearchHit } from '../services/market/yahooClient.js'
+import { YahooError, type SymbolSearchHit } from '../services/market/yahooClient.js'
+import { searchSymbols } from '../services/market/symbolSearch.js'
 import { signalBoard, daysAgoIso } from '../services/signals/board.js'
 
 export interface SignalsRoutesOptions {
@@ -31,7 +32,7 @@ const TIMEFRAMES: Timeframe[] = ['1d', '1wk']
 export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app, opts) => {
   const scan = opts.scan ?? scanAll
   const probe = opts.probe ?? probeSymbol
-  const search = opts.search ?? ((q: string) => searchYahooSymbols(q))
+  const search = opts.search ?? ((q: string) => searchSymbols(q))
 
   app.addHook('onRequest', async (_request, reply) => {
     if (!isSignalsEnabled()) return reply.status(404).send({ error: 'signals_disabled' })
@@ -79,6 +80,7 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
   })
 
   // 模糊搜索候选。点选后再走 probe 确认身份 —— 搜索只给名单,不替代人工确认。
+  // Yahoo 不收纯中文;中文简称 / 拼音 / 别名由 searchSymbols 另补一路。
   app.get<{ Querystring: { q?: string } }>('/signals/watchlist/search', async (request, reply) => {
     if (!requireAdmin(request, reply)) return
     const q = (request.query.q ?? '').trim()

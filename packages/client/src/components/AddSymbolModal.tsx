@@ -192,7 +192,7 @@ export function AddSymbolModal({ open, onCancel, onConfirm }: Props) {
         <Space.Compact style={{ width: '100%' }}>
           <Input
             aria-label="代码或公司名"
-            placeholder="代码、公司名,如 meitu / ALB / 9988"
+            placeholder="代码、公司名或中文简称,如 腾讯 / ALB / 9988"
             value={code}
             onChange={e => onCodeChange(e.target.value)}
             onPressEnter={() => void doProbe()}
