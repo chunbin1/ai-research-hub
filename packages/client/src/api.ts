@@ -119,4 +119,15 @@ export const api = {
     if (!r.ok) throw new Error('事件加载失败')
     return (await r.json()).events
   },
+  async getHoldings(): Promise<import('./types').HoldingsSnapshot> {
+    const r = await fetch('/api/holdings')
+    if (!r.ok) throw new Error('持仓加载失败')
+    const body = await r.json() as Partial<import('./types').HoldingsSnapshot> | null
+    // 顶栏每个页面都会问这一下。形状不对就当失败,别让坏响应把整站导航拆掉。
+    if (!body || !Array.isArray(body.holdings)) throw new Error('持仓加载失败')
+    return {
+      updatedAt: typeof body.updatedAt === 'string' ? body.updatedAt : null,
+      holdings: body.holdings,
+    }
+  },
 }

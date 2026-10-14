@@ -5,6 +5,7 @@ import { Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
 import { UploadReportModal } from './UploadReportModal'
 import { useAuth } from '../hooks/useAuth'
+import { useHoldings } from '../hooks/useHoldings'
 
 /**
  * 全站顶栏 —— 只由 SiteLayout 挂一份,所有页面共用(见 SiteLayout 的说明)。
@@ -19,11 +20,14 @@ interface NavItem {
   to: string
   /** 与改版前一致:评估 / 站点模型 / trace 只对管理员开放 */
   adminOnly: boolean
+  /** 没有实盘快照时不出现。空数据直接进 /holdings 也会被送回首页。 */
+  whenHoldings?: boolean
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
   { label: '研报', to: '/', adminOnly: false },
   { label: '信号', to: '/signals', adminOnly: false },
+  { label: '持仓', to: '/holdings', adminOnly: false, whenHoldings: true },
   { label: '评估', to: '/eval', adminOnly: true },
   { label: '站点模型', to: '/admin', adminOnly: true },
   { label: 'trace', to: '/traces', adminOnly: true },
@@ -75,6 +79,8 @@ export function SiteHeader() {
   const navigate = useNavigate()
   const active = activeTab(useLocation().pathname)
   const { user, loading: authLoading, providers, providersLoading, login, logout } = useAuth()
+  const { snapshot } = useHoldings()
+  const showHoldings = Array.isArray(snapshot?.holdings) && snapshot.holdings.length > 0
   const [searchParams, setSearchParams] = useSearchParams()
   const loginError = searchParams.get('login_error')
   const loginErrorText = loginError === 'email_unverified'
@@ -96,7 +102,7 @@ export function SiteHeader() {
     { key: 'logout', label: '登出', onClick: () => { void logout() } },
   ]
 
-  const navLinks = NAV_ITEMS.filter(item => !item.adminOnly || isAdmin)
+  const navLinks = NAV_ITEMS.filter(item => (!item.adminOnly || isAdmin) && (!item.whenHoldings || showHoldings))
 
   return (
     <>

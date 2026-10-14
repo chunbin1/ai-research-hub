@@ -37,6 +37,7 @@ pnpm dev:client   # http://localhost:5173
 - [x] 用户自带模型(BYOK):设置页填自己的 API key + 选模型,自带 key 的提问豁免次数限制
 - [x] 站点默认模型切换:管理员在 /admin 改公共额度用的模型,保存前自动验证,改完即时生效不重启
 - [x] 股票信号追踪:研报标题自动抽标的,每日收盘后算日线/周线 SuperTrend,`/signals` 看板
+- [x] 实盘持仓:第三方用 API Key 全量上传快照,有数据时 `/holdings` 展示标的、股数、市值、成本、浮动盈亏和仓位占比
 - [x] 在 Claude / Codex / Grok 里问:站点挂一个只读 MCP 服务器(`/api/mcp`,Streamable HTTP,无状态),
   工具有列出研报、看目录、按章节读正文(超长自动分页)、股票信号;登录用户在「问这篇报告」面板里
   点「去 Claude / Codex / Grok 里问」,复制一段带研报 id 的提问文案,粘到已添加连接器的 AI 里接着问。
@@ -89,6 +90,19 @@ pnpm dev:client   # http://localhost:5173
   当周的周线翻转
 
 管理员在 `/signals` 页可以「立即扫描」和「重新抽取」(对全部已有报告重跑标的抽取)。
+
+## 实盘持仓
+
+第三方把一份完整持仓推上来,站点覆盖保存并展示。没有快照时导航不出现「持仓」,直接打开 `/holdings` 会回到首页。
+
+```bash
+curl -X PUT http://localhost:3001/api/holdings \
+  -H "Authorization: Bearer $HOLDINGS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"holdings":[{"symbol":"AAPL","name":"Apple","shares":10,"marketValue":2000,"cost":1500,"pnl":500}]}'
+```
+
+也接受 `X-Holdings-Key`。`holdings: []` 清空。密钥来自 `HOLDINGS_API_KEY`;不配则上传返回 503。只在 HTTPS 上使用,不要把密钥打进日志。字段与页面说明见 [设计文档](docs/superpowers/specs/2026-10-15-holdings-page-design.md)。
 
 配置:
 

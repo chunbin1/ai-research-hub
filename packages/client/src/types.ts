@@ -264,6 +264,23 @@ export interface ProbeResult {
   deleted: boolean
 }
 
+/** GET /api/holdings 的一行。weight 是市值占合计的比例,合计为 0 时为 0。 */
+export interface HoldingPosition {
+  symbol: string
+  name: string | null
+  shares: number
+  marketValue: number
+  cost: number
+  pnl: number
+  weight: number
+}
+
+/** 整份快照共用一个 updatedAt。没有持仓时 updatedAt 为 null、holdings 为空。 */
+export interface HoldingsSnapshot {
+  updatedAt: string | null
+  holdings: HoldingPosition[]
+}
+
 /** GET /api/signals/watchlist/search 的一条候选 */
 export interface SymbolSearchHit {
   symbol: string
