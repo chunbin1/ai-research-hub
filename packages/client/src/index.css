@@ -47,22 +47,27 @@
 
   /* 标题与数字同一套宋体。西文衬线（Georgia / Times / Noto Serif / Source Serif）
      不再排进这条栈：它们的基线和字重跟宋体不是一套，中西文混排会歪。
-     「Site Songti」见下面的 @font-face，是本地宋体的全字重别名，必须放在最前。 */
-  --font-serif-sc: "Site Songti", "Songti SC", "STSong", "SimSun", serif;
+     「Site Songti」见下面的 @font-face，是本地宋体的别名，必须放在最前。
+     这些本地字体都没有时，先找已安装的 Noto Serif CJK SC（中西文在同一套里），
+     再落到通用 serif。不下载字体。 */
+  --font-serif-sc: "Site Songti", "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif;
   --font-sans-sc: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-  --font-numeral: "Site Songti", "Songti SC", "STSong", "SimSun", serif;
+  --font-numeral: var(--font-serif-sc);
 }
 
 /* Mac 上 Songti SC 的粗体字面常常只覆盖汉字。font-weight 600/700 时，
    浏览器会把同一行里的英文和数字换成下一个有粗体的衬线（Times、Georgia），
    基线和字重就和汉字对不齐。
    家族名不能写成 Songti SC：和 local() 同名会被当成循环引用丢掉。
-   声明成全字重之后，粗体从同一套字形合成，中西文不再分家。
+   local() 匹配的是 full name / PostScript name，不是家族名，所以不写 "Songti SC"。
+   src 里只有 Regular。字重只声明 400：若写成 100 900，这个 face 会被当成已经
+   覆盖 600/700，WebKit 不再做 font-synthesis，Chromium 也只给出更轻的一档。
+   600/700 从这一套字形合成，一行里的汉字、英文、数字不再分家。
    没有这些本地字体时（例如 Linux）这条声明不生效，回退到上面的栈。 */
 @font-face {
   font-family: "Site Songti";
-  src: local("Songti SC"), local("Songti SC Regular"), local("STSongti-SC-Regular"), local("STSong"), local("SimSun");
-  font-weight: 100 900;
+  src: local("Songti SC Regular"), local("STSongti-SC-Regular"), local("STSong"), local("SimSun");
+  font-weight: 400;
   font-style: normal;
 }
 
