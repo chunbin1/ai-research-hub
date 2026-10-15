@@ -7,6 +7,7 @@
 //   GET /seo/sitemap.xml      —— nginx 把 /sitemap.xml 转到这里,新上传的研报自动出现
 // 后两个放后端而不是 public/ 静态文件,是因为里面要写绝对地址,域名只有 APP_URL 知道。
 import type { FastifyPluginAsync } from 'fastify'
+import { describeRoute } from '../openapi/doc.js'
 import { getAllDocuments, getDocument, readRawMarkdown } from '../services/documentStore.js'
 import type { Document } from '../types.js'
 import {
@@ -62,18 +63,30 @@ function headFor(path: string, site: string): HeadInput {
 }
 
 export const seoRoutes: FastifyPluginAsync = async (app) => {
-  app.get<{ Params: { '*': string } }>('/seo/head/*', async (request, reply) => {
+  app.get<{ Params: { '*': string } }>('/seo/head/*', describeRoute(
+    ['seo'],
+    '页面 head 片段',
+    '给 nginx SSI 拼进 index.html 的 HTML 片段，不是给第三方调用的 JSON API。按原始路径返回标题、摘要和 canonical；未知路径（含 /holdings、/api/docs）只出 noindex。',
+  ), async (request, reply) => {
     const site = appUrl()
     reply.type('text/html; charset=utf-8')
     return renderHead(headFor(request.params['*'], site), site)
   })
 
-  app.get('/seo/robots.txt', async (_request, reply) => {
+  app.get('/seo/robots.txt', describeRoute(
+    ['seo'],
+    'robots.txt',
+    '纯文本。站点对外的地址由环境变量 APP_URL 生成。nginx 把它挂在 /robots.txt。',
+  ), async (_request, reply) => {
     reply.type('text/plain; charset=utf-8')
     return robotsTxt(appUrl())
   })
 
-  app.get('/seo/sitemap.xml', async (_request, reply) => {
+  app.get('/seo/sitemap.xml', describeRoute(
+    ['seo'],
+    'sitemap.xml',
+    'XML。列出首页、信号页和每篇研报。持仓页和接口文档不进站点地图。nginx 把它挂在 /sitemap.xml。',
+  ), async (_request, reply) => {
     reply.type('application/xml; charset=utf-8')
     return sitemapXml(appUrl(), getAllDocuments())
   })

@@ -1,6 +1,7 @@
 // packages/server/src/routes/auth.ts
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import * as oauth from 'oauth4webapi'
+import { describeRoute } from '../openapi/doc.js'
 import {
   upsertGithubUser,
   upsertGoogleUser,
@@ -225,7 +226,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
   }
 
-  app.get('/auth/providers', async () => providers())
+  app.get('/auth/providers', describeRoute(
+    ['auth'],
+    '可用的登录方式',
+    '公开。返回 `{ github, google }`，表示这两种登录是否已在服务端配好。不返回 client id 或 client secret。',
+  ), async () => providers())
 
   app.get('/auth/github', async (_request, reply) => begin(reply, 'github'))
   app.get('/auth/google', async (_request, reply) => begin(reply, 'google'))
@@ -238,7 +243,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => finish(request, reply, 'google'),
   )
 
-  app.get('/auth/me', async (request, reply) => {
+  app.get('/auth/me', describeRoute(
+    ['auth'],
+    '当前登录用户',
+    '读取当前登录用户的公开资料。未登录返回 401 `{ error: "unauthorized" }`。不返回任何密钥。',
+  ), async (request, reply) => {
     const user = currentUser(request)
     if (!user) return reply.status(401).send({ error: 'unauthorized' })
     return publicUser(user)

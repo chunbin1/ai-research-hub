@@ -3,6 +3,7 @@
 // MCP 的 Streamable HTTP 入口。无状态:每个请求新建一个 server + transport,
 // 不存会话 —— 工具全是只读查询,没有要跨请求保留的东西,服务重启也不会断连。
 import type { FastifyPluginAsync } from 'fastify'
+import { describeRoute } from '../openapi/doc.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { buildMcpServer } from '../services/mcpServer.js'
 
@@ -14,7 +15,11 @@ const methodNotAllowed = {
 }
 
 export const mcpRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/mcp', async (request, reply) => {
+  app.post('/mcp', describeRoute(
+    ['mcp'],
+    'MCP（只读）',
+    'Streamable HTTP。工具全是只读查询，无会话。响应由协议层直接写回。GET 与 DELETE 返回 405。',
+  ), async (request, reply) => {
     const server = buildMcpServer()
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
     // 响应由 transport 直接写 reply.raw,Fastify 不能再插手

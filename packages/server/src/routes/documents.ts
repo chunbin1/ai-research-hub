@@ -1,6 +1,7 @@
 // packages/server/src/routes/documents.ts
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import type { MultipartFile } from '@fastify/multipart'
+import { describeRoute } from '../openapi/doc.js'
 import { parseMarkdown } from '../services/markdownParser.js'
 import {
   saveDocument, getAllDocuments, getDocument, deleteDocument, setDocumentKind,
@@ -68,10 +69,18 @@ function readKind(data: MultipartFile): ReportKind | null | 'invalid' {
 }
 
 export const documentRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/documents', async () => ({ documents: getAllDocuments() }))
+  app.get('/documents', describeRoute(
+    ['documents'],
+    '研报列表',
+    '公开读。返回 `{ documents }`。每项含 id、filename、size_bytes、chunk_count、created_at、kind（industry 或 company）、latest_version、updated_at。',
+  ), async () => ({ documents: getAllDocuments() }))
 
   /** ?version=n 取指定版本;不传就是最新版。 */
-  app.get<{ Params: { id: string }; Querystring: { version?: string } }>('/documents/:id', async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { version?: string } }>('/documents/:id', describeRoute(
+    ['documents'],
+    '研报正文',
+    '公开读。路径参数 id 是研报 id。查询参数 version 指定版本号；不传则返回最新版。没有这篇返回 404 `{ error: "not_found" }`；版本不存在返回 404 `{ error: "version_not_found" }`。成功时返回 `{ document, markdown, version, versions }`。',
+  ), async (request, reply) => {
     const doc = getDocument(request.params.id)
     if (!doc) return reply.status(404).send({ error: 'not_found' })
     const db = getDb()

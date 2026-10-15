@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { Outlet, useMatch } from 'react-router-dom'
+import { HoldingsProvider } from '../hooks/useHoldings'
 import { SiteHeader } from './SiteHeader'
 
 /**
@@ -22,14 +23,17 @@ import { SiteHeader } from './SiteHeader'
 export function SiteLayout() {
   const inReader = useMatch('/reports/:id') !== null
 
+  // 包在外壳外层:顶栏和当前页面读同一份持仓,进 /holdings 只请求一次。
   return (
-    <div className={`flex flex-col bg-page font-sans-sc text-ink *:w-full ${inReader ? 'h-dvh' : 'min-h-screen'}`}>
-      <div className={`flex-none ${inReader ? 'hidden md:block' : ''}`}>
-        <SiteHeader />
+    <HoldingsProvider>
+      <div className={`flex flex-col bg-page font-sans-sc text-ink *:w-full ${inReader ? 'h-dvh' : 'min-h-screen'}`}>
+        <div className={`flex-none ${inReader ? 'hidden md:block' : ''}`}>
+          <SiteHeader />
+        </div>
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
       </div>
-      <Suspense fallback={null}>
-        <Outlet />
-      </Suspense>
-    </div>
+    </HoldingsProvider>
   )
 }

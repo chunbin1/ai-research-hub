@@ -14,7 +14,7 @@ test('classifyPath:首页 / 信号 / 研报页可收录,其余一律 noindex', (
   // import:raw 的 id 取自文件名,可能带中文或 .
   assert.deepEqual(classifyPath(`reports/${encodeURIComponent('茅台')}`), { kind: 'report', id: '茅台' })
   assert.deepEqual(classifyPath('reports/doc_1.v2'), { kind: 'report', id: 'doc_1.v2' })
-  for (const p of ['reports/..%2F..%2Fadmin', 'reports/a%2Fb', 'reports/a%5Cb', 'reports/..', 'admin', 'settings', 'traces', 'traces/t1', 'eval', 'eval/doc_1', 'reports/doc_1/diff', 'nope']) {
+  for (const p of ['reports/..%2F..%2Fadmin', 'reports/a%2Fb', 'reports/a%5Cb', 'reports/..', 'admin', 'settings', 'traces', 'traces/t1', 'eval', 'eval/doc_1', 'reports/doc_1/diff', 'holdings', 'api/docs', 'nope']) {
     assert.deepEqual(classifyPath(p), { kind: 'noindex' }, p)
   }
 })
