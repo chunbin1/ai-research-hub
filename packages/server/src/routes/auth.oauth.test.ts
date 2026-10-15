@@ -21,6 +21,13 @@ async function freshApp() {
 }
 
 describe('oauth routes', { concurrency: false }, () => {
+test('未登录时 /auth/me 返回 200 null,不打 401', async () => {
+  const app = await freshApp()
+  const me = await app.inject({ method: 'GET', url: '/api/auth/me' })
+  assert.equal(me.statusCode, 200)
+  assert.equal(me.body, 'null')
+})
+
 test('没配 Google 凭证时 /auth/google 返回 503', async () => {
   delete process.env.GOOGLE_CLIENT_ID
   delete process.env.GOOGLE_CLIENT_SECRET

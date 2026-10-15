@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Alert, Input, Radio } from 'antd'
+import { AntdProvider } from '../antd/AntdProvider'
 import { api } from '../api'
 import { REPORT_KIND_LABEL, docKind, type ReportKind, type SimilarReport } from '../types'
 import { ReportDropZone } from './ReportDropZone'
@@ -109,6 +110,7 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
   }
 
   return (
+    <AntdProvider>
     <UploadDialog
       open={open}
       title="上传研报"
@@ -203,6 +205,7 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
 
       {error && <Alert type="error" showIcon className="mt-4" title={error} />}
     </UploadDialog>
+    </AntdProvider>
   )
 }
 

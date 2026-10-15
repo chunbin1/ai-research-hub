@@ -1,11 +1,10 @@
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { DownOutlined, GithubOutlined, GoogleOutlined, UploadOutlined } from '@ant-design/icons'
-import { useState } from 'react'
-import { Dropdown } from 'antd'
-import type { MenuProps } from 'antd'
-import { UploadReportModal } from './UploadReportModal'
-import { useAuth } from '../hooks/useAuth'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { useAuth, type AuthUser } from '../hooks/useAuth'
 import { useHoldings } from '../hooks/useHoldings'
+
+const UploadReportModal = lazy(() => import('./UploadReportModal').then(m => ({ default: m.UploadReportModal })))
 
 /**
  * 全站顶栏 —— 只由 SiteLayout 挂一份,所有页面共用(见 SiteLayout 的说明)。
@@ -69,6 +68,81 @@ function UserAvatar({ url, name }: { url: string | null; name: string }) {
   )
 }
 
+/**
+ * 账号菜单不用 antd Dropdown:那会把 rc-menu / rc-trigger 打进首页首屏。
+ * 点击展开,点外面或 Esc 关掉。
+ */
+function AccountMenu({ user, onSettings, onLogout }: {
+  user: AuthUser
+  onSettings: () => void
+  onLogout: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onPointer(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        className="tap-44 flex items-center gap-[9px]"
+        aria-label="账号菜单"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen(v => !v)}
+      >
+        <UserAvatar url={user.avatarUrl} name={user.username} />
+        <span className="hidden text-[13px] text-ink-soft md:inline">{displayName(user.username)}</span>
+        <DownOutlined className="hidden text-[14px] text-ink-faint md:inline" aria-hidden />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-50 mt-1 min-w-[168px] rounded-[6px] border border-edge bg-white py-1 text-[13px] text-ink shadow-[0_6px_16px_rgba(0,0,0,0.08)]"
+        >
+          {user && !user.unlimited && (
+            <div role="menuitem" aria-disabled="true" className="px-3 py-2 text-ink-mute">
+              剩余 {user.remaining} 次提问
+            </div>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-aside"
+            onClick={() => { setOpen(false); onSettings() }}
+          >
+            模型设置
+          </button>
+          <div className="my-1 h-px bg-rule" />
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-aside"
+            onClick={() => { setOpen(false); onLogout() }}
+          >
+            登出
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** 当前栏目的 to;不属于任何栏目(如 /settings)时为 null */
 function activeTab(pathname: string): string | null {
   if (pathname === '/' || pathname.startsWith('/reports/')) return '/'
@@ -90,17 +164,10 @@ export function SiteHeader() {
       : null
   const isAdmin = user?.isAdmin === true
 
-  /** 「上传研报」弹窗开关:点按钮打开,在弹窗里拖拽或点选文件再提交 */
+  /** 「上传研报」弹窗开关:点按钮打开,在弹窗里拖拽或点选文件再提交。
+   *  第一次打开才挂载(antd 不进首屏包);关掉之后留着挂载,关闭动画才跑得完。 */
+  const [uploadMounted, setUploadMounted] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
-
-  const menuItems: MenuProps['items'] = [
-    ...(user && !user.unlimited
-      ? [{ key: 'quota', label: `剩余 ${user.remaining} 次提问`, disabled: true }]
-      : []),
-    { key: 'settings', label: '模型设置', onClick: () => navigate('/settings') },
-    { type: 'divider' as const },
-    { key: 'logout', label: '登出', onClick: () => { void logout() } },
-  ]
 
   const navLinks = NAV_ITEMS.filter(item => (!item.adminOnly || isAdmin) && (!item.whenHoldings || showHoldings))
 
@@ -141,7 +208,7 @@ export function SiteHeader() {
               <button
                 type="button"
                 aria-label="上传研报"
-                onClick={() => setUploadOpen(true)}
+                onClick={() => { setUploadMounted(true); setUploadOpen(true) }}
                 className="flex size-11 items-center justify-center text-navy transition-[border-color,background] duration-150 md:size-auto md:gap-2 md:rounded-[4px] md:border md:border-navy-edge md:bg-white md:px-[15px] md:py-2 md:text-[13px] md:hover:border-navy md:hover:bg-navy-wash"
               >
                 <UploadOutlined className="text-[20px] md:text-[14px]" aria-hidden />
@@ -151,13 +218,11 @@ export function SiteHeader() {
           )}
           <span className="hidden h-[22px] w-px bg-rule md:block" aria-hidden />
           {user ? (
-            <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
-              <button type="button" className="tap-44 flex items-center gap-[9px]" aria-label="账号菜单">
-                <UserAvatar url={user.avatarUrl} name={user.username} />
-                <span className="hidden text-[13px] text-ink-soft md:inline">{displayName(user.username)}</span>
-                <DownOutlined className="hidden text-[14px] text-ink-faint md:inline" aria-hidden />
-              </button>
-            </Dropdown>
+            <AccountMenu
+              user={user}
+              onSettings={() => navigate('/settings')}
+              onLogout={() => { void logout() }}
+            />
           ) : authLoading || providersLoading ? (
             // 登录态未知:先留白。抢先画登录按钮的话,已登录的人每次刷新都会
             // 看见它闪一下再换成头像——宽度不同,右侧这一簇跟着横向跳。
@@ -165,12 +230,12 @@ export function SiteHeader() {
           ) : (
             <span className="flex items-center gap-1">
               {providers.github && (
-                <button type="button" aria-label="GitHub 登录" title="GitHub 登录" onClick={() => login('github')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy">
+                <button type="button" aria-label="GitHub 登录" title="GitHub 登录" onClick={() => login('github')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy md:size-[26px] md:text-[16px]">
                   <GithubOutlined />
                 </button>
               )}
               {providers.google && (
-                <button type="button" aria-label="Google 登录" title="Google 登录" onClick={() => login('google')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy">
+                <button type="button" aria-label="Google 登录" title="Google 登录" onClick={() => login('google')} className="tap-44 flex size-11 cursor-pointer items-center justify-center text-[18px] text-navy md:size-[26px] md:text-[16px]">
                   <GoogleOutlined />
                 </button>
               )}
@@ -196,12 +261,14 @@ export function SiteHeader() {
         </p>
       )}
 
-      {isAdmin && (
-        <UploadReportModal
-          open={uploadOpen}
-          onClose={() => setUploadOpen(false)}
-          onUploaded={() => { setUploadOpen(false); window.dispatchEvent(new Event(REPORT_UPLOADED_EVENT)) }}
-        />
+      {isAdmin && uploadMounted && (
+        <Suspense fallback={null}>
+          <UploadReportModal
+            open={uploadOpen}
+            onClose={() => setUploadOpen(false)}
+            onUploaded={() => { setUploadOpen(false); window.dispatchEvent(new Event(REPORT_UPLOADED_EVENT)) }}
+          />
+        </Suspense>
       )}
 
       {/* 栏目导航:移动端独立成行、横向可滑 */}

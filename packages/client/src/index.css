@@ -20,8 +20,11 @@
   --color-aside: #F5F3EE;       /* 右栏 / 次级区块底色 */
   --color-ink: #14161A;         /* 主文字 */
   --color-ink-soft: #4A4E55;    /* 次文字 */
-  --color-ink-mute: #6B6F76;    /* 弱文字 */
-  --color-ink-faint: #9A9EA5;   /* 最弱文字 / 数值 */
+  /* 弱文字 / 最弱文字原先更浅(#6B6F76 / #9A9EA5)。日期和筛选计数是 12–14px,
+     #9A9EA5 在页底上只有 2.55:1,Lighthouse 对比度直接失败。
+     两档都压到在悬停底 #F2F0EA 上仍 ≥ 4.5:1,弱文字仍深于最弱文字。 */
+  --color-ink-mute: #5F646B;    /* 弱文字 */
+  --color-ink-faint: #656A71;   /* 最弱文字 / 数值 */
   --color-navy: #1B3A5C;        /* 强调蓝:链接、按钮、头像 */
   --color-navy-edge: #C9D3DC;   /* 描边按钮的边 */
   --color-navy-wash: #F4F8FB;   /* 描边按钮 hover 底 */
@@ -42,9 +45,9 @@
   --color-warn-bar: #D99A34;    /* 临近止损:进度条填充 */
   --color-warn-edge: #EBD9BE;   /* 临近止损:边 */
 
-  --font-serif-sc: "Noto Serif SC", "Songti SC", "SimSun", serif;
-  --font-sans-sc: "Noto Sans SC", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-numeral: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-serif-sc: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+  --font-sans-sc: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-numeral: "Iowan Old Style", Georgia, "Times New Roman", "Source Serif 4", serif;
 }
 
 @layer base {

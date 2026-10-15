@@ -246,10 +246,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get('/auth/me', describeRoute(
     ['auth'],
     '当前登录用户',
-    '读取当前登录用户的公开资料。未登录返回 401 `{ error: "unauthorized" }`。不返回任何密钥。',
-  ), async (request, reply) => {
+    '读取当前登录用户的公开资料。未登录返回 200 和 JSON null，不打 401，避免首页控制台报错。不返回任何密钥。',
+  ), async (request) => {
     const user = currentUser(request)
-    if (!user) return reply.status(401).send({ error: 'unauthorized' })
+    // 未登录是首页的正常状态。401 会被浏览器记成一条失败的网络请求,
+    // Lighthouse best-practices「控制台报错」直接扣分。这里回 200 + null。
+    // 真正需要登录的接口仍走 requireUser,该 401 还是 401。
+    if (!user) return null
     return publicUser(user)
   })
 
