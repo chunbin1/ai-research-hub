@@ -6,9 +6,13 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { FastifyPluginAsync } from 'fastify'
 import type { IncomingHttpHeaders } from 'node:http'
+import { validatorCompiler } from 'fastify-type-provider-zod'
 import {
   getHoldingsSnapshot, replaceHoldings, type HoldingInput,
 } from '../services/holdingsStore.js'
+import {
+  apiErrorSchema, holdingsPutBodySchema, holdingsSnapshotSchema,
+} from '../openapi/holdingsSchemas.js'
 
 export interface HoldingsRoutesOptions {
   /** 测试注入,避免断言依赖墙钟 */
@@ -94,12 +98,55 @@ function parseHoldings(body: unknown): { ok: true; rows: HoldingInput[] } | { ok
   return { ok: true, rows }
 }
 
+const disabledSchema = apiErrorSchema.describe('未配置 HOLDINGS_API_KEY，上传关闭。error 为 holdings_upload_disabled')
+const unauthorizedSchema = apiErrorSchema.describe('未带密钥或密钥不对。error 为 unauthorized。已有快照不变')
+const invalidSchema = apiErrorSchema.describe('请求体不合法。error 为 invalid_input，message 说明原因。已有快照不变')
+
 export const holdingsRoutes: FastifyPluginAsync<HoldingsRoutesOptions> = async (app, opts) => {
   const now = opts.now ?? (() => new Date())
+  // 只在这个插件里换编译器。Zod 用来生成 OpenAPI；真正的校验仍是下面的 parseHoldings，
+  // 并且一定发生在鉴权之后。响应 schema 同样只用于文档，序列化原样输出，避免字段被裁掉。
+  app.setValidatorCompiler(validatorCompiler)
+  app.setSerializerCompiler(() => (data) => JSON.stringify(data))
 
-  app.get('/holdings', async () => getHoldingsSnapshot())
+  app.get('/holdings', {
+    schema: {
+      tags: ['holdings'],
+      operationId: 'getHoldings',
+      summary: '读取当前持仓快照',
+      description: [
+        '公开读，不需要登录，也不需要 API Key。',
+        '没有数据时 `updatedAt` 为 null、`holdings` 为空数组。',
+        '仓位占比 `weight` 由服务端按市值合计计算，合计为 0 时为 0。',
+      ].join('\n\n'),
+      response: { 200: holdingsSnapshotSchema },
+    },
+  }, async () => getHoldingsSnapshot())
 
-  app.put('/holdings', async (request, reply) => {
+  app.put('/holdings', {
+    // Zod 校验失败也进处理函数，这样 503 / 401 仍优先于 400，错误体保持 invalid_input。
+    attachValidation: true,
+    schema: {
+      tags: ['holdings'],
+      operationId: 'replaceHoldings',
+      summary: '全量覆盖上传持仓快照',
+      description: [
+        '用一份完整快照替换站上的持仓。不是合并。空数组表示清空。',
+        '密钥放在 Header：`Authorization: Bearer <key>` 或 `X-Holdings-Key: <key>`，任选其一，两个都带时匹配一个即可。',
+        '密钥是环境变量 `HOLDINGS_API_KEY` 的值。不要放进查询串（查询串会进访问日志），不要打进日志，只在 HTTPS 上使用。',
+        '未配置密钥返回 503；密钥缺失或不对返回 401，此时不看请求体。',
+        '请求体不合法返回 400，已有快照保持不变。成功时返回与读取接口相同的快照，`updatedAt` 由服务端时钟生成。',
+      ].join('\n\n'),
+      security: [{ bearerAuth: [] }, { holdingsKey: [] }],
+      body: holdingsPutBodySchema,
+      response: {
+        200: holdingsSnapshotSchema,
+        400: invalidSchema,
+        401: unauthorizedSchema,
+        503: disabledSchema,
+      },
+    },
+  }, async (request, reply) => {
     const key = configuredKey()
     // 未配置和密钥错误分开:前者是站点没开上传,后者才是调用方没带对。
     if (!key) return reply.status(503).send({ error: 'holdings_upload_disabled' })

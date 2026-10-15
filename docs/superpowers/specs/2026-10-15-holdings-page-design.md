@@ -166,3 +166,20 @@ curl -X PUT https://your-domain.example/api/holdings \
 - 有数据时表格含上述列，更新时间只有一处且在表上方；盈亏红绿
 - 无数据时访问 `/holdings` 回到首页
 - 无数据或请求失败时导航没有「持仓」；有数据时有
+
+## 接口文档
+
+Swagger UI 挂在 `/api/docs`。这条路径在 `/api` 下，nginx 和 Vite 都会把它转到 Fastify，不会进前端路由。页面响应带 `X-Robots-Tag: noindex`，SEO 对 `api/docs` 也按未知路径不收录。
+
+- 规范：`GET /api/docs/json`、`GET /api/docs/yaml`
+- 持仓的请求体和响应由 Zod schema 生成，示例是虚构的 AAPL / 0700.HK，不含真实密钥
+- 上传的两种 Header 记成 `bearerAuth` 与 `holdingsKey`。文档页不记住授权（`persistAuthorization: false`）
+- 运行时校验仍以 `parseHoldings` 为准，并且在鉴权之后。文档用的 schema 不改变 503 / 401 / 400 的顺序和错误体
+- 其它公开读接口只写摘要，不附加 body / response schema，避免改掉原有校验
+- 没标注的管理接口不出现在这份文档里
+
+导出（不启动监听）：
+
+```bash
+pnpm --filter @arh/server exec tsx scripts/export-openapi.ts ./openapi
+```

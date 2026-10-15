@@ -104,6 +104,12 @@ curl -X PUT http://localhost:3001/api/holdings \
 
 也接受 `X-Holdings-Key`。`holdings: []` 清空。密钥来自 `HOLDINGS_API_KEY`;不配则上传返回 503。只在 HTTPS 上使用,不要把密钥打进日志。字段与页面说明见 [设计文档](docs/superpowers/specs/2026-10-15-holdings-page-design.md)。
 
+接口文档在服务起来之后打开 `/api/docs`（本机即 `http://localhost:3001/api/docs`）。规范原文是同页下的 `/api/docs/json` 和 `/api/docs/yaml`。页面不预填密钥；Try it out 里要自己贴。导出一份文件给第三方：
+
+```bash
+pnpm --filter @arh/server exec tsx scripts/export-openapi.ts ./openapi
+```
+
 配置:
 
 - `SIGNALS=off` —— 整体关闭(不注册 cron、不启动补扫、相关路由返回 404)

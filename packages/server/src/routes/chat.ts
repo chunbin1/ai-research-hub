@@ -1,5 +1,6 @@
 // packages/server/src/routes/chat.ts
 import type { FastifyPluginAsync } from 'fastify'
+import { describeRoute } from '../openapi/doc.js'
 import { streamChat, serverLLMConfig, describeLLMError } from '../llm.js'
 import { resolveLLMConfig, LLMConfigDecryptError } from '../services/llmConfigStore.js'
 import { assertPublicBaseURL, getPreset, BaseURLRejectedError } from '../services/providerPresets.js'
@@ -38,9 +39,17 @@ function estimateTokens(text: string): number {
 }
 
 export const chatRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/chat/health', async () => ({ status: 'ok', provider: serverLLMConfig().providerId }))
+  app.get('/chat/health', describeRoute(
+    ['chat'],
+    '问答服务健康检查',
+    '公开。返回 `{ status: "ok", provider }`。provider 是当前服务端模型供应商标识，不含密钥。',
+  ), async () => ({ status: 'ok', provider: serverLLMConfig().providerId }))
 
-  app.get<{ Querystring: { docId?: string } }>('/chat/messages', async (request, reply) => {
+  app.get<{ Querystring: { docId?: string } }>('/chat/messages', describeRoute(
+    ['chat'],
+    '读取某篇研报的提问记录',
+    '需要登录 Cookie。查询参数 docId 必填，否则 400 `{ error: "docId is required" }`。未登录 401。返回 `{ messages }`，只含当前用户在这篇研报下的历史。',
+  ), async (request, reply) => {
     const user = requireUser(request, reply)
     if (!user) return
     const docId = request.query.docId

@@ -3,6 +3,7 @@
 // 看板与自选股的 HTTP 层。读接口公开(与报告流同权限),
 // 扫描 / 抽取 / 启停仅 admin。SIGNALS=off 时全部 404。
 import type { FastifyPluginAsync } from 'fastify'
+import { describeRoute } from '../openapi/doc.js'
 import { requireAdmin } from './auth.js'
 import {
   listWatchlist, addWatchlistEntry, softDeleteWatchlistEntry, reviveWatchlistEntry,
@@ -38,12 +39,21 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
     if (!isSignalsEnabled()) return reply.status(404).send({ error: 'signals_disabled' })
   })
 
-  app.get('/signals', async () => {
+  app.get('/signals', describeRoute(
+    ['signals'],
+    '信号看板',
+    '公开读。返回 `{ rows }`，即当前 SuperTrend 看板。环境变量 SIGNALS=off 时这一组接口返回 404 `{ error: "signals_disabled" }`。',
+  ), async () => {
     return { rows: signalBoard() }
   })
 
   app.get<{ Params: { symbol: string }; Querystring: { timeframe?: string; limit?: string } }>(
     '/signals/:symbol/log',
+    describeRoute(
+      ['signals'],
+      '单标的信号日志',
+      '公开读。路径参数 symbol 是标的代码。查询参数 timeframe 为 1d 或 1wk，默认 1d，其它值返回 400 `{ error: "invalid_input" }`。limit 是条数上限，默认 60，范围 1–3650。返回 `{ states }`。',
+    ),
     async (request, reply) => {
       const tf = (request.query.timeframe ?? '1d') as Timeframe
       if (!TIMEFRAMES.includes(tf)) {
@@ -56,7 +66,11 @@ export const signalRoutes: FastifyPluginAsync<SignalsRoutesOptions> = async (app
     },
   )
 
-  app.get<{ Querystring: { days?: string } }>('/signals/events', async (request) => {
+  app.get<{ Querystring: { days?: string } }>('/signals/events', describeRoute(
+    ['signals'],
+    '近期信号事件',
+    '公开读。查询参数 days 是自然日窗口，默认 7，范围 1–3650。返回 `{ events }`，公司名从自选股补上，没有则为 null。',
+  ), async (request) => {
     const days = Math.min(Math.max(Number(request.query.days) || 7, 1), 3650)
     // 事件表本身不存公司名 —— 港股代码(0100.HK)光看数字认不出是谁,
     // 从自选股表补上 name,横幅才能和主列表一样带副标题。
