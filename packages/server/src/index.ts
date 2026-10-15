@@ -22,17 +22,9 @@ import { initSiteSettingsTable } from './services/siteSettingsStore.js'
 import { initEvalTables, markStaleRunsFailed } from './services/evalStore.js'
 import { initWatchlistTable } from './services/watchlistStore.js'
 import { initSignalTables } from './services/signalStore.js'
+import { initHoldingsTables } from './services/holdingsStore.js'
 import { startDailyScan } from './jobs/dailyScan.js'
-import { documentRoutes } from './routes/documents.js'
-import { chatRoutes } from './routes/chat.js'
-import { traceRoutes } from './routes/traces.js'
-import { authRoutes } from './routes/auth.js'
-import { evalRoutes } from './routes/eval.js'
-import { llmConfigRoutes } from './routes/llmConfig.js'
-import { siteSettingsRoutes } from './routes/siteSettings.js'
-import { signalRoutes } from './routes/signals.js'
-import { mcpRoutes } from './routes/mcp.js'
-import { seoRoutes } from './routes/seo.js'
+import { registerHttpRoutes } from './http.js'
 
 const app = Fastify({
   logger: { transport: { target: 'pino-pretty', options: { colorize: true } } },
@@ -58,6 +50,7 @@ initSiteSettingsTable(db)
 initEvalTables(db)
 initWatchlistTable(db)
 initSignalTables(db)
+initHoldingsTables(db)
 
 // 一次性:把 import:raw 写错的上传时间校正回 id 里的时刻。放在版本补登记之前,
 // 这样补登记出来的 v1 直接抄到对的时间。
@@ -93,18 +86,7 @@ initSignalTables(db)
 markStaleRunsFailed()
 await initDocCollection()
 
-await app.register(authRoutes, { prefix: '/api' })
-await app.register(documentRoutes, { prefix: '/api' })
-await app.register(chatRoutes, { prefix: '/api' })
-await app.register(traceRoutes, { prefix: '/api' })
-await app.register(evalRoutes, { prefix: '/api' })
-await app.register(llmConfigRoutes, { prefix: '/api' })
-await app.register(siteSettingsRoutes, { prefix: '/api' })
-await app.register(signalRoutes, { prefix: '/api' })
-await app.register(mcpRoutes, { prefix: '/api' })
-await app.register(seoRoutes, { prefix: '/api' })
-
-app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+await registerHttpRoutes(app)
 
 const port = Number(process.env.PORT) || 3001
 try {

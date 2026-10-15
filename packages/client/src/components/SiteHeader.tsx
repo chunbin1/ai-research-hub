@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { DownOutlined, GithubOutlined, GoogleOutlined, UploadOutlined } from '@ant-design/icons'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useAuth, type AuthUser } from '../hooks/useAuth'
+import { useHoldings } from '../hooks/useHoldings'
 
 const UploadReportModal = lazy(() => import('./UploadReportModal').then(m => ({ default: m.UploadReportModal })))
 
@@ -18,11 +19,14 @@ interface NavItem {
   to: string
   /** 与改版前一致:评估 / 站点模型 / trace 只对管理员开放 */
   adminOnly: boolean
+  /** 没有实盘快照时不出现。空数据直接进 /holdings 也会被送回首页。 */
+  whenHoldings?: boolean
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
   { label: '研报', to: '/', adminOnly: false },
   { label: '信号', to: '/signals', adminOnly: false },
+  { label: '持仓', to: '/holdings', adminOnly: false, whenHoldings: true },
   { label: '评估', to: '/eval', adminOnly: true },
   { label: '站点模型', to: '/admin', adminOnly: true },
   { label: 'trace', to: '/traces', adminOnly: true },
@@ -149,6 +153,8 @@ export function SiteHeader() {
   const navigate = useNavigate()
   const active = activeTab(useLocation().pathname)
   const { user, loading: authLoading, providers, providersLoading, login, logout } = useAuth()
+  const { snapshot } = useHoldings()
+  const showHoldings = Array.isArray(snapshot?.holdings) && snapshot.holdings.length > 0
   const [searchParams, setSearchParams] = useSearchParams()
   const loginError = searchParams.get('login_error')
   const loginErrorText = loginError === 'email_unverified'
@@ -163,7 +169,7 @@ export function SiteHeader() {
   const [uploadMounted, setUploadMounted] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
 
-  const navLinks = NAV_ITEMS.filter(item => !item.adminOnly || isAdmin)
+  const navLinks = NAV_ITEMS.filter(item => (!item.adminOnly || isAdmin) && (!item.whenHoldings || showHoldings))
 
   return (
     <>
