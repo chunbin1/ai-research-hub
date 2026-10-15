@@ -1,7 +1,10 @@
+import { StrictMode } from 'react'
 import { test, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import HoldingsPage from './HoldingsPage'
+import { SiteLayout } from '../components/SiteLayout'
+import { HoldingsProvider } from '../hooks/useHoldings'
 import { formatMoney, formatPnl, formatShares, formatUpdatedAt, formatWeight } from '../lib/holdingsView'
 
 const SNAP = {
@@ -22,10 +25,12 @@ test('有持仓时表格展示字段,更新时间只有一处且在表上方', a
   stubHoldings(SNAP)
   render(
     <MemoryRouter initialEntries={['/holdings']}>
-      <Routes>
-        <Route path="/" element={<p>研报列表</p>} />
-        <Route path="/holdings" element={<HoldingsPage />} />
-      </Routes>
+      <HoldingsProvider>
+        <Routes>
+          <Route path="/" element={<p>研报列表</p>} />
+          <Route path="/holdings" element={<HoldingsPage />} />
+        </Routes>
+      </HoldingsProvider>
     </MemoryRouter>,
   )
 
@@ -57,14 +62,42 @@ test('有持仓时表格展示字段,更新时间只有一处且在表上方', a
   expect(screen.queryByText('研报列表')).toBeNull()
 })
 
+test('顶栏和持仓页在同一页只请求一次持仓', async () => {
+  const fetchMock = vi.fn(async (url: string) => {
+    if (String(url).includes('/api/holdings')) {
+      return { ok: true, json: async () => SNAP } as Response
+    }
+    return { ok: false, json: async () => null } as Response
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  render(
+    <StrictMode>
+      <MemoryRouter initialEntries={['/holdings']}>
+        <Routes>
+          <Route element={<SiteLayout />}>
+            <Route path="/holdings" element={<HoldingsPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </StrictMode>,
+  )
+
+  await screen.findByText('AAPL')
+  const holdingsCalls = fetchMock.mock.calls.filter(call => String(call[0]).includes('/api/holdings'))
+  expect(holdingsCalls).toHaveLength(1)
+  expect(screen.getAllByRole('link', { name: '持仓' })).toHaveLength(2)
+})
+
 test('没有持仓时访问 /holdings 回到首页,不留空表', async () => {
   stubHoldings({ updatedAt: null, holdings: [] })
   render(
     <MemoryRouter initialEntries={['/holdings']}>
-      <Routes>
-        <Route path="/" element={<p>研报列表</p>} />
-        <Route path="/holdings" element={<HoldingsPage />} />
-      </Routes>
+      <HoldingsProvider>
+        <Routes>
+          <Route path="/" element={<p>研报列表</p>} />
+          <Route path="/holdings" element={<HoldingsPage />} />
+        </Routes>
+      </HoldingsProvider>
     </MemoryRouter>,
   )
   await waitFor(() => expect(screen.getByText('研报列表')).toBeTruthy())

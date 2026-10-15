@@ -2,6 +2,7 @@ import { test, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { SiteHeader } from './SiteHeader'
+import { HoldingsProvider } from '../hooks/useHoldings'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -17,7 +18,9 @@ function stub(holdingsBody: unknown, holdingsOk = true) {
 function renderHeader(path = '/') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <SiteHeader />
+      <HoldingsProvider>
+        <SiteHeader />
+      </HoldingsProvider>
     </MemoryRouter>,
   )
 }

@@ -11,6 +11,7 @@ import {
   getHoldingsSnapshot, replaceHoldings, type HoldingInput,
 } from '../services/holdingsStore.js'
 import {
+  HOLDING_NAME_MAX_LENGTH, HOLDING_SYMBOL_MAX_LENGTH, HOLDINGS_MAX_ROWS,
   apiErrorSchema, holdingsPutBodySchema, holdingsSnapshotSchema,
 } from '../openapi/holdingsSchemas.js'
 
@@ -59,6 +60,9 @@ function parseHoldings(body: unknown): { ok: true; rows: HoldingInput[] } | { ok
   }
   const holdings = (body as { holdings?: unknown }).holdings
   if (!Array.isArray(holdings)) return { ok: false, message: 'holdings 必须是数组' }
+  if (holdings.length > HOLDINGS_MAX_ROWS) {
+    return { ok: false, message: `holdings 最多 ${HOLDINGS_MAX_ROWS} 条` }
+  }
 
   const rows: HoldingInput[] = []
   const seen = new Set<string>()
@@ -71,6 +75,9 @@ function parseHoldings(body: unknown): { ok: true; rows: HoldingInput[] } | { ok
       return { ok: false, message: `holdings[${index}].symbol 不能为空` }
     }
     const symbol = row.symbol.trim()
+    if (symbol.length > HOLDING_SYMBOL_MAX_LENGTH) {
+      return { ok: false, message: `holdings[${index}].symbol 不能超过 ${HOLDING_SYMBOL_MAX_LENGTH} 个字符` }
+    }
     if (seen.has(symbol)) return { ok: false, message: `symbol 重复: ${symbol}` }
     seen.add(symbol)
 
@@ -78,6 +85,9 @@ function parseHoldings(body: unknown): { ok: true; rows: HoldingInput[] } | { ok
     if (row.name != null) {
       if (typeof row.name !== 'string') return { ok: false, message: `holdings[${index}].name 必须是字符串` }
       const trimmed = row.name.trim()
+      if (trimmed.length > HOLDING_NAME_MAX_LENGTH) {
+        return { ok: false, message: `holdings[${index}].name 不能超过 ${HOLDING_NAME_MAX_LENGTH} 个字符` }
+      }
       name = trimmed.length > 0 ? trimmed : null
     }
 
@@ -117,7 +127,7 @@ export const holdingsRoutes: FastifyPluginAsync<HoldingsRoutesOptions> = async (
       description: [
         '公开读，不需要登录，也不需要 API Key。',
         '没有数据时 `updatedAt` 为 null、`holdings` 为空数组。',
-        '仓位占比 `weight` 由服务端按市值合计计算，合计为 0 时为 0。',
+        '仓位占比 `weight` 由服务端按市值原值合计计算，合计为 0 时为 0。调用方上传时须已把 marketValue、cost、pnl 折算到同一计价币种，服务端不识别币种，也不做汇率换算。',
       ].join('\n\n'),
       response: { 200: holdingsSnapshotSchema },
     },
@@ -136,6 +146,8 @@ export const holdingsRoutes: FastifyPluginAsync<HoldingsRoutesOptions> = async (
         '密钥是环境变量 `HOLDINGS_API_KEY` 的值。不要放进查询串（查询串会进访问日志），不要打进日志，只在 HTTPS 上使用。',
         '未配置密钥返回 503；密钥缺失或不对返回 401，此时不看请求体。',
         '请求体不合法返回 400，已有快照保持不变。成功时返回与读取接口相同的快照，`updatedAt` 由服务端时钟生成。',
+        '同一份快照里的 marketValue、cost、pnl 必须先折算到同一计价币种。服务端按市值原值计算仓位占比，不识别币种，也不做汇率换算。',
+        `holdings 最多 ${HOLDINGS_MAX_ROWS} 条；symbol 去空白后最长 ${HOLDING_SYMBOL_MAX_LENGTH} 个字符；name 去空白后最长 ${HOLDING_NAME_MAX_LENGTH} 个字符。超出返回 400，已有快照不变。`,
       ].join('\n\n'),
       security: [{ bearerAuth: [] }, { holdingsKey: [] }],
       body: holdingsPutBodySchema,

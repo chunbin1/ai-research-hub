@@ -102,7 +102,7 @@ curl -X PUT http://localhost:3001/api/holdings \
   -d '{"holdings":[{"symbol":"AAPL","name":"Apple","shares":10,"marketValue":2000,"cost":1500,"pnl":500}]}'
 ```
 
-也接受 `X-Holdings-Key`。`holdings: []` 清空。密钥来自 `HOLDINGS_API_KEY`;不配则上传返回 503。只在 HTTPS 上使用,不要把密钥打进日志。字段与页面说明见 [设计文档](docs/superpowers/specs/2026-10-15-holdings-page-design.md)。
+也接受 `X-Holdings-Key`。`holdings: []` 清空。密钥来自 `HOLDINGS_API_KEY`;不配则上传返回 503。只在 HTTPS 上使用,不要把密钥打进日志。同一份快照里的 `marketValue`、`cost`、`pnl` 须先折算到同一计价币种再上传:服务端不识别币种,仓位占比按市值原值合计。`holdings` 最多 500 条,`symbol` 最长 64 个字符,`name` 最长 200 个字符。字段与页面说明见 [设计文档](docs/superpowers/specs/2026-10-15-holdings-page-design.md)。
 
 接口文档在服务起来之后打开 `/api/docs`（本机即 `http://localhost:3001/api/docs`）。规范原文是同页下的 `/api/docs/json` 和 `/api/docs/yaml`。页面不预填密钥；Try it out 里要自己贴。导出一份文件给第三方：
 

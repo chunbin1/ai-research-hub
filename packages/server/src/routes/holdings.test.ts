@@ -7,6 +7,7 @@ import fastify, { type FastifyInstance } from 'fastify'
 
 const { initHoldingsTables } = await import('../services/holdingsStore.ts')
 const { holdingsRoutes } = await import('./holdings.ts')
+const { holdingsPutBodySchema } = await import('../openapi/holdingsSchemas.ts')
 
 const KEY = 'test-holdings-key'
 
@@ -161,6 +162,73 @@ test('非法请求体返回 400 且不覆盖已有快照', async () => {
   const getRes = await app.inject({ method: 'GET', url: '/api/holdings' })
   assert.equal(getRes.json().updatedAt, '2026-10-15T08:00:00.000Z')
   assert.deepEqual(getRes.json().holdings.map((row: { symbol: string }) => row.symbol), ['AAPL'])
+})
+
+test('持仓条数、代码和名称超长时返回 400 且不覆盖已有快照', async () => {
+  process.env.HOLDINGS_API_KEY = KEY
+  const app = await freshApp(() => new Date('2026-10-15T08:00:00.000Z'))
+  process.env.HOLDINGS_API_KEY = KEY
+  const headers = { authorization: `Bearer ${KEY}` }
+  assert.equal((await put(app, headers, { holdings: [position('AAPL', 2000)] })).statusCode, 200)
+
+  const tooMany = Array.from({ length: 501 }, (_, index) => position(`S${index}`, 1, 0))
+  const overRows = await put(app, headers, { holdings: tooMany })
+  assert.equal(overRows.statusCode, 400)
+  assert.equal(overRows.json().error, 'invalid_input')
+  assert.match(overRows.json().message, /500/)
+
+  const longSymbol = await put(app, headers, {
+    holdings: [{ ...position('AAPL', 1), symbol: 'A'.repeat(65) }],
+  })
+  assert.equal(longSymbol.statusCode, 400)
+  assert.equal(longSymbol.json().error, 'invalid_input')
+  assert.match(longSymbol.json().message, /64/)
+
+  const longName = await put(app, headers, {
+    holdings: [{ ...position('TSLA', 1), name: '名'.repeat(201) }],
+  })
+  assert.equal(longName.statusCode, 400)
+  assert.equal(longName.json().error, 'invalid_input')
+  assert.match(longName.json().message, /200/)
+
+  const unchanged = await app.inject({ method: 'GET', url: '/api/holdings' })
+  assert.equal(unchanged.json().updatedAt, '2026-10-15T08:00:00.000Z')
+  assert.deepEqual(unchanged.json().holdings.map((row: { symbol: string }) => row.symbol), ['AAPL'])
+
+  const atLimit = await put(app, headers, {
+    holdings: [{ ...position('A'.repeat(64), 9, 1), name: '名'.repeat(200) }],
+  })
+  assert.equal(atLimit.statusCode, 200)
+  assert.equal(atLimit.json().holdings[0].symbol, 'A'.repeat(64))
+  assert.equal(atLimit.json().holdings[0].name, '名'.repeat(200))
+
+  const padded = await put(app, headers, {
+    holdings: [{ ...position(` ${'B'.repeat(64)} `, 3, 1), name: ` ${'称'.repeat(200)} ` }],
+  })
+  assert.equal(padded.statusCode, 200)
+  assert.equal(padded.json().holdings[0].symbol, 'B'.repeat(64))
+  assert.equal(padded.json().holdings[0].name, '称'.repeat(200))
+})
+
+test('Zod schema 与运行时使用同一组长度上限', () => {
+  const row = {
+    symbol: ` ${'A'.repeat(64)} `,
+    name: ` ${'名'.repeat(200)} `,
+    shares: 1,
+    marketValue: 1,
+    cost: 1,
+    pnl: 1,
+  }
+  assert.equal(holdingsPutBodySchema.safeParse({ holdings: [row] }).success, true)
+  assert.equal(holdingsPutBodySchema.safeParse({
+    holdings: [{ ...row, symbol: 'A'.repeat(65) }],
+  }).success, false)
+  assert.equal(holdingsPutBodySchema.safeParse({
+    holdings: [{ ...row, name: '名'.repeat(201) }],
+  }).success, false)
+  assert.equal(holdingsPutBodySchema.safeParse({
+    holdings: Array.from({ length: 501 }, (_, index) => ({ ...row, symbol: `S${index}` })),
+  }).success, false)
 })
 
 test('市值合计为 0 时仓位占比为 0', async () => {

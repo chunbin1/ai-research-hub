@@ -60,6 +60,16 @@ test('文档页和 OpenAPI 规范覆盖持仓读写，且不包含密钥', async
   assert.match(raw, /0700\.HK/)
   assert.match(raw, /holdings_upload_disabled/)
   assert.match(raw, /invalid_input/)
+  assert.match(raw, /同一计价币种/)
+
+  const putSchema = put.requestBody.content['application/json'].schema
+  const rowSchema = putSchema.properties.holdings.items
+  assert.equal(putSchema.properties.holdings.maxItems, 500)
+  assert.equal(rowSchema.properties.symbol.maxLength, 64)
+  assert.equal(rowSchema.properties.name.maxLength, 200)
+  for (const field of ['marketValue', 'cost', 'pnl']) {
+    assert.match(rowSchema.properties[field].description, /同一计价币种/)
+  }
 
   assert.ok(spec.paths['/api/signals'].get)
   assert.ok(spec.paths['/api/signals/events'].get)

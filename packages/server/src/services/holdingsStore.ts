@@ -60,6 +60,8 @@ function db(): DB {
 }
 
 function withWeights(rows: HoldingRow[]): HoldingView[] {
+  // 按市值原值相加。调用方须事先把 marketValue / cost / pnl 折算到同一计价币种；
+  // 这里不识别币种，也不做汇率换算。混有未折算的 USD/HKD 时，占比没有意义。
   const total = rows.reduce((sum, row) => sum + row.market_value, 0)
   return rows.map(row => ({
     symbol: row.symbol,
