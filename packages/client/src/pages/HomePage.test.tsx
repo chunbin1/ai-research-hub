@@ -74,7 +74,8 @@ test('管理员:移动端「⋯」打开行操作菜单', async () => {
   renderHome()
   const more = await screen.findByRole('button', { name: '「腾讯生态产业链投资研究报告」的更多操作' })
   more.click()
-  await waitFor(() => expect(document.querySelector('.home-row-menu.ant-drawer-open')).toBeTruthy())
+  // 菜单是按需加载的 antd Drawer,第一次 import 要过 vitest 的转换
+  await waitFor(() => expect(document.querySelector('.home-row-menu.ant-drawer-open')).toBeTruthy(), { timeout: 15000 })
   expect(screen.getByRole('button', { name: '上传新版本' })).toBeTruthy()
 })
 
@@ -188,7 +189,7 @@ test('管理员:点「上传研报」打开弹窗,拖入 .md 点「上传」→ 
   renderHome()
 
   fireEvent.click(await screen.findByRole('button', { name: '上传研报' }))
-  const dialog = await screen.findByRole('dialog')
+  const dialog = await screen.findByRole('dialog', {}, { timeout: 15000 })
   const zone = within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ })
   const f = new File(['# 新研报\n'], '新研报.md', { type: 'text/markdown' })
   fireEvent.drop(zone, { dataTransfer: { files: [f], types: ['Files'] } })
@@ -210,7 +211,7 @@ test('管理员:研报行上的「上传新版本」打开带大拖拽区的弹�
   stubFetch({ user: ADMIN })
   renderHome()
   fireEvent.click(await screen.findByRole('button', { name: '给「腾讯生态产业链投资研究报告」上传新版本' }))
-  const dialog = await screen.findByRole('dialog')
+  const dialog = await screen.findByRole('dialog', {}, { timeout: 15000 })
   expect(within(dialog).getByText('上传新版本 v2')).toBeTruthy()
   expect(within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ })).toBeTruthy()
 })

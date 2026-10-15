@@ -17,22 +17,11 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#1B3A5C" />
-    <!-- 首页改版的视觉核心是「中文标题用衬线、界面文字用无衬线、数字用衬线」这套分工
-         (见 design_handoff_homepage/README.md 的 Design Tokens)。系统里没有等价的中文
-         衬线字重,只能从 Google Fonts 引;字重按设计稿实际用到的挑,不多取。
-
-         display=optional(不是 swap):中文字体按 unicode-range 被切成 300+ 个子集,
-         swap 意味着这几十个子集分几波到达、每到一波就把已经画好的文字重排一次 ——
-         这是首屏「抖动」最大的一块。optional 给字体一个 ~100ms 的窗口:
-         没赶上就整页沿用回退字体(Songti SC / PingFang)且**此后不再切换**,
-         字体照常在后台下好进缓存,下一次访问首帧即生效。代价是首次访问看到的是
-         系统字体;换来的是「进入 / 刷新都不重排」。 -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Noto+Serif+SC:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=optional"
-      rel="stylesheet"
-    />
+    <!-- 中文标题用系统衬线(Songti SC / 宋体),界面用系统无衬线(PingFang / 微软雅黑),
+         数字用 Georgia。不再从 Google Fonts 拉 Noto / Source Serif:
+         那条 CSS 是渲染阻塞的,后面还要下大约 1.6MB 的 woff2 子集,
+         移动端慢速网络上会把首屏拖住数秒,而且字到了还会把已经排好的列表挤下去(CLS)。
+         国内常常连不上 fonts.googleapis.com,阻塞白等一场,最后仍然落到这套系统字体。 -->
   </head>
   <body>
     <div id="root"></div>
