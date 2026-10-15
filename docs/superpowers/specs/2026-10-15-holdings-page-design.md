@@ -41,7 +41,7 @@ SQLite，两张表。空快照 = 两张表都没有行，和「从未上传」�
 
 仓位占比 **不落库**。读的时候按 `market_value / 市值合计` 现算。合计为 0 时每行占比为 0，避免除零。不取绝对值：空头的负市值就得到负占比。
 
-**计价币种。** 服务端不识别币种，也不做汇率换算，占比就是各行 `market_value` 原值相加后的权重。调用方须在上传前把同一份快照里的 `marketValue`、`cost`、`pnl` 折算到同一计价币种。混有未折算的 USD/HKD 等金额时，占比没有意义。接口不增加 `currency` 字段。
+**计价币种。** 服务端不识别币种，也不做汇率换算，占比就是各行 `market_value` 原值相加后的权重。调用方须在上传前把同一份快照里的 `marketValue`、`cost`、`pnl` 折算到同一计价币种。混有未折算的 USD/HKD 等金额时，占比没有意义。这一轮不增加 `currency` 字段。按行标注币种、由服务端折算后再算占比，留作后续。
 
 ## API
 
@@ -188,3 +188,7 @@ Swagger UI 挂在 `/api/docs`。这条路径在 `/api` 下，nginx 和 Vite 都�
 ```bash
 pnpm --filter @arh/server exec tsx scripts/export-openapi.ts ./openapi
 ```
+
+## 后续
+
+- 为每行增加 `currency`，由服务端折算到同一币种后再算占比。在此之前口径由调用方保证
