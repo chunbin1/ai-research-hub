@@ -17,11 +17,11 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#1B3A5C" />
-    <!-- 中文标题用系统衬线(Songti SC / 宋体),界面用系统无衬线(PingFang / 微软雅黑),
-         数字用 Georgia。不再从 Google Fonts 拉 Noto / Source Serif:
-         那条 CSS 是渲染阻塞的,后面还要下大约 1.6MB 的 woff2 子集,
-         移动端慢速网络上会把首屏拖住数秒,而且字到了还会把已经排好的列表挤下去(CLS)。
-         国内常常连不上 fonts.googleapis.com,阻塞白等一场,最后仍然落到这套系统字体。 -->
+    <!-- 标题和数字都用系统宋体(Songti SC / STSong / SimSun),界面用系统无衬线
+         (PingFang / 微软雅黑)。不再把 Georgia、Times、Noto Serif 排在宋体前面或后面:
+         那些西文衬线会把标题里的英文和数字换成另一套基线和字重。
+         也不再从 Google Fonts 拉字体:那条 CSS 是渲染阻塞的,后面还要下大约 1.6MB 的
+         woff2,移动端慢速网络上会把首屏拖住数秒,字到了还会把列表挤下去(CLS)。 -->
   </head>
   <body>
     <div id="root"></div>
