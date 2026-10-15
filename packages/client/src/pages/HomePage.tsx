@@ -363,7 +363,13 @@ export default function HomePage() {
             doc={deleteTarget}
             onCancel={() => setDeleteTarget(null)}
             onOk={async () => {
-              await api.deleteDocument(deleteTarget.id)
+              try {
+                await api.deleteDocument(deleteTarget.id)
+              } catch (e) {
+                setError(e instanceof Error ? e.message : '删除失败')
+                throw e
+              }
+              setError('')
               setDeleteTarget(null)
               await refresh()
             }}

@@ -207,6 +207,52 @@ test('管理员:点「上传研报」打开弹窗,拖入 .md 点「上传」→ 
   await waitFor(() => expect(document.querySelector('.ant-modal')?.className).toContain('ant-zoom-leave'))
 })
 
+test('管理员:删除失败时弹窗留着并提示,连点只请求一次', async () => {
+  let deletes = 0
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (url.startsWith('/api/documents/') && init?.method === 'DELETE') {
+      deletes += 1
+      return { ok: false, json: async () => ({}) } as Response
+    }
+    if (url.startsWith('/api/documents')) return { ok: true, json: async () => ({ documents: DOCS }) } as Response
+    throw new Error(`未桩的请求: ${url}`)
+  }))
+  renderHome()
+  fireEvent.click(await screen.findByRole('button', { name: '删除「腾讯生态产业链投资研究报告」' }))
+  const dialog = await screen.findByRole('dialog', { name: '删除这篇报告?' }, { timeout: 15000 })
+  const ok = within(dialog).getByRole('button', { name: '删除' })
+  fireEvent.click(ok)
+  fireEvent.click(ok)
+  expect((await within(dialog).findByRole('alert')).textContent).toContain('删除失败')
+  expect(deletes).toBe(1)
+  expect(screen.getByRole('dialog', { name: '删除这篇报告?' })).toBeTruthy()
+  // 页面横幅在遮罩后面,但失败也要写上,关掉弹窗后还看得见
+  expect(screen.getByText('删除失败', { selector: 'p' })).toBeTruthy()
+})
+
+test('管理员:确认删除后关掉弹窗,列表不再有这篇', async () => {
+  let deleted = false
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (url.startsWith('/api/documents/') && init?.method === 'DELETE') {
+      deleted = true
+      return { ok: true, json: async () => ({}) } as Response
+    }
+    if (url.startsWith('/api/documents')) {
+      return { ok: true, json: async () => ({ documents: deleted ? DOCS.slice(1) : DOCS }) } as Response
+    }
+    throw new Error(`未桩的请求: ${url}`)
+  }))
+  renderHome()
+  fireEvent.click(await screen.findByRole('button', { name: '删除「腾讯生态产业链投资研究报告」' }))
+  const dialog = await screen.findByRole('dialog', { name: '删除这篇报告?' }, { timeout: 15000 })
+  fireEvent.click(within(dialog).getByRole('button', { name: '删除' }))
+  await waitFor(() => expect(screen.queryByText('腾讯生态产业链投资研究报告')).toBeNull())
+  expect(screen.queryByRole('dialog', { name: '删除这篇报告?' })).toBeNull()
+  expect(screen.getByText('港股互联网:估值重估走到哪一步了')).toBeTruthy()
+})
+
 test('管理员:研报行上的「上传新版本」打开带大拖拽区的弹窗', async () => {
   stubFetch({ user: ADMIN })
   renderHome()
