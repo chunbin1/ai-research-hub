@@ -105,7 +105,7 @@ GitHub 也持有一份。其中 `LLM_KEY_SECRET` 是用户自带 API key 的解�
 ### 工作流长什么样
 
 - **CI**(`ci.yml`):每个 PR 和 master 推送跑类型检查 + 全部测试。不需要任何 secret。
-  Node 版本钉在 20,与生产镜像的 `node:20-alpine` 一致。
+  Node 版本钉在 24,与生产镜像的 `node:24-alpine` 一致。
 - **部署**(`deploy.yml`),两个 job:
   - `部署` —— 写出 `.env.prod`(校验必需键齐全、禁止 `AUTH_DISABLED=true`)→
     建 docker context → `./deploy.sh` → 轮询 `/api/documents` 直到 200
