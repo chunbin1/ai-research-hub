@@ -463,6 +463,36 @@ test('众议院详情按区间中点说明增减，股数差为 0 时不带 +0',
   expect(screen.getAllByText('清仓').length).toBeGreaterThan(1)
   expect(screen.getByRole('heading', { name: '清仓' })).toBeTruthy()
   expect(screen.getByText(/加仓、新建仓为红/)).toBeTruthy()
+  expect(screen.getByText('500,001–1,000,000')).toBeTruthy()
+  expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+})
+
+test('没有上期时不渲染相对上期列', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+    ...DETAIL,
+    institution: { ...DETAIL.institution, source: 'house-fd', manager: '佩洛西', slug: 'pelosi' },
+    valueNote: '金额是申报区间。有上一期时，增减也按区间中点，不按股数。',
+    previousPeriod: null,
+    positions: [{
+      cusip: 'AAPL', ticker: 'AAPL', issuerName: 'Apple Inc. (AAPL)', titleOfClass: 'COM',
+      putCall: '', shareType: '', shares: 0, valueUsd: 15_000_000, valueLabel: '5,000,001–25,000,000',
+      weight: 1, change: null, prevShares: null, prevValueUsd: null, shareDelta: null, valueDeltaUsd: null,
+    }],
+    closed: [],
+  })))
+  render(
+    <MemoryRouter initialEntries={['/whales/pelosi']}>
+      <Routes>
+        <Route path="/whales/:slug" element={<WhaleDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('heading', { name: '佩洛西' })).toBeTruthy()
+  expect(screen.getByText(/暂无上期可对比/)).toBeTruthy()
+  expect(screen.queryByRole('columnheader', { name: '相对上期' })).toBeNull()
+  expect(screen.queryByText('加仓')).toBeNull()
+  expect(screen.queryByRole('heading', { name: '清仓' })).toBeNull()
+  expect(screen.getByText('5,000,001–25,000,000')).toBeTruthy()
 })
 
 test('导航有名家持仓；功能关闭时去掉', async () => {

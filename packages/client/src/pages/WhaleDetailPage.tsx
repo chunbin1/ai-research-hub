@@ -35,7 +35,7 @@ function SecurityCell({ row }: { row: WhalePosition }) {
   )
 }
 
-function PositionTable({ rows, showWeight, byShares }: { rows: WhalePosition[]; showWeight: boolean; byShares: boolean }) {
+function PositionTable({ rows, showWeight, byShares, showChange }: { rows: WhalePosition[]; showWeight: boolean; byShares: boolean; showChange: boolean }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-t border-ink text-left">
@@ -45,7 +45,7 @@ function PositionTable({ rows, showWeight, byShares }: { rows: WhalePosition[]; 
             <th scope="col" className="py-3 pr-3 text-right font-normal">数量</th>
             <th scope="col" className="py-3 pr-3 text-right font-normal">市值（美元）</th>
             {showWeight && <th scope="col" className="py-3 pr-3 text-right font-normal">占比</th>}
-            <th scope="col" className="py-3 text-right font-normal">相对上期</th>
+            {showChange && <th scope="col" className="py-3 text-right font-normal">相对上期</th>}
           </tr>
         </thead>
         <tbody>
@@ -63,7 +63,9 @@ function PositionTable({ rows, showWeight, byShares }: { rows: WhalePosition[]; 
                   {row.weight === null ? '—' : formatWeight(row.weight)}
                 </td>
               )}
-              <td className="py-4 text-right font-sans-sc text-[14px] tabular-nums"><ChangeCell row={row} byShares={byShares} /></td>
+              {showChange && (
+                <td className="py-4 text-right font-sans-sc text-[14px] tabular-nums"><ChangeCell row={row} byShares={byShares} /></td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -158,11 +160,11 @@ export default function WhaleDetailPage() {
                     : '暂无上期可对比。'}
               </p>
             </div>
-            <PositionTable rows={detail.positions} showWeight byShares={!house} />
+            <PositionTable rows={detail.positions} showWeight byShares={!house} showChange={detail.previousPeriod !== null} />
             {detail.closed.length > 0 && (
               <section className="flex flex-col gap-3">
                 <h2 className="m-0 font-serif-sc text-[16px] font-semibold text-ink">清仓</h2>
-                <PositionTable rows={detail.closed} showWeight={false} byShares={!house} />
+                <PositionTable rows={detail.closed} showWeight={false} byShares={!house} showChange={detail.previousPeriod !== null} />
               </section>
             )}
           </>

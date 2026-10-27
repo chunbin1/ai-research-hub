@@ -94,6 +94,7 @@ export function diffPositions(
     shares: 0,
     valueUsd: 0,
     valueReported: 0,
+    valueLabel: prev.valueLabel ?? null,
     prevShares: prev.shares,
     prevValueUsd: prev.valueUsd,
     shareDelta: -prev.shares,

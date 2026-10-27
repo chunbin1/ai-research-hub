@@ -119,6 +119,11 @@ test('同步把佩洛西写成区间持仓，相同文档不重复下载', async
         shares: 0, valueReported: currentGoogl.valueUsd, valueUsd: currentGoogl.valueUsd,
         valueLabel: currentGoogl.valueLabel,
       },
+      {
+        cusip: 'DIS', putCall: '', shareType: '', issuerName: 'Walt Disney Company (DIS)', titleOfClass: 'COM',
+        shares: 0, valueReported: 750_000, valueUsd: 750_000,
+        valueLabel: '500,001–1,000,000',
+      },
     ],
   })
   const compared = getWhaleDetail('pelosi')
@@ -130,6 +135,11 @@ test('同步把佩洛西写成区间持仓，相同文档不重复下载', async
   assert.equal(apple?.shareDelta, 0)
   assert.ok((apple?.valueDeltaUsd ?? 0) > 0)
   assert.equal(googl?.change, 'unchanged')
+  const disney = compared?.closed.find(row => row.cusip === 'DIS')
+  assert.equal(disney?.change, 'closed')
+  assert.equal(disney?.shares, 0)
+  assert.equal(disney?.valueUsd, 0)
+  assert.equal(disney?.valueLabel, '500,001–1,000,000')
 
   downloads.length = 0
   const second = await syncWhales({
