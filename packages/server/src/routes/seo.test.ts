@@ -56,6 +56,32 @@ test('robots.txt 与 sitemap.xml', async () => {
   const sitemap = await app.inject({ url: '/api/seo/sitemap.xml' })
   assert.match(sitemap.headers['content-type'] as string, /^application\/xml/)
   assert.ok(sitemap.body.includes(`<loc>https://example.test/reports/${doc.id}</loc>`))
+  assert.ok(sitemap.body.includes('<loc>https://example.test/whales</loc>'))
+  assert.ok(sitemap.body.includes('<loc>https://example.test/whales/hhlr</loc>'))
+})
+
+test('head:大佬持仓可收录，未知 slug 不收录', async () => {
+  const list = await app.inject({ url: '/api/seo/head/whales' })
+  assert.ok(list.body.includes('<title>大佬持仓 — 研报站</title>'))
+  assert.ok(!list.body.includes('noindex'))
+  const detail = await app.inject({ url: '/api/seo/head/whales/berkshire' })
+  assert.ok(detail.body.includes('<title>巴菲特持仓 — 研报站</title>'))
+  const missing = await app.inject({ url: '/api/seo/head/whales/nope' })
+  assert.ok(missing.body.includes('noindex'))
+})
+
+test('WHALES=off 时大佬持仓 noindex 且不进 sitemap', async () => {
+  const saved = process.env.WHALES
+  process.env.WHALES = 'off'
+  try {
+    const head = await app.inject({ url: '/api/seo/head/whales' })
+    assert.ok(head.body.includes('noindex'))
+    const sitemap = await app.inject({ url: '/api/seo/sitemap.xml' })
+    assert.equal(sitemap.body.includes('/whales'), false)
+  } finally {
+    if (saved === undefined) delete process.env.WHALES
+    else process.env.WHALES = saved
+  }
 })
 
 test('head:摘要按 updated_at 缓存,传了新版本才重新读原文', async () => {

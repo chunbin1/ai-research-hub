@@ -21,12 +21,15 @@ interface NavItem {
   adminOnly: boolean
   /** 没有实盘快照时不出现。空数据直接进 /holdings 也会被送回首页。 */
   whenHoldings?: boolean
+  /** WHALES=off 时不出现。接口其它失败仍保留入口，页面自己显示错误。 */
+  whenWhales?: boolean
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
   { label: '研报', to: '/', adminOnly: false },
   { label: '信号', to: '/signals', adminOnly: false },
   { label: '持仓', to: '/holdings', adminOnly: false, whenHoldings: true },
+  { label: '大佬持仓', to: '/whales', adminOnly: false, whenWhales: true },
   { label: '评估', to: '/eval', adminOnly: true },
   { label: '站点模型', to: '/admin', adminOnly: true },
   { label: 'trace', to: '/traces', adminOnly: true },
@@ -155,6 +158,18 @@ export function SiteHeader() {
   const { user, loading: authLoading, providers, providersLoading, login, logout } = useAuth()
   const { snapshot } = useHoldings()
   const showHoldings = Array.isArray(snapshot?.holdings) && snapshot.holdings.length > 0
+  const [showWhales, setShowWhales] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    void fetch('/api/whales')
+      .then(async response => {
+        if (cancelled || response.status !== 404) return
+        const body = await response.json().catch(() => null) as { error?: string } | null
+        if (body?.error === 'whales_disabled') setShowWhales(false)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
   const [searchParams, setSearchParams] = useSearchParams()
   const loginError = searchParams.get('login_error')
   const loginErrorText = loginError === 'email_unverified'
@@ -169,7 +184,8 @@ export function SiteHeader() {
   const [uploadMounted, setUploadMounted] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
 
-  const navLinks = NAV_ITEMS.filter(item => (!item.adminOnly || isAdmin) && (!item.whenHoldings || showHoldings))
+  const navLinks = NAV_ITEMS.filter(item =>
+    (!item.adminOnly || isAdmin) && (!item.whenHoldings || showHoldings) && (!item.whenWhales || showWhales))
 
   return (
     <>

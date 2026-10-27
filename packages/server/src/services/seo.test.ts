@@ -9,6 +9,9 @@ test('classifyPath:首页 / 信号 / 研报页可收录,其余一律 noindex', (
   assert.deepEqual(classifyPath('/'), { kind: 'home' })
   assert.deepEqual(classifyPath('?kind=company'), { kind: 'home' })
   assert.deepEqual(classifyPath('signals'), { kind: 'signals' })
+  assert.deepEqual(classifyPath('whales'), { kind: 'whales', slug: null })
+  assert.deepEqual(classifyPath('/whales/berkshire'), { kind: 'whales', slug: 'berkshire' })
+  assert.deepEqual(classifyPath('whales/a/b'), { kind: 'noindex' })
   assert.deepEqual(classifyPath('reports/doc_1_ab'), { kind: 'report', id: 'doc_1_ab' })
   assert.deepEqual(classifyPath('/reports/doc_1_ab?version=2'), { kind: 'report', id: 'doc_1_ab' })
   // import:raw 的 id 取自文件名,可能带中文或 .
@@ -163,5 +166,12 @@ test('sitemapXml:首页 lastmod 取最新一篇,每篇研报一条', () => {
   ])
   assert.ok(xml.includes(`<url><loc>${SITE}/</loc><lastmod>2026-10-02T00:00:00.000Z</lastmod></url>`))
   assert.ok(xml.includes(`<loc>${SITE}/reports/doc_1</loc><lastmod>2026-10-01T00:00:00.000Z</lastmod>`))
+  assert.equal(xml.match(/<url>/g)?.length, 4)
+})
+
+test('sitemapXml:额外路径插在信号页后面', () => {
+  const xml = sitemapXml('https://example.test', [], ['/whales', '/whales/berkshire'])
+  assert.ok(xml.includes('<loc>https://example.test/whales</loc>'))
+  assert.ok(xml.includes('<loc>https://example.test/whales/berkshire</loc>'))
   assert.equal(xml.match(/<url>/g)?.length, 4)
 })
