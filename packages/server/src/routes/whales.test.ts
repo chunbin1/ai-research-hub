@@ -114,7 +114,7 @@ test('管理员添加机构后出现在列表，冲突和坏 CIK 会拒绝', asy
     payload: { cik: '1234567', manager: '李彦宏', nameZh: '百度', nameEn: 'Baidu, Inc.' },
   })
   assert.equal(created.statusCode, 201)
-  assert.equal(created.json().sync, 'empty')
+  assert.equal(created.json().sync, 'pending')
   assert.equal(created.json().institution.slug, 'baidu-inc')
   assert.equal(created.json().institution.cik, '0001234567')
   assert.equal(created.json().institution.dataStatus, 'empty')
@@ -174,4 +174,69 @@ test('管理员可以硬删机构，申报一起清掉', async () => {
   const missing = await app.inject({ method: 'DELETE', url: '/api/whales/scion' })
   assert.equal(missing.statusCode, 404)
   assert.equal(missing.json().error, 'not_found')
+})
+
+test('写入成功后立刻 201，慢同步在后台继续', async () => {
+  initWhaleTables(new Database(':memory:'))
+  let started = false
+  let release: () => void = () => {}
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const app = fastify()
+  await app.register(whaleRoutes, {
+    prefix: '/api',
+    syncOne: async () => {
+      started = true
+      await gate
+      return 'ok'
+    },
+  })
+  await app.ready()
+  try {
+    const created = await Promise.race([
+      app.inject({
+        method: 'POST',
+        url: '/api/whales',
+        payload: { cik: '1234567', manager: '李彦宏', nameZh: '百度', nameEn: 'Baidu, Inc.' },
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('POST 在同步结束前没有返回')), 400)),
+    ])
+    assert.equal(created.statusCode, 201)
+    assert.equal(created.json().sync, 'pending')
+    assert.equal(created.json().institution.slug, 'baidu-inc')
+    assert.equal(started, true)
+    const list = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
+    assert.equal(list.institutions.some((row: { slug: string }) => row.slug === 'baidu-inc'), true)
+  } finally {
+    release()
+    await app.close()
+  }
+})
+
+test('后台拉取抛错时添加仍然 201，机构留在列表里', async () => {
+  initWhaleTables(new Database(':memory:'))
+  const warnings: string[] = []
+  const original = console.warn
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')) }
+  const app = fastify()
+  await app.register(whaleRoutes, {
+    prefix: '/api',
+    syncOne: async () => { throw new Error('SEC down') },
+  })
+  await app.ready()
+  try {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/whales',
+      payload: { cik: '1234567', manager: '李彦宏', nameZh: '百度', nameEn: 'Baidu, Inc.' },
+    })
+    assert.equal(created.statusCode, 201)
+    assert.equal(created.json().sync, 'pending')
+    await new Promise(resolve => setImmediate(resolve))
+    assert.ok(warnings.some(line => line.includes('baidu-inc') && line.includes('SEC down')))
+    const list = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
+    assert.equal(list.institutions.some((row: { slug: string }) => row.slug === 'baidu-inc'), true)
+  } finally {
+    console.warn = original
+    await app.close()
+  }
 })

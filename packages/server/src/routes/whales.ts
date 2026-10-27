@@ -32,7 +32,7 @@ export const whaleRoutes: FastifyPluginAsync<WhaleRouteOptions> = async (app, op
   app.post('/whales', describeRoute(
     ['whales'],
     '添加机构',
-    '仅管理员。写入后立刻拉这一家 SEC 申报。没有 13F 仍保留，列表为暂无数据。slug 或 CIK 与现有行冲突时 409。',
+    '仅管理员。写入成功后立即返回，SEC 申报在后台拉取（sync 为 pending）。没有 13F 仍保留，列表为暂无数据；拉取失败由列表上的最近一次拉取失败承接。slug 或 CIK 与现有行冲突时 409。',
   ), async (request, reply) => {
     if (!requireAdmin(request, reply)) return
     const body = (request.body ?? {}) as {
@@ -68,9 +68,12 @@ export const whaleRoutes: FastifyPluginAsync<WhaleRouteOptions> = async (app, op
       }
       throw err
     }
-    const sync = await syncOne(slug)
+    void syncOne(slug).catch(err => {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn(`[whales] 后台拉取 ${slug} 失败: ${message}`)
+    })
     const institution = listWhaleSummaries().institutions.find(row => row.slug === slug) ?? null
-    return reply.status(201).send({ institution, sync })
+    return reply.status(201).send({ institution, sync: 'pending' })
   })
 
   app.get<{ Params: { slug: string } }>('/whales/:slug', describeRoute(

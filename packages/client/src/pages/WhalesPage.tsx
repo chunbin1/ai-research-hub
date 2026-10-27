@@ -26,6 +26,7 @@ export default function WhalesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState<AddFields>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const load = useCallback((cancelled?: () => boolean) => {
@@ -98,12 +99,17 @@ export default function WhalesPage() {
 
   async function onDelete(row: WhaleSummary) {
     if (!window.confirm(`确定删除 ${row.manager}？申报和持仓会一并清掉。六家种子会在下次重启时写回。`)) return
-    const response = await fetch(`/api/whales/${encodeURIComponent(row.slug)}`, { method: 'DELETE' })
-    if (!response.ok) {
-      setError('删除失败')
-      return
+    setDeleteError(null)
+    try {
+      const response = await fetch(`/api/whales/${encodeURIComponent(row.slug)}`, { method: 'DELETE' })
+      if (!response.ok) {
+        setDeleteError('删除失败')
+        return
+      }
+      load()
+    } catch {
+      setDeleteError('删除失败')
     }
-    load()
   }
 
   if (loading) {
@@ -132,6 +138,9 @@ export default function WhalesPage() {
           </button>
         )}
       </div>
+      {deleteError && (
+        <p role="alert" className={`m-0 border-b border-rule py-3 text-[13px] text-danger ${GUTTER}`}>{deleteError}</p>
+      )}
       {isAdmin && formOpen && (
         <form onSubmit={event => void onAdd(event)} className={`flex flex-col gap-3 border-b border-rule py-4 ${GUTTER}`}>
           <div className="grid gap-3 md:grid-cols-2">

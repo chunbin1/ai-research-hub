@@ -57,6 +57,8 @@ export function initWhaleTables(db: DB): void {
       cik        TEXT NOT NULL,
       sort_order INTEGER NOT NULL
     );
+    -- 表已存在时 CREATE TABLE 不会补约束，所以用独立唯一索引。
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_whale_institutions_cik ON whale_institutions (cik);
     CREATE TABLE IF NOT EXISTS whale_filings (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       slug          TEXT NOT NULL,
@@ -98,6 +100,9 @@ export function initWhaleTables(db: DB): void {
       cik    TEXT NOT NULL
     );
   `)
+  const holderOf = db.prepare(`
+    SELECT slug FROM whale_institutions WHERE cik = ? AND slug != ?
+  `)
   const upsert = db.prepare(`
     INSERT INTO whale_institutions (slug, name_zh, name_en, manager, cik, sort_order)
     VALUES (@slug, @nameZh, @nameEn, @manager, @cik, @sortOrder)
@@ -108,7 +113,15 @@ export function initWhaleTables(db: DB): void {
       cik = excluded.cik,
       sort_order = excluded.sort_order
   `)
-  for (const seed of WHALE_SEEDS) upsert.run(seed)
+  for (const seed of WHALE_SEEDS) {
+    // 删掉种子后又用同一 CIK 加了别人时，不要把种子写回去造成两行。
+    const holder = holderOf.get(seed.cik, seed.slug) as { slug: string } | undefined
+    if (holder) {
+      console.warn(`[whales] 跳过种子 ${seed.slug}：CIK ${seed.cik} 已被 ${holder.slug} 占用`)
+      continue
+    }
+    upsert.run(seed)
+  }
 }
 
 function db(): DB {
@@ -162,11 +175,25 @@ export function insertInstitution(input: Omit<WhaleInstitution, 'sortOrder'>): W
     throw new WhaleWriteError('cik_taken', `CIK ${input.cik} 已在列表中`)
   }
   const sortOrder = existing.reduce((max, row) => Math.max(max, row.sortOrder), 0) + 1
-  database.prepare(`
-    INSERT INTO whale_institutions (slug, name_zh, name_en, manager, cik, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(input.slug, input.nameZh, input.nameEn, input.manager, input.cik, sortOrder)
+  try {
+    database.prepare(`
+      INSERT INTO whale_institutions (slug, name_zh, name_en, manager, cik, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(input.slug, input.nameZh, input.nameEn, input.manager, input.cik, sortOrder)
+  } catch (err) {
+    if (!isInstitutionConstraint(err)) throw err
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('.cik')) {
+      throw new WhaleWriteError('cik_taken', `CIK ${input.cik} 已在列表中`)
+    }
+    throw new WhaleWriteError('slug_taken', `短名 ${input.slug} 已被使用`)
+  }
   return { ...input, sortOrder }
+}
+
+function isInstitutionConstraint(err: unknown): boolean {
+  if (!(err instanceof Error) || !('code' in err)) return false
+  return err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY'
 }
 
 /** 硬删机构，并清掉它的申报、持仓和同步记录。没有这家则返回 false。 */

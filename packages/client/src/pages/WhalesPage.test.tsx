@@ -132,7 +132,7 @@ test('管理员添加机构后，名单里能看到新人', async () => {
     }
     if (path.endsWith('/api/whales') && init?.method === 'POST') {
       added = true
-      return jsonResponse({ sync: 'empty' }, 201)
+      return jsonResponse({ sync: 'pending' }, 201)
     }
     if (path.includes('/api/whales')) {
       const institutions = added
@@ -158,6 +158,53 @@ test('管理员添加机构后，名单里能看到新人', async () => {
   await user.click(screen.getByRole('button', { name: '保存' }))
   expect(await screen.findByRole('link', { name: '李彦宏' })).toBeTruthy()
   expect(screen.getAllByText('暂无数据').length).toBeGreaterThan(1)
+})
+
+const ADMIN = {
+  id: 'u1', username: 'admin', avatarUrl: null, messageCount: 0,
+  limit: 100, unlimited: false, isAdmin: true, remaining: 100,
+}
+
+function stubAdminFetch(onDelete: () => Promise<Response> | Response) {
+  vi.stubGlobal('confirm', () => true)
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const path = String(url)
+    if (path.includes('/api/auth/')) return jsonResponse(ADMIN)
+    if (init?.method === 'DELETE') return onDelete()
+    if (path.includes('/api/whales')) return jsonResponse(LIST)
+    return jsonResponse({ updatedAt: null, holdings: [] })
+  }))
+}
+
+test('删除接口失败时名单还在，只提示删除失败', async () => {
+  const user = userEvent.setup()
+  stubAdminFetch(async () => jsonResponse({ error: 'nope' }, 500))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  await user.click((await screen.findAllByRole('button', { name: '删除' }))[0]!)
+  expect(await screen.findByText('删除失败')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '大佬持仓' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '迈克尔·伯里' })).toBeTruthy()
+  expect(screen.queryByText('大佬持仓加载失败')).toBeNull()
+})
+
+test('删除请求抛错时名单还在，走同一句删除失败', async () => {
+  const user = userEvent.setup()
+  stubAdminFetch(() => { throw new Error('network') })
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  await user.click((await screen.findAllByRole('button', { name: '删除' }))[0]!)
+  expect(await screen.findByText('删除失败')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '大佬持仓' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '迈克尔·伯里' })).toBeTruthy()
 })
 
 test('详情同时列出持仓和四类增减', async () => {
