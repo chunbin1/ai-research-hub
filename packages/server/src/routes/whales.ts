@@ -5,7 +5,7 @@ import { requireAdmin } from './auth.js'
 import { isWhalesEnabled } from '../services/whales/enabled.js'
 import { normalizeCik, normalizeSlug, slugFromNames } from '../services/whales/identity.js'
 import { syncOneWhale, type OneSync } from '../services/whales/sync.js'
-import { deleteInstitution, insertInstitution, WhaleWriteError } from '../services/whales/store.js'
+import { deleteInstitution, insertInstitution, markSync, WhaleWriteError } from '../services/whales/store.js'
 import { getWhaleDetail, listWhaleSummaries } from '../services/whales/view.js'
 
 export interface WhaleRouteOptions {
@@ -71,6 +71,7 @@ export const whaleRoutes: FastifyPluginAsync<WhaleRouteOptions> = async (app, op
     void syncOne(slug).catch(err => {
       const message = err instanceof Error ? err.message : String(err)
       console.warn(`[whales] 后台拉取 ${slug} 失败: ${message}`)
+      markSync(slug, new Date().toISOString(), message.slice(0, 500))
     })
     const institution = listWhaleSummaries().institutions.find(row => row.slug === slug) ?? null
     return reply.status(201).send({ institution, sync: 'pending' })

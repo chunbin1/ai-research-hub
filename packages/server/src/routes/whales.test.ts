@@ -234,7 +234,9 @@ test('后台拉取抛错时添加仍然 201，机构留在列表里', async () =
     await new Promise(resolve => setImmediate(resolve))
     assert.ok(warnings.some(line => line.includes('baidu-inc') && line.includes('SEC down')))
     const list = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
-    assert.equal(list.institutions.some((row: { slug: string }) => row.slug === 'baidu-inc'), true)
+    const added = list.institutions.find((row: { slug: string }) => row.slug === 'baidu-inc')
+    assert.ok(added)
+    assert.equal(added.syncError, 'SEC down')
   } finally {
     console.warn = original
     await app.close()

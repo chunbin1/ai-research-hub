@@ -173,3 +173,30 @@ test('应用层插入重复 CIK 或短名时抛出明确错误', () => {
     (err: unknown) => err instanceof WhaleWriteError && err.code === 'slug_taken',
   )
 })
+
+const LEGACY_INSTITUTIONS = `
+  CREATE TABLE whale_institutions (
+    slug       TEXT PRIMARY KEY,
+    name_zh    TEXT NOT NULL,
+    name_en    TEXT NOT NULL,
+    manager    TEXT NOT NULL,
+    cik        TEXT NOT NULL,
+    sort_order INTEGER NOT NULL
+  );
+`
+
+test('旧表没有 CIK 唯一索引时，初始化会补上', () => {
+  const database = new Database(':memory:')
+  database.exec(LEGACY_INSTITUTIONS)
+  database.prepare(`
+    INSERT INTO whale_institutions (slug, name_zh, name_en, manager, cik, sort_order)
+    VALUES ('custom', '自加', 'Custom', '某人', '0000000077', 9)
+  `).run()
+  initWhaleTables(database)
+  const index = database.prepare(`
+    SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_whale_institutions_cik'
+  `).get() as { name: string } | undefined
+  assert.equal(index?.name, 'idx_whale_institutions_cik')
+  assert.equal(listInstitutions().some(row => row.slug === 'custom'), true)
+  assert.equal(listInstitutions().some(row => row.slug === 'ark'), true)
+})

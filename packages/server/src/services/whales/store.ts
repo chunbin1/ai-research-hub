@@ -121,7 +121,12 @@ export function initWhaleTables(db: DB): void {
       console.warn(`[whales] 跳过种子 ${seed.slug}：CIK ${seed.cik} 已被 ${holder.slug} 占用`)
       continue
     }
-    upsert.run(seed)
+    try {
+      upsert.run(seed)
+    } catch (err) {
+      if (!isInstitutionConstraint(err)) throw err
+      console.warn(`[whales] 跳过种子 ${seed.slug}：CIK ${seed.cik} 写入冲突`)
+    }
   }
 }
 
