@@ -408,6 +408,10 @@ test('详情同时列出持仓和四类增减', async () => {
     </MemoryRouter>,
   )
   expect(await screen.findByRole('heading', { name: '巴菲特' })).toBeTruthy()
+  const back = screen.getByRole('link', { name: '名家持仓' })
+  expect(back.getAttribute('href')).toBe('/whales')
+  expect(back.textContent).not.toContain('←')
+  expect(back.querySelector('[data-icon="LeftOutlined"]')).toBeTruthy()
   expect(screen.getAllByRole('columnheader', { name: '市值（美元）' }).length).toBeGreaterThan(0)
   expect(screen.getByText(/对比上期/)).toBeTruthy()
   expect(screen.getByText(/增减按股数，不按市值/)).toBeTruthy()
