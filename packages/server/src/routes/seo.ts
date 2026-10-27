@@ -10,6 +10,9 @@ import type { FastifyPluginAsync } from 'fastify'
 import { describeRoute } from '../openapi/doc.js'
 import { getAllDocuments, getDocument, readRawMarkdown } from '../services/documentStore.js'
 import type { Document } from '../types.js'
+import { isWhalesEnabled } from '../services/whales/enabled.js'
+import { WHALE_SEEDS } from '../services/whales/seed.js'
+import { listInstitutions } from '../services/whales/store.js'
 import {
   SITE_NAME, SITE_DESCRIPTION, classifyPath, excerpt, renderHead, robotsTxt, sitemapXml,
   type HeadInput,
@@ -34,6 +37,14 @@ function reportDescription(doc: Document): string {
   return text
 }
 
+function indexedWhales(): { slug: string; manager: string; nameZh: string }[] {
+  try {
+    return listInstitutions().map(row => ({ slug: row.slug, manager: row.manager, nameZh: row.nameZh }))
+  } catch {
+    return WHALE_SEEDS.map(row => ({ slug: row.slug, manager: row.manager, nameZh: row.nameZh }))
+  }
+}
+
 function headFor(path: string, site: string): HeadInput {
   const page = classifyPath(path)
   switch (page.kind) {
@@ -45,6 +56,23 @@ function headFor(path: string, site: string): HeadInput {
         description: '研报覆盖的美股与港股标的,每日收盘后计算日线 / 周线 SuperTrend 信号,看趋势方向、共振与近期翻转。',
         url: `${site}/signals`,
       }
+    case 'whales': {
+      if (!isWhalesEnabled()) return { title: SITE_NAME, noindex: true }
+      if (page.slug === null) {
+        return {
+          title: `大佬持仓 — ${SITE_NAME}`,
+          description: '多家机构向美国 SEC 申报的 13F 持仓，以及相对上一报告期的增减。',
+          url: `${site}/whales`,
+        }
+      }
+      const institution = indexedWhales().find(item => item.slug === page.slug)
+      if (!institution) return { title: SITE_NAME, noindex: true }
+      return {
+        title: `${institution.manager}持仓 — ${SITE_NAME}`,
+        description: `${institution.manager}（${institution.nameZh}）向美国 SEC 申报的 13F 持仓，以及相对上一报告期的增减。`,
+        url: `${site}/whales/${institution.slug}`,
+      }
+    }
     case 'report': {
       const doc = getDocument(page.id)
       // 研报不存在时页面照样是 200(SPA),只能靠 noindex 让它别进索引
@@ -85,9 +113,12 @@ export const seoRoutes: FastifyPluginAsync = async (app) => {
   app.get('/seo/sitemap.xml', describeRoute(
     ['seo'],
     'sitemap.xml',
-    'XML。列出首页、信号页和每篇研报。持仓页和接口文档不进站点地图。nginx 把它挂在 /sitemap.xml。',
+    'XML。列出首页、信号页、大佬持仓和每篇研报。实盘持仓和接口文档不进站点地图。WHALES=off 时也不列大佬持仓。nginx 把它挂在 /sitemap.xml。',
   ), async (_request, reply) => {
     reply.type('application/xml; charset=utf-8')
-    return sitemapXml(appUrl(), getAllDocuments())
+    const whalePaths = isWhalesEnabled()
+      ? ['/whales', ...indexedWhales().map(item => `/whales/${item.slug}`)]
+      : []
+    return sitemapXml(appUrl(), getAllDocuments(), whalePaths)
   })
 }

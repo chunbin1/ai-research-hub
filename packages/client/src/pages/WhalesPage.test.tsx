@@ -1,0 +1,276 @@
+import { StrictMode } from 'react'
+import { test, expect, vi, afterEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import WhalesPage from './WhalesPage'
+import WhaleDetailPage from './WhaleDetailPage'
+import { SiteHeader } from '../components/SiteHeader'
+import { HoldingsProvider } from '../hooks/useHoldings'
+import { changeLabel, formatShareDelta, formatUsd } from '../lib/whaleView'
+
+afterEach(() => { vi.unstubAllGlobals() })
+
+const LIST = {
+  valueNote: '市值为美元。',
+  institutions: [
+    {
+      slug: 'berkshire',
+      manager: '巴菲特',
+      nameZh: '伯克希尔·哈撒韦',
+      nameEn: 'Berkshire Hathaway Inc',
+      cik: '0001067983',
+      dataStatus: 'ready',
+      syncError: null,
+      latest: {
+        reportPeriod: '2026-06-30',
+        filedAt: '2026-08-14',
+        form: '13F-HR',
+        positionCount: 2,
+        totalValueUsd: 2500,
+        top: { issuerName: 'APPLE INC', ticker: 'AAPL', cusip: '037833100' },
+      },
+    },
+    {
+      slug: 'scion',
+      manager: '迈克尔·伯里',
+      nameZh: 'Scion',
+      nameEn: 'Scion Asset Management, LLC',
+      cik: '0001649339',
+      dataStatus: 'empty',
+      syncError: 'SEC 503',
+      latest: null,
+    },
+  ],
+}
+
+const DETAIL = {
+  institution: {
+    slug: 'berkshire',
+    manager: '巴菲特',
+    nameZh: '伯克希尔·哈撒韦',
+    nameEn: 'Berkshire Hathaway Inc',
+    cik: '0001067983',
+    dataStatus: 'ready',
+    syncError: null,
+  },
+  valueNote: '市值为美元。2023-01-03 之后按美元填报。',
+  period: {
+    reportPeriod: '2026-06-30',
+    filedAt: '2026-08-14',
+    form: '13F-HR',
+    accession: '0001193125-26-000002',
+    sourceUrl: 'https://www.sec.gov/Archives/example',
+    valueUnit: 'dollars',
+  },
+  previousPeriod: { reportPeriod: '2026-03-31', filedAt: '2026-05-15' },
+  positions: [
+    {
+      cusip: '037833100', ticker: 'AAPL', issuerName: 'APPLE INC', titleOfClass: 'COM',
+      putCall: '', shareType: 'SH', shares: 200, valueUsd: 2000, weight: 0.8,
+      change: 'increased', prevShares: 100, prevValueUsd: 900, shareDelta: 100, valueDeltaUsd: 1100,
+    },
+    {
+      cusip: '594918104', ticker: null, issuerName: 'MICROSOFT CORP', titleOfClass: 'COM',
+      putCall: '', shareType: 'SH', shares: 50, valueUsd: 500, weight: 0.2,
+      change: 'new', prevShares: 0, prevValueUsd: 0, shareDelta: 50, valueDeltaUsd: 500,
+    },
+    {
+      cusip: '02005N100', ticker: null, issuerName: 'ALLY FINL INC', titleOfClass: 'COM',
+      putCall: '', shareType: 'SH', shares: 8, valueUsd: 80, weight: 0,
+      change: 'decreased', prevShares: 10, prevValueUsd: 90, shareDelta: -2, valueDeltaUsd: -10,
+    },
+    {
+      cusip: '037833100', ticker: 'AAPL', issuerName: 'APPLE INC', titleOfClass: 'NOTE',
+      putCall: 'Put', shareType: 'PRN', shares: 1_000_000, valueUsd: 1000, weight: 0.1,
+      change: 'unchanged', prevShares: 1_000_000, prevValueUsd: 1000, shareDelta: null, valueDeltaUsd: 0,
+    },
+  ],
+  closed: [
+    {
+      cusip: '191216100', ticker: 'KO', issuerName: 'COCA COLA CO', titleOfClass: 'COM',
+      putCall: '', shareType: 'SH', shares: 0, valueUsd: 0, weight: null,
+      change: 'closed', prevShares: 10, prevValueUsd: 100, shareDelta: -10, valueDeltaUsd: -100,
+    },
+  ],
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response
+}
+
+test('列表给出摘要，没有申报的机构标暂无数据', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(LIST)))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  const link = await screen.findByRole('link', { name: '巴菲特' })
+  expect(link.getAttribute('href')).toBe('/whales/berkshire')
+  expect(screen.getByText('伯克希尔·哈撒韦')).toBeTruthy()
+  expect(screen.getByText('2026-06-30')).toBeTruthy()
+  expect(screen.getByText(formatUsd(2500))).toBeTruthy()
+  expect(screen.getByText('AAPL')).toBeTruthy()
+  expect(screen.getByRole('columnheader', { name: '市值合计（美元）' })).toBeTruthy()
+  expect(screen.getByText('暂无数据')).toBeTruthy()
+  expect(screen.getByText('最近一次拉取失败')).toBeTruthy()
+  expect(screen.getByText('迈克尔·伯里')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: '添加机构' })).toBeNull()
+})
+
+test('管理员添加机构后，名单里能看到新人', async () => {
+  const user = userEvent.setup()
+  let added = false
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const path = String(url)
+    if (path.includes('/api/auth/')) {
+      return jsonResponse({
+        id: 'u1', username: 'admin', avatarUrl: null, messageCount: 0,
+        limit: 100, unlimited: false, isAdmin: true, remaining: 100,
+      })
+    }
+    if (path.endsWith('/api/whales') && init?.method === 'POST') {
+      added = true
+      return jsonResponse({ sync: 'pending' }, 201)
+    }
+    if (path.includes('/api/whales')) {
+      const institutions = added
+        ? [...LIST.institutions, {
+          slug: 'baidu-inc', manager: '李彦宏', nameZh: '百度', nameEn: 'Baidu, Inc.',
+          cik: '0001234567', dataStatus: 'empty' as const, syncError: null, latest: null,
+        }]
+        : LIST.institutions
+      return jsonResponse({ ...LIST, institutions })
+    }
+    return jsonResponse({ updatedAt: null, holdings: [] })
+  }))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('button', { name: '添加机构' }))
+  await user.type(screen.getByLabelText('CIK'), '1234567')
+  await user.type(screen.getByLabelText('管理人'), '李彦宏')
+  await user.type(screen.getByLabelText('中文名'), '百度')
+  await user.type(screen.getByLabelText('英文名'), 'Baidu, Inc.')
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  expect(await screen.findByRole('link', { name: '李彦宏' })).toBeTruthy()
+  expect(screen.getAllByText('暂无数据').length).toBeGreaterThan(1)
+})
+
+const ADMIN = {
+  id: 'u1', username: 'admin', avatarUrl: null, messageCount: 0,
+  limit: 100, unlimited: false, isAdmin: true, remaining: 100,
+}
+
+function stubAdminFetch(onDelete: () => Promise<Response> | Response) {
+  vi.stubGlobal('confirm', () => true)
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const path = String(url)
+    if (path.includes('/api/auth/')) return jsonResponse(ADMIN)
+    if (init?.method === 'DELETE') return onDelete()
+    if (path.includes('/api/whales')) return jsonResponse(LIST)
+    return jsonResponse({ updatedAt: null, holdings: [] })
+  }))
+}
+
+test('删除接口失败时名单还在，只提示删除失败', async () => {
+  const user = userEvent.setup()
+  stubAdminFetch(async () => jsonResponse({ error: 'nope' }, 500))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  await user.click((await screen.findAllByRole('button', { name: '删除' }))[0]!)
+  expect(await screen.findByText('删除失败')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '大佬持仓' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '迈克尔·伯里' })).toBeTruthy()
+  expect(screen.queryByText('大佬持仓加载失败')).toBeNull()
+})
+
+test('删除请求抛错时名单还在，走同一句删除失败', async () => {
+  const user = userEvent.setup()
+  stubAdminFetch(() => { throw new Error('network') })
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  await user.click((await screen.findAllByRole('button', { name: '删除' }))[0]!)
+  expect(await screen.findByText('删除失败')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '大佬持仓' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '迈克尔·伯里' })).toBeTruthy()
+})
+
+test('详情同时列出持仓和四类增减', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(DETAIL)))
+  render(
+    <MemoryRouter initialEntries={['/whales/berkshire']}>
+      <Routes>
+        <Route path="/whales/:slug" element={<WhaleDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('heading', { name: '巴菲特' })).toBeTruthy()
+  expect(screen.getAllByRole('columnheader', { name: '市值（美元）' }).length).toBeGreaterThan(0)
+  expect(screen.getByText(/对比上期/)).toBeTruthy()
+  expect(screen.getByText('2026-03-31')).toBeTruthy()
+  expect(screen.getByText('MICROSOFT CORP')).toBeTruthy()
+  expect(screen.getByText('594918104')).toBeTruthy()
+  expect(screen.getByText('本金')).toBeTruthy()
+  expect(screen.getByText('认沽')).toBeTruthy()
+  expect(screen.getAllByText('本金')).toHaveLength(1)
+
+  const increased = screen.getByText(`${changeLabel('increased')} ${formatShareDelta(100)}`)
+  const created = screen.getByText(`${changeLabel('new')} ${formatShareDelta(50)}`)
+  const decreased = screen.getByText(`${changeLabel('decreased')} ${formatShareDelta(-2)}`)
+  const closed = screen.getByText(`${changeLabel('closed')} ${formatShareDelta(-10)}`)
+  expect(increased.className).toContain('text-long')
+  expect(created.className).toContain('text-long')
+  expect(decreased.className).toContain('text-short')
+  expect(closed.className).toContain('text-short')
+  expect(screen.getByRole('heading', { name: '清仓' })).toBeTruthy()
+})
+
+test('导航有大佬持仓；功能关闭时去掉', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (String(url).includes('/api/whales')) return jsonResponse({ error: 'whales_disabled' }, 404)
+    return jsonResponse(null, 500)
+  }))
+  render(
+    <StrictMode>
+      <MemoryRouter>
+        <HoldingsProvider>
+          <SiteHeader />
+        </HoldingsProvider>
+      </MemoryRouter>
+    </StrictMode>,
+  )
+  await waitFor(() => expect(screen.queryAllByRole('link', { name: '大佬持仓' })).toHaveLength(0))
+})
+
+test('功能开启时桌面和移动导航都有大佬持仓', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const path = String(url)
+    if (path.includes('/api/whales')) return jsonResponse(LIST)
+    if (path.includes('/api/auth/')) return jsonResponse(null, 401)
+    return jsonResponse({ updatedAt: null, holdings: [] })
+  }))
+  render(
+    <MemoryRouter initialEntries={['/whales']}>
+      <HoldingsProvider>
+        <SiteHeader />
+      </HoldingsProvider>
+    </MemoryRouter>,
+  )
+  await waitFor(() => expect(screen.getAllByRole('link', { name: '大佬持仓' })).toHaveLength(2))
+  for (const link of screen.getAllByRole('link', { name: '大佬持仓' })) {
+    expect(link.getAttribute('href')).toBe('/whales')
+    expect(link.getAttribute('aria-current')).toBe('page')
+  }
+})

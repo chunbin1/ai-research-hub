@@ -41,6 +41,8 @@ const VersionDiffPage = lazyWithAntd(() => import('./pages/VersionDiffPage'))
 const SignalsPage = lazyWithAntd(() => import('./pages/SignalsPage'))
 // 持仓页不引用 antd,单独懒加载,避免打开它时把 antd 拉下来。
 const HoldingsPage = lazy(() => import('./pages/HoldingsPage'))
+const WhalesPage = lazy(() => import('./pages/WhalesPage'))
+const WhaleDetailPage = lazy(() => import('./pages/WhaleDetailPage'))
 const TracesPage = lazyWithAntd(() => import('./components/TracesPage').then(m => ({ default: m.TracesPage })))
 const TraceDetailPage = lazyWithAntd(() => import('./components/TraceDetailPage').then(m => ({ default: m.TraceDetailPage })))
 const EvalDashboard = lazyWithAntd(() => import('./pages/EvalDashboard'))
@@ -59,6 +61,8 @@ export default function App() {
         <Route path="/reports/:id/diff" element={<VersionDiffPage />} />
         <Route path="/signals" element={<SignalsPage />} />
         <Route path="/holdings" element={<HoldingsPage />} />
+        <Route path="/whales" element={<WhalesPage />} />
+        <Route path="/whales/:slug" element={<WhaleDetailPage />} />
         <Route path="/traces" element={<TracesPage />} />
         <Route path="/traces/:id" element={<TraceDetailPage />} />
         <Route path="/eval" element={<EvalDashboard />} />
