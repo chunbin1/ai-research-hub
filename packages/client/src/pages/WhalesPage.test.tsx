@@ -9,7 +9,10 @@ import { SiteHeader } from '../components/SiteHeader'
 import { HoldingsProvider } from '../hooks/useHoldings'
 import { changeLabel, formatShareDelta, formatUsd } from '../lib/whaleView'
 
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => {
+  document.body.style.overflow = ''
+  vi.unstubAllGlobals()
+})
 
 const LIST = {
   valueNote: '市值为美元。',
@@ -164,6 +167,7 @@ test('管理员添加机构后，名单里能看到新人', async () => {
   await user.click(screen.getByRole('button', { name: '保存' }))
   expect(await screen.findByRole('link', { name: '李彦宏' })).toBeTruthy()
   expect(screen.queryByRole('dialog')).toBeNull()
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: '添加机构' }))
   expect(screen.getAllByText('暂无数据').length).toBeGreaterThan(1)
 })
 
@@ -204,9 +208,52 @@ test('添加失败时弹窗留着，并显示接口返回的原因', async () =>
   await user.type(screen.getByLabelText('管理人'), '巴菲特')
   await user.type(screen.getByLabelText('中文名'), '伯克希尔')
   await user.click(screen.getByRole('button', { name: '保存' }))
-  expect(await screen.findByText('这个 CIK 已经有机构了')).toBeTruthy()
+  const reason = await screen.findByRole('alert')
+  expect(reason.textContent).toBe('这个 CIK 已经有机构了')
   expect(screen.getByRole('dialog', { name: '添加机构' })).toBeTruthy()
   expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
+})
+
+test('添加弹窗锁住页面滚动，Tab 在弹窗内循环，关闭后焦点回到添加机构', async () => {
+  const user = userEvent.setup()
+  document.body.style.overflow = 'auto'
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const path = String(url)
+    if (path.includes('/api/auth/')) return jsonResponse(ADMIN)
+    if (path.includes('/api/whales')) return jsonResponse(LIST)
+    return jsonResponse({ updatedAt: null, holdings: [] })
+  }))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  const open = await screen.findByRole('button', { name: '添加机构' })
+  await user.click(open)
+  expect(document.body.style.overflow).toBe('hidden')
+  const cik = screen.getByLabelText('CIK')
+  expect(document.activeElement).toBe(cik)
+
+  await user.tab()
+  expect(document.activeElement).toBe(screen.getByLabelText('管理人'))
+  await user.tab({ shift: true })
+  expect(document.activeElement).toBe(cik)
+  await user.tab({ shift: true })
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: '保存' }))
+  await user.tab()
+  expect(document.activeElement).toBe(cik)
+
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(document.body.style.overflow).toBe('auto')
+  expect(document.activeElement).toBe(open)
+
+  await user.click(open)
+  expect(document.body.style.overflow).toBe('hidden')
+  await user.click(screen.getByRole('button', { name: '取消' }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(document.body.style.overflow).toBe('auto')
+  expect(document.activeElement).toBe(open)
 })
 
 test('按 Esc 或点遮罩会关掉添加弹窗', async () => {
@@ -245,7 +292,10 @@ test('删除在表格最右一列，不跟管理人挤在一起', async () => {
   expect(headers.at(-1)).toBe('操作')
   const cells = link.closest('tr')!.querySelectorAll('td')
   expect(cells[0]!.querySelector('button')).toBeNull()
-  expect(cells[cells.length - 1]!.querySelector('button')?.textContent).toBe('删除')
+  const remove = cells[cells.length - 1]!.querySelector('button')
+  expect(remove?.textContent).toBe('删除')
+  expect(remove?.getAttribute('aria-label')).toBe('删除 巴菲特')
+  expect(screen.getByRole('button', { name: '删除 迈克尔·伯里' })).toBeTruthy()
   expect(cells[cells.length - 1]!.className).toContain('text-right')
 })
 
@@ -257,7 +307,7 @@ test('删除接口失败时名单还在，只提示删除失败', async () => {
       <WhalesPage />
     </MemoryRouter>,
   )
-  await user.click((await screen.findAllByRole('button', { name: '删除' }))[0]!)
+  await user.click(await screen.findByRole('button', { name: '删除 巴菲特' }))
   expect(await screen.findByText('删除失败')).toBeTruthy()
   expect(screen.getByRole('heading', { name: '名家持仓' })).toBeTruthy()
   expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
@@ -273,7 +323,7 @@ test('删除请求抛错时名单还在，走同一句删除失败', async () =>
       <WhalesPage />
     </MemoryRouter>,
   )
-  await user.click((await screen.findAllByRole('button', { name: '删除' }))[0]!)
+  await user.click(await screen.findByRole('button', { name: '删除 巴菲特' }))
   expect(await screen.findByText('删除失败')).toBeTruthy()
   expect(screen.getByRole('heading', { name: '名家持仓' })).toBeTruthy()
   expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()

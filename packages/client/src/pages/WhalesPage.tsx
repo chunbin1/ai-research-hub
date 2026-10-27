@@ -17,6 +17,19 @@ interface AddFields {
 
 const EMPTY_FORM: AddFields = { cik: '', manager: '', nameZh: '', nameEn: '', slug: '' }
 
+const TABBABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ')
+
+function tabbableIn(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter(el => el.tabIndex >= 0)
+}
+
 export default function WhalesPage() {
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
@@ -31,6 +44,8 @@ export default function WhalesPage() {
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const cikInputRef = useRef<HTMLInputElement>(null)
+  const addButtonRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   savingRef.current = saving
 
   function closeForm() {
@@ -79,14 +94,50 @@ export default function WhalesPage() {
 
   useEffect(() => {
     if (!formOpen) return
+    const previousOverflow = document.body.style.overflow
+    // html 已用 scrollbar-gutter 留出滚动槽。这里只藏滚动，不改 body 宽度，
+    // 避免和 antd 弹窗的宽度补偿叠在一起，开合时整页横向抖一下。
+    document.body.style.overflow = 'hidden'
     cikInputRef.current?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      closeForm()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeForm()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const items = tabbableIn(root)
+      if (items.length === 0) {
+        event.preventDefault()
+        return
+      }
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      const active = document.activeElement
+      const inside = active instanceof Node && root.contains(active)
+      if (!inside) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+        return
+      }
+      if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+        return
+      }
+      if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previousOverflow
+      if (addButtonRef.current?.isConnected) addButtonRef.current.focus()
+    }
   }, [formOpen])
 
   async function onAdd(event: FormEvent) {
@@ -153,6 +204,7 @@ export default function WhalesPage() {
         </div>
         {isAdmin && (
           <button
+            ref={addButtonRef}
             type="button"
             onClick={() => { setForm(EMPTY_FORM); setFormError(null); setFormOpen(true) }}
             className="flex h-11 shrink-0 items-center justify-center rounded-[4px] border border-edge bg-white px-[15px] text-[13px] text-ink-soft hover:border-ink-faint"
@@ -170,6 +222,7 @@ export default function WhalesPage() {
           onMouseDown={() => closeForm()}
         >
           <div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="whale-add-title"
@@ -200,7 +253,7 @@ export default function WhalesPage() {
                   <input value={form.slug} placeholder="不填则从英文名生成" onChange={event => setForm(current => ({ ...current, slug: event.target.value }))} className="h-10 rounded-[4px] border border-edge bg-white px-3 text-[14px] text-ink" />
                 </label>
               </div>
-              {formError && <p className="m-0 text-[13px] text-danger">{formError}</p>}
+              {formError && <p role="alert" className="m-0 text-[13px] text-danger">{formError}</p>}
               <div className="mt-1 flex justify-end gap-2">
                 <button type="button" disabled={saving} onClick={closeForm} className="h-10 rounded-[4px] border border-edge bg-white px-4 text-[13px] text-ink-soft disabled:opacity-60">
                   取消
@@ -263,7 +316,7 @@ export default function WhalesPage() {
                   </td>
                   {isAdmin && (
                     <td className="py-4 text-right">
-                      <button type="button" className="text-[13px] text-danger" onClick={() => void onDelete(row)}>
+                      <button type="button" className="text-[13px] text-danger" aria-label={`删除 ${row.manager}`} onClick={() => void onDelete(row)}>
                         删除
                       </button>
                     </td>
