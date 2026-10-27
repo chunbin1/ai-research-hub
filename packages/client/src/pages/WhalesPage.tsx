@@ -54,7 +54,7 @@ export default function WhalesPage() {
       <div className={`flex flex-col gap-2 border-b border-rule pb-4 pt-3.5 md:border-b-0 md:pb-6 md:pt-8 ${GUTTER}`}>
         <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">大佬持仓</h1>
         <p className="m-0 max-w-[640px] text-[12px] leading-[1.65] text-ink-mute md:text-[13px] md:leading-[1.6]">
-          美国 SEC Form 13F 的公开申报。和本站「持仓」里的实盘账户不是同一份数据。
+          美国 SEC Form 13F 的公开申报。
         </p>
       </div>
 
