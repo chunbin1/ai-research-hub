@@ -2,6 +2,7 @@
 
 export interface SecTransport {
   getText(url: string): Promise<string>
+  getBytes?(url: string): Promise<Uint8Array>
 }
 
 export const COMPANY_TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json'
@@ -91,6 +92,15 @@ export function createSecTransport(userAgent: string, minIntervalMs = MIN_INTERV
   return {
     getText(url: string) {
       return secGetText(url, { userAgent, wait })
+    },
+    async getBytes(url: string) {
+      await wait()
+      const response = await fetch(url, {
+        headers: { 'User-Agent': userAgent, Accept: 'application/pdf,*/*' },
+        signal: AbortSignal.timeout(SEC_FETCH_TIMEOUT_MS),
+      })
+      if (!response.ok) throw new Error(`下载失败 ${response.status} ${url}`)
+      return new Uint8Array(await response.arrayBuffer())
     },
   }
 }

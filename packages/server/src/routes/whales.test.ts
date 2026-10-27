@@ -23,16 +23,17 @@ async function appWithDb(synced: string[] = []) {
   return app
 }
 
-test('没有申报时六家都在，状态是 empty', async () => {
+test('没有申报时种子都在，状态是 empty', async () => {
   const app = await appWithDb()
   const res = await app.inject({ method: 'GET', url: '/api/whales' })
   assert.equal(res.statusCode, 200)
   const body = res.json()
-  assert.equal(body.institutions.length, 6)
+  assert.equal(body.institutions.length, 7)
   assert.ok(body.valueNote.includes('美元'))
   assert.deepEqual(body.institutions.map((row: { slug: string }) => row.slug), [
-    'berkshire', 'himalaya', 'hhlr', 'pershing', 'scion', 'ark',
+    'berkshire', 'himalaya', 'hhlr', 'pershing', 'scion', 'ark', 'pelosi',
   ])
+  assert.equal(body.institutions.find((row: { slug: string }) => row.slug === 'pelosi').source, 'house-fd')
   assert.equal(body.institutions[2].cik, '0001762304')
   assert.ok(body.institutions.every((row: { dataStatus: string; latest: unknown }) => row.dataStatus === 'empty' && row.latest === null))
   const missing = await app.inject({ method: 'GET', url: '/api/whales/nope' })

@@ -90,7 +90,7 @@ export const whaleRoutes: FastifyPluginAsync<WhaleRouteOptions> = async (app, op
   app.delete<{ Params: { slug: string } }>('/whales/:slug', describeRoute(
     ['whales'],
     '删除机构',
-    '仅管理员。硬删这一家，并清掉它的申报、持仓和同步记录。代码里的六家种子会在下次进程启动时写回。',
+    '仅管理员。硬删这一家，并清掉它的申报、持仓和同步记录。代码里的种子会在下次进程启动时写回。',
   ), async (request, reply) => {
     if (!requireAdmin(request, reply)) return
     if (!deleteInstitution(request.params.slug)) return reply.status(404).send({ error: 'not_found' })

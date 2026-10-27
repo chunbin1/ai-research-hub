@@ -50,8 +50,12 @@ function PositionTable({ rows, showWeight }: { rows: WhalePosition[]; showWeight
           {rows.map(row => (
             <tr key={`${row.cusip}-${row.putCall}-${row.shareType}`} className="border-b border-row-rule">
               <td className="py-4 pr-3"><SecurityCell row={row} /></td>
-              <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">{formatShares(row.shares)}</td>
-              <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">{formatUsd(row.valueUsd)}</td>
+              <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">
+                {row.valueLabel && row.shares === 0 ? '—' : formatShares(row.shares)}
+              </td>
+              <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">
+                {row.valueLabel ?? formatUsd(row.valueUsd)}
+              </td>
               {showWeight && (
                 <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">
                   {row.weight === null ? '—' : formatWeight(row.weight)}
@@ -123,7 +127,8 @@ export default function WhaleDetailPage() {
         <Link to="/whales" className="text-[13px] text-navy">← 名家持仓</Link>
         <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">{institution.manager}</h1>
         <p className="m-0 max-w-[720px] text-[12px] leading-[1.65] text-ink-mute md:text-[13px]">
-          {institution.nameZh} · {institution.nameEn} · CIK {institution.cik}
+          {institution.nameZh} · {institution.nameEn}
+          {institution.source === 'house-fd' ? '' : ` · CIK ${institution.cik}`}
         </p>
       </div>
 
@@ -138,7 +143,9 @@ export default function WhaleDetailPage() {
                 {' · '}申报日 <time dateTime={period.filedAt}>{period.filedAt}</time>
                 {' · '}{period.form}
                 {' · '}
-                <a href={period.sourceUrl} className="text-navy" target="_blank" rel="noreferrer">SEC 原文</a>
+                <a href={period.sourceUrl} className="text-navy" target="_blank" rel="noreferrer">
+                  {institution.source === 'house-fd' ? '众议院原文' : 'SEC 原文'}
+                </a>
               </p>
               <p className="m-0 text-[12px] text-ink-faint">
                 {detail.previousPeriod

@@ -12,6 +12,7 @@ export interface DiffLine {
   shares: number
   valueUsd: number
   valueReported: number
+  valueLabel?: string | null
 }
 
 export interface DiffPosition extends DiffLine {

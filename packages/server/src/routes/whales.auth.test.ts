@@ -32,7 +32,7 @@ test('名家持仓读公开，增删未登录一律 401', async () => {
   const removed = await app.inject({ method: 'DELETE', url: '/api/whales/berkshire' })
   assert.equal(removed.statusCode, 401)
   const still = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
-  assert.equal(still.institutions.length, 6)
+  assert.equal(still.institutions.length, 7)
 })
 
 test('登录但不是管理员时增删 403，名单不变', async () => {
@@ -65,6 +65,6 @@ test('登录但不是管理员时增删 403，名单不变', async () => {
   assert.equal(removed.statusCode, 403)
   assert.equal(removed.json().error, 'forbidden')
   const still = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
-  assert.equal(still.institutions.length, 6)
+  assert.equal(still.institutions.length, 7)
   assert.equal(still.institutions.some((row: { slug: string }) => row.slug === 'jia'), false)
 })

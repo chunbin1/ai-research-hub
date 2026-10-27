@@ -11,6 +11,7 @@ export interface WhalePosition {
   shareType: string
   shares: number
   valueUsd: number
+  valueLabel?: string | null
   weight: number | null
   change: WhaleChange | null
   prevShares: number | null
@@ -25,6 +26,7 @@ export interface WhaleLatest {
   form: string
   positionCount: number
   totalValueUsd: number
+  totalValueLabel?: string | null
   top: { issuerName: string; ticker: string | null; cusip: string } | null
 }
 
@@ -34,6 +36,7 @@ export interface WhaleSummary {
   nameZh: string
   nameEn: string
   cik: string
+  source?: 'sec-13f' | 'house-fd'
   dataStatus: 'ready' | 'empty'
   syncError: string | null
   latest: WhaleLatest | null
@@ -46,6 +49,7 @@ export interface WhaleDetail {
     nameZh: string
     nameEn: string
     cik: string
+    source?: 'sec-13f' | 'house-fd'
     dataStatus: 'ready' | 'empty'
     syncError: string | null
   }

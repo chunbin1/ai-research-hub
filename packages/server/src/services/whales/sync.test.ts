@@ -45,15 +45,21 @@ function submissions(forms: string[]): string {
   })
 }
 
-test('没有 User-Agent 时不请求 SEC', async () => {
+test('没有 User-Agent 时不请求 SEC，仍会看众议院索引', async () => {
   initWhaleTables(new Database(':memory:'))
-  let called = false
+  const urls: string[] = []
   const result = await syncWhales({
     userAgent: null,
-    transport: { async getText() { called = true; return '' } },
+    transport: {
+      async getText(url: string) {
+        urls.push(url)
+        return ''
+      },
+    },
   })
   assert.equal(result.skipped, true)
-  assert.equal(called, false)
+  assert.equal(urls.some(url => url.includes('sec.gov')), false)
+  assert.ok(urls.some(url => url.endsWith('FD.txt')))
   const saved = process.env.SEC_USER_AGENT
   const email = process.env.WHALES_CONTACT_EMAIL
   delete process.env.SEC_USER_AGENT
@@ -78,6 +84,9 @@ test('夹具同步出增减，第二轮相同 accession 不再下 XML', async ()
   const transport = {
     async getText(url: string) {
       calls.push(url)
+      if (url.includes('disclosures-clerk.house.gov') && url.endsWith('FD.txt')) {
+        return 'Prefix\tLast\tFirst\tSuffix\tFilingType\tStateDst\tYear\tFilingDate\tDocID\n'
+      }
       if (url.includes('company_tickers.json')) {
         return JSON.stringify({
           '0': { cik_str: 320193, ticker: 'AAPL', title: 'Apple Inc.' },
@@ -111,7 +120,7 @@ test('夹具同步出增减，第二轮相同 accession 不再下 XML', async ()
   const first = await syncWhales({ transport, userAgent: 'test-agent', now: () => new Date('2026-10-27T00:00:00.000Z') })
   assert.equal(first.failed, 0)
   assert.equal(first.ok, 1)
-  assert.equal(first.empty, 5)
+  assert.equal(first.empty, 6)
   assert.ok(calls.includes(
     'https://www.sec.gov/Archives/edgar/data/1067983/000119312526000001/info.xml',
   ))
@@ -151,6 +160,9 @@ test('信息表指向非 SEC 主机时记入该机构错误，且不去请求', 
   const transport = {
     async getText(url: string) {
       calls.push(url)
+      if (url.includes('disclosures-clerk.house.gov') && url.endsWith('FD.txt')) {
+        return 'Prefix\tLast\tFirst\tSuffix\tFilingType\tStateDst\tYear\tFilingDate\tDocID\n'
+      }
       if (url.includes('company_tickers.json')) return '{}'
       if (url.includes('CIK0001067983')) {
         return JSON.stringify({
@@ -178,7 +190,7 @@ test('信息表指向非 SEC 主机时记入该机构错误，且不去请求', 
   })
   assert.equal(result.failed, 1)
   assert.equal(result.ok, 0)
-  assert.equal(result.empty, 5)
+  assert.equal(result.empty, 6)
   assert.equal(calls.some(url => url.includes('evil.example')), false)
   assert.match(getSync('berkshire').lastError ?? '', /拒绝非 SEC/)
   assert.equal(getSync('himalaya').lastError, null)

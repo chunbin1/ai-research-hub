@@ -172,7 +172,7 @@ export default function WhalesPage() {
   }
 
   async function onDelete(row: WhaleSummary) {
-    if (!window.confirm(`确定删除 ${row.manager}？申报和持仓会一并清掉。六家种子会在下次重启时写回。`)) return
+    if (!window.confirm(`确定删除 ${row.manager}？申报和持仓会一并清掉。种子名单会在下次重启时写回。`)) return
     setDeleteError(null)
     try {
       const response = await fetch(`/api/whales/${encodeURIComponent(row.slug)}`, { method: 'DELETE' })
@@ -299,7 +299,7 @@ export default function WhalesPage() {
                     {row.latest ? row.latest.positionCount : '—'}
                   </td>
                   <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">
-                    {row.latest ? formatUsd(row.latest.totalValueUsd) : '—'}
+                    {row.latest ? (row.latest.totalValueLabel ?? formatUsd(row.latest.totalValueUsd)) : '—'}
                   </td>
                   <td className="py-4 pr-3 text-[13px] text-ink">
                     {row.latest?.top ? securityTitle(row.latest.top) : '—'}

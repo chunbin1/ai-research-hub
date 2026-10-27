@@ -25,12 +25,12 @@ interface Log {
 
 async function runSync(log: Log, reason: string): Promise<void> {
   const userAgent = resolveSecUserAgent()
-  if (!userAgent) {
-    log.info('[whales] 未配置 SEC_USER_AGENT 或 WHALES_CONTACT_EMAIL — 跳过拉取')
-    return
-  }
+  if (!userAgent) log.info('[whales] 未配置 SEC_USER_AGENT 或 WHALES_CONTACT_EMAIL — 13F 跳过，众议院披露照常拉')
   try {
-    const summary = await syncWhales({ transport: createSecTransport(userAgent), userAgent })
+    const summary = await syncWhales({
+      transport: createSecTransport(userAgent ?? 'ai-research-hub house-fd'),
+      userAgent,
+    })
     log.info(`[whales] ${reason}拉取完成:成功 ${summary.ok},无申报 ${summary.empty},失败 ${summary.failed}`)
   } catch (err) {
     log.error(`[whales] ${reason}拉取异常:${err instanceof Error ? err.message : String(err)}`)
