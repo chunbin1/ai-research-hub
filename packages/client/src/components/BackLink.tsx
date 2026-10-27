@@ -9,13 +9,14 @@ interface Props {
 }
 
 /**
- * 返回链接。图标与阅读页顶栏、工具栏的回退相同。
+ * 返回链接。图标固定 text-[11px],与阅读页工具栏回退像素一致
+ * (顶栏回退是更大的点击区,尺寸不同)。
  * 图标是纯装饰 —— 旁边就有文字,读屏不该重复播报。
  */
 export function BackLink({ to, children, className }: Props) {
   return (
     <Link to={to} className={className}>
-      <LeftOutlined aria-hidden className="text-[0.85em]" />
+      <LeftOutlined aria-hidden className="text-[11px]" />
       <span className="ml-1">{children}</span>
     </Link>
   )
