@@ -17,7 +17,7 @@ export function filingIndexUrl(cik: string, accession: string): string {
   return `https://www.sec.gov/Archives/edgar/data/${numeric}/${compact}/${accession}-index.htm`
 }
 
-/** 信息表链接只允许打到 SEC。相对路径按 filing index 所在目录解析。 */
+/** 信息表链接只允许打到 SEC 的 https。相对路径按 filing index 所在目录解析。 */
 const SEC_ARCHIVE_HOSTS = new Set(['www.sec.gov', 'data.sec.gov'])
 
 export function absoluteArchiveUrl(href: string, indexUrl: string): string {
@@ -32,7 +32,7 @@ export function absoluteArchiveUrl(href: string, indexUrl: string): string {
   if (resolved.username || resolved.password) {
     throw new Error('拒绝非 SEC 档案地址（含凭据）')
   }
-  if (resolved.protocol !== 'https:' && resolved.protocol !== 'http:') {
+  if (resolved.protocol !== 'https:') {
     throw new Error(`拒绝非 SEC 档案地址（${resolved.protocol || '未知协议'}）`)
   }
   const host = resolved.hostname.toLowerCase().replace(/\.$/, '')

@@ -20,7 +20,7 @@ test('相对路径按 filing index 目录解析，根路径挂在 www.sec.gov', 
   )
 })
 
-test('只放行 www.sec.gov 和 data.sec.gov', () => {
+test('只放行 www.sec.gov 和 data.sec.gov 的 https', () => {
   assert.equal(
     absoluteArchiveUrl('https://www.sec.gov/Archives/edgar/data/1/2/info.xml', INDEX),
     'https://www.sec.gov/Archives/edgar/data/1/2/info.xml',
@@ -35,6 +35,8 @@ test('只放行 www.sec.gov 和 data.sec.gov', () => {
   )
   for (const href of [
     'https://evil.example/info.xml',
+    'http://www.sec.gov/Archives/x.xml',
+    'http://data.sec.gov/submissions/CIK0001067983.json',
     'http://169.254.169.254/latest/meta-data',
     'https://www.sec.gov.evil.example/info.xml',
     '//evil.example/info.xml',
