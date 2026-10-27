@@ -30,6 +30,27 @@ function tabbableIn(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter(el => el.tabIndex >= 0)
 }
 
+function listCopy(rows: WhaleSummary[]): { subtitle: string; cadence: string } {
+  const hasHouse = rows.some(row => row.source === 'house-fd')
+  const has13f = rows.some(row => row.source !== 'house-fd')
+  if (hasHouse && has13f) {
+    return {
+      subtitle: '美国 SEC Form 13F 的公开申报，以及众议院年度财务披露。',
+      cadence: '13F 通常在季末后 45 天内申报，只覆盖美国披露范围内的多头。众议院年度披露按年公布，金额是申报区间。',
+    }
+  }
+  if (hasHouse) {
+    return {
+      subtitle: '美国众议院年度财务披露。',
+      cadence: '众议院年度披露按年公布，金额是申报区间。',
+    }
+  }
+  return {
+    subtitle: '美国 SEC Form 13F 的公开申报。',
+    cadence: '13F 通常在季末后 45 天内申报，只覆盖美国披露范围内的多头。',
+  }
+}
+
 export default function WhalesPage() {
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
@@ -193,13 +214,15 @@ export default function WhalesPage() {
     return <div className={`mx-auto w-full max-w-[1440px] py-8 text-[13px] text-danger ${GUTTER}`}>{error}</div>
   }
 
+  const copy = listCopy(institutions ?? [])
+
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
       <div className={`flex flex-col gap-3.5 border-b border-rule pb-4 pt-3.5 md:flex-row md:items-end md:justify-between md:gap-10 md:border-b-0 md:pb-6 md:pt-8 ${GUTTER}`}>
         <div className="flex flex-col gap-2">
           <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">名家持仓</h1>
           <p className="m-0 max-w-[640px] text-[12px] leading-[1.65] text-ink-mute md:text-[13px] md:leading-[1.6]">
-            美国 SEC Form 13F 的公开申报。
+            {copy.subtitle}
           </p>
         </div>
         {isAdmin && (
@@ -329,7 +352,7 @@ export default function WhalesPage() {
       </main>
 
       <footer className={`mt-5 border-t border-rule pb-7 pt-4 text-[11px] leading-[1.6] text-ink-faint md:mt-6 md:pt-5 md:text-[12px] ${GUTTER}`}>
-        {valueNote || '市值单位为美元。'} 13F 通常在季末后 45 天内申报，只覆盖美国披露范围内的多头。
+        {valueNote || '市值单位为美元。'} {copy.cadence}
       </footer>
     </div>
   )

@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
-import { getMeta, getSync, initWhaleTables } from './store.ts'
+import { deleteInstitution, getMeta, getSync, initWhaleTables } from './store.ts'
 import { getWhaleDetail, listWhaleSummaries } from './view.ts'
 import { resolveSecUserAgent } from './enabled.ts'
 import { syncWhales } from './sync.ts'
@@ -45,11 +45,12 @@ function submissions(forms: string[]): string {
   })
 }
 
-test('没有 User-Agent 时不请求 SEC，仍会看众议院索引', async () => {
+test('没有 User-Agent 时不请求 SEC，仍会看众议院索引，并写下 lastSyncAt', async () => {
   initWhaleTables(new Database(':memory:'))
   const urls: string[] = []
   const result = await syncWhales({
     userAgent: null,
+    now: () => new Date('2026-10-27T03:00:00.000Z'),
     transport: {
       async getText(url: string) {
         urls.push(url)
@@ -60,6 +61,7 @@ test('没有 User-Agent 时不请求 SEC，仍会看众议院索引', async () =
   assert.equal(result.skipped, true)
   assert.equal(urls.some(url => url.includes('sec.gov')), false)
   assert.ok(urls.some(url => url.endsWith('FD.txt')))
+  assert.equal(getMeta().lastSyncAt, '2026-10-27T03:00:00.000Z')
   const saved = process.env.SEC_USER_AGENT
   const email = process.env.WHALES_CONTACT_EMAIL
   delete process.env.SEC_USER_AGENT
@@ -76,6 +78,25 @@ test('没有 User-Agent 时不请求 SEC，仍会看众议院索引', async () =
     if (email === undefined) delete process.env.WHALES_CONTACT_EMAIL
     else process.env.WHALES_CONTACT_EMAIL = email
   }
+})
+
+test('没有 User-Agent、也没有众议院机构时不写 lastSyncAt', async () => {
+  initWhaleTables(new Database(':memory:'))
+  assert.equal(deleteInstitution('pelosi'), true)
+  const urls: string[] = []
+  const result = await syncWhales({
+    userAgent: null,
+    now: () => new Date('2026-10-27T03:00:00.000Z'),
+    transport: {
+      async getText(url: string) {
+        urls.push(url)
+        return ''
+      },
+    },
+  })
+  assert.equal(result.skipped, true)
+  assert.equal(urls.length, 0)
+  assert.equal(getMeta().lastSyncAt, null)
 })
 
 test('夹具同步出增减，第二轮相同 accession 不再下 XML', async () => {

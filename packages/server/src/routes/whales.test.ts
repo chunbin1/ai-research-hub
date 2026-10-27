@@ -6,7 +6,7 @@ import fastify from 'fastify'
 // AUTH_DISABLED 必须在 auth.ts 求值前设好。本文件测管理员能写；未登录见 whales.auth.test.ts。
 process.env.AUTH_DISABLED = 'true'
 
-const { initWhaleTables, replaceFiling } = await import('../services/whales/store.ts')
+const { deleteInstitution, initWhaleTables, replaceFiling } = await import('../services/whales/store.ts')
 const { whaleRoutes } = await import('./whales.ts')
 
 async function appWithDb(synced: string[] = []) {
@@ -39,6 +39,28 @@ test('没有申报时种子都在，状态是 empty', async () => {
   const missing = await app.inject({ method: 'GET', url: '/api/whales/nope' })
   assert.equal(missing.statusCode, 404)
   assert.deepEqual(missing.json(), { error: 'not_found' })
+})
+
+test('名单 valueNote 跟着数据源走，有众议院披露时不只讲 13F', async () => {
+  const app = await appWithDb()
+  const mixed = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
+  assert.match(mixed.valueNote, /13F/)
+  assert.match(mixed.valueNote, /众议院/)
+
+  assert.equal(deleteInstitution('pelosi'), true)
+  const secOnly = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
+  assert.equal(secOnly.institutions.some((row: { source: string }) => row.source === 'house-fd'), false)
+  assert.match(secOnly.valueNote, /13F/)
+  assert.equal(/众议院/.test(secOnly.valueNote), false)
+
+  initWhaleTables(new Database(':memory:'))
+  for (const slug of ['berkshire', 'himalaya', 'hhlr', 'pershing', 'scion', 'ark']) {
+    assert.equal(deleteInstitution(slug), true)
+  }
+  const houseOnly = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
+  assert.equal(houseOnly.institutions.length, 1)
+  assert.match(houseOnly.valueNote, /申报区间/)
+  assert.equal(/13F/.test(houseOnly.valueNote), false)
 })
 
 test('详情含相对上期的增减，未知机构 404', async () => {

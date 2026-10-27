@@ -24,11 +24,32 @@ test('年度披露只留下有市值的上市证券，期权单独成行', () =>
   assert.equal(apple?.valueLabel, '5,000,001–25,000,000')
   assert.equal(apple?.shares, 0)
   assert.equal(calls?.valueLabel, '1,000,001–5,000,000')
-  assert.ok((calls?.shares ?? 0) > 0)
+  assert.equal(calls?.shares, 70)
+  const amznCalls = rows.find(row => row.cusip === 'AMZN' && row.putCall === 'Call')
+  assert.equal(amznCalls?.shares, 70)
   assert.equal(rows.some(row => row.cusip === 'PYPL'), false)
   assert.equal(rows.some(row => row.cusip === 'DIS'), false)
   assert.equal(rows.some(row => row.issuerName.includes('Zinfandel')), false)
   assert.ok(rows.length >= 20)
+})
+
+test('同一段说明里的多笔 call 与 put 合约数分别加总', () => {
+  const calls = parseHouseHoldings(
+    'Alphabet Inc. (GOOGL) [OP] SP $1,000,001 - $5,000,000 None D: 50 call options and 20 call options.',
+  )
+  assert.equal(calls[0]?.putCall, 'Call')
+  assert.equal(calls[0]?.shares, 70)
+
+  const puts = parseHouseHoldings(
+    'Widget Inc. (WDGT) [OP] SP $100,001 - $250,000 None D: 1,000 put options and 5 put options.',
+  )
+  assert.equal(puts[0]?.putCall, 'Put')
+  assert.equal(puts[0]?.shares, 1005)
+
+  const both = parseHouseHoldings(
+    'Mixed Inc. (MIXD) [OP] SP $15,001 - $50,000 None D: 3 call options and 4 put options.',
+  )
+  assert.equal(both[0]?.shares, 7)
 })
 
 test('索引只认年度报告，定期交易报告不算持仓快照', () => {

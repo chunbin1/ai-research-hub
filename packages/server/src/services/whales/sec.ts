@@ -20,6 +20,28 @@ export function filingIndexUrl(cik: string, accession: string): string {
 
 /** 信息表链接只允许打到 SEC 的 https。相对路径按 filing index 所在目录解析。 */
 const SEC_ARCHIVE_HOSTS = new Set(['www.sec.gov', 'data.sec.gov'])
+const HOUSE_DISCLOSURE_HOST = 'disclosures-clerk.house.gov'
+
+/** getBytes 只给众议院 PDF 用。主机不在白名单就拒绝，避免以后误传 URL 变成开放代理。 */
+export function assertHouseDisclosureUrl(raw: string): string {
+  let resolved: URL
+  try {
+    resolved = new URL(raw)
+  } catch {
+    throw new Error('拒绝非众议院披露地址（无法解析）')
+  }
+  if (resolved.username || resolved.password) {
+    throw new Error('拒绝非众议院披露地址（含凭据）')
+  }
+  if (resolved.protocol !== 'https:') {
+    throw new Error(`拒绝非众议院披露地址（${resolved.protocol || '未知协议'}）`)
+  }
+  const host = resolved.hostname.toLowerCase().replace(/\.$/, '')
+  if (host !== HOUSE_DISCLOSURE_HOST) {
+    throw new Error(`拒绝非众议院披露地址（${host || '无主机'}）`)
+  }
+  return resolved.href
+}
 
 export function absoluteArchiveUrl(href: string, indexUrl: string): string {
   const trimmed = href.trim()
@@ -94,8 +116,9 @@ export function createSecTransport(userAgent: string, minIntervalMs = MIN_INTERV
       return secGetText(url, { userAgent, wait })
     },
     async getBytes(url: string) {
+      const allowed = assertHouseDisclosureUrl(url)
       await wait()
-      const response = await fetch(url, {
+      const response = await fetch(allowed, {
         headers: { 'User-Agent': userAgent, Accept: 'application/pdf,*/*' },
         signal: AbortSignal.timeout(SEC_FETCH_TIMEOUT_MS),
       })

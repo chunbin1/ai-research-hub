@@ -119,10 +119,78 @@ test('列表给出摘要，没有申报的机构标暂无数据', async () => {
   expect(screen.getByText('暂无数据')).toBeTruthy()
   expect(screen.getByText('最近一次拉取失败')).toBeTruthy()
   expect(screen.getByText('迈克尔·伯里')).toBeTruthy()
+  expect(screen.getByText('美国 SEC Form 13F 的公开申报。')).toBeTruthy()
+  expect(screen.getByText(/13F 通常在季末后 45 天内申报/)).toBeTruthy()
+  expect(screen.queryByText(/众议院年度披露按年公布/)).toBeNull()
   expect(screen.queryByRole('button', { name: '添加机构' })).toBeNull()
   expect(screen.queryByRole('columnheader', { name: '操作' })).toBeNull()
   expect(screen.queryByRole('button', { name: '删除' })).toBeNull()
   expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('名单里有众议院披露时，副标题和页脚同时写到 13F 和众议院', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+    ...LIST,
+    institutions: [
+      ...LIST.institutions,
+      {
+        slug: 'pelosi',
+        manager: '佩洛西',
+        nameZh: '美国众议院',
+        nameEn: 'U.S. House of Representatives',
+        cik: 'house:pelosi',
+        source: 'house-fd',
+        dataStatus: 'ready',
+        syncError: null,
+        latest: {
+          reportPeriod: '2025-12-31',
+          filedAt: '2026-05-15',
+          form: '年度披露',
+          positionCount: 20,
+          totalValueUsd: 1,
+          top: { issuerName: 'Apple Inc. (AAPL)', ticker: 'AAPL', cusip: 'AAPL' },
+        },
+      },
+    ],
+  })))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('link', { name: '佩洛西' })).toBeTruthy()
+  expect(screen.getByText('美国 SEC Form 13F 的公开申报，以及众议院年度财务披露。')).toBeTruthy()
+  const footer = screen.getByText(/众议院年度披露按年公布/)
+  expect(footer.textContent).toContain('13F 通常在季末后 45 天内申报')
+  expect(footer.textContent).toContain('金额是申报区间')
+})
+
+test('名单只剩众议院披露时，副标题和页脚不再写成整表都是 13F', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+    valueNote: '金额是申报区间。',
+    institutions: [
+      {
+        slug: 'pelosi',
+        manager: '佩洛西',
+        nameZh: '美国众议院',
+        nameEn: 'U.S. House of Representatives',
+        cik: 'house:pelosi',
+        source: 'house-fd',
+        dataStatus: 'empty',
+        syncError: null,
+        latest: null,
+      },
+    ],
+  })))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('link', { name: '佩洛西' })).toBeTruthy()
+  expect(screen.getByText('美国众议院年度财务披露。')).toBeTruthy()
+  expect(screen.queryByText(/13F 通常在季末后/)).toBeNull()
+  expect(screen.getByText(/众议院年度披露按年公布，金额是申报区间/)).toBeTruthy()
 })
 
 test('管理员添加机构后，名单里能看到新人', async () => {
@@ -342,6 +410,8 @@ test('详情同时列出持仓和四类增减', async () => {
   expect(await screen.findByRole('heading', { name: '巴菲特' })).toBeTruthy()
   expect(screen.getAllByRole('columnheader', { name: '市值（美元）' }).length).toBeGreaterThan(0)
   expect(screen.getByText(/对比上期/)).toBeTruthy()
+  expect(screen.getByText(/增减按股数，不按市值/)).toBeTruthy()
+  expect(screen.getAllByRole('columnheader', { name: '相对上期' }).length).toBeGreaterThan(0)
   expect(screen.getByText('2026-03-31')).toBeTruthy()
   expect(screen.getByText('MICROSOFT CORP')).toBeTruthy()
   expect(screen.getByText('594918104')).toBeTruthy()
@@ -358,6 +428,29 @@ test('详情同时列出持仓和四类增减', async () => {
   expect(decreased.className).toContain('text-short')
   expect(closed.className).toContain('text-short')
   expect(screen.getByRole('heading', { name: '清仓' })).toBeTruthy()
+})
+
+test('众议院详情不展示按股数的增减', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+    ...DETAIL,
+    institution: { ...DETAIL.institution, source: 'house-fd', manager: '佩洛西', slug: 'pelosi' },
+    valueNote: '金额是美国众议院年度财务披露的申报区间。',
+    period: { ...DETAIL.period, form: '年度披露', reportPeriod: '2025-12-31' },
+  })))
+  render(
+    <MemoryRouter initialEntries={['/whales/pelosi']}>
+      <Routes>
+        <Route path="/whales/:slug" element={<WhaleDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('heading', { name: '佩洛西' })).toBeTruthy()
+  expect(screen.getByText(/没有股数，不标相对上期的增减/)).toBeTruthy()
+  expect(screen.queryByText(/增减按股数/)).toBeNull()
+  expect(screen.queryByRole('columnheader', { name: '相对上期' })).toBeNull()
+  expect(screen.queryByRole('heading', { name: '清仓' })).toBeNull()
+  expect(screen.queryByText(/加仓、新建仓为红/)).toBeNull()
+  expect(screen.getByText(/申报区间/)).toBeTruthy()
 })
 
 test('导航有名家持仓；功能关闭时去掉', async () => {

@@ -13,6 +13,9 @@ export const VALUE_NOTE =
 export const HOUSE_VALUE_NOTE =
   '金额是美国众议院年度财务披露的申报区间，不是精确市值。表内上市股票和期权多记在配偶名下。占比和名单合计按区间中点估算。'
 
+export const MIXED_VALUE_NOTE =
+  '名单同时有 SEC Form 13F 和美国众议院年度财务披露。13F 市值为美元（2023-01-03 及之后按美元填报，更早按千美元换算后入库）。众议院金额是申报区间，不是精确市值，合计按区间中点估算。'
+
 export interface WhalePositionView {
   cusip: string
   ticker: string | null
@@ -121,7 +124,15 @@ export function listWhaleSummaries(): { institutions: WhaleSummary[]; valueNote:
       },
     }
   })
-  return { institutions, valueNote: VALUE_NOTE }
+  return { institutions, valueNote: valueNoteForSources(institutions.map(row => row.source)) }
+}
+
+function valueNoteForSources(sources: readonly ('sec-13f' | 'house-fd')[]): string {
+  const hasHouse = sources.some(source => source === 'house-fd')
+  const has13f = sources.some(source => source !== 'house-fd')
+  if (hasHouse && has13f) return MIXED_VALUE_NOTE
+  if (hasHouse) return HOUSE_VALUE_NOTE
+  return VALUE_NOTE
 }
 
 function totalRangeLabel(rows: { valueLabel?: string | null }[]): string | null {

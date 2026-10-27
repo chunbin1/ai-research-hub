@@ -33,7 +33,7 @@ function SecurityCell({ row }: { row: WhalePosition }) {
   )
 }
 
-function PositionTable({ rows, showWeight }: { rows: WhalePosition[]; showWeight: boolean }) {
+function PositionTable({ rows, showWeight, showChange }: { rows: WhalePosition[]; showWeight: boolean; showChange: boolean }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-t border-ink text-left">
@@ -43,7 +43,7 @@ function PositionTable({ rows, showWeight }: { rows: WhalePosition[]; showWeight
             <th scope="col" className="py-3 pr-3 text-right font-normal">数量</th>
             <th scope="col" className="py-3 pr-3 text-right font-normal">市值（美元）</th>
             {showWeight && <th scope="col" className="py-3 pr-3 text-right font-normal">占比</th>}
-            <th scope="col" className="py-3 text-right font-normal">相对上期</th>
+            {showChange && <th scope="col" className="py-3 text-right font-normal">相对上期</th>}
           </tr>
         </thead>
         <tbody>
@@ -61,7 +61,9 @@ function PositionTable({ rows, showWeight }: { rows: WhalePosition[]; showWeight
                   {row.weight === null ? '—' : formatWeight(row.weight)}
                 </td>
               )}
-              <td className="py-4 text-right font-sans-sc text-[14px] tabular-nums"><ChangeCell row={row} /></td>
+              {showChange && (
+                <td className="py-4 text-right font-sans-sc text-[14px] tabular-nums"><ChangeCell row={row} /></td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -120,6 +122,7 @@ export default function WhaleDetailPage() {
   }
 
   const { institution, period } = detail
+  const house = institution.source === 'house-fd'
 
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
@@ -148,16 +151,18 @@ export default function WhaleDetailPage() {
                 </a>
               </p>
               <p className="m-0 text-[12px] text-ink-faint">
-                {detail.previousPeriod
-                  ? <>对比上期 <time dateTime={detail.previousPeriod.reportPeriod}>{detail.previousPeriod.reportPeriod}</time>。增减按股数，不按市值。</>
-                  : '暂无上期可对比。'}
+                {house
+                  ? '众议院披露只有金额区间、没有股数，不标相对上期的增减。'
+                  : detail.previousPeriod
+                    ? <>对比上期 <time dateTime={detail.previousPeriod.reportPeriod}>{detail.previousPeriod.reportPeriod}</time>。增减按股数，不按市值。</>
+                    : '暂无上期可对比。'}
               </p>
             </div>
-            <PositionTable rows={detail.positions} showWeight />
-            {detail.closed.length > 0 && (
+            <PositionTable rows={detail.positions} showWeight showChange={!house} />
+            {!house && detail.closed.length > 0 && (
               <section className="flex flex-col gap-3">
                 <h2 className="m-0 font-serif-sc text-[16px] font-semibold text-ink">清仓</h2>
-                <PositionTable rows={detail.closed} showWeight={false} />
+                <PositionTable rows={detail.closed} showWeight={false} showChange />
               </section>
             )}
           </>
@@ -165,7 +170,7 @@ export default function WhaleDetailPage() {
       </main>
 
       <footer className={`mt-5 border-t border-rule pb-7 pt-4 text-[11px] leading-[1.6] text-ink-faint md:mt-6 md:pt-5 md:text-[12px] ${GUTTER}`}>
-        {detail.valueNote} 加仓、新建仓为红，减仓、清仓为绿。
+        {detail.valueNote}{house ? '' : ' 加仓、新建仓为红，减仓、清仓为绿。'}
       </footer>
     </div>
   )

@@ -1,5 +1,6 @@
 // 一家一家拉。传输层可换成测试夹具，正式环境走 sec.ts。
-// 没有 User-Agent 时零请求：SEC 会拒，空跑还会把启动补拉的闸门写上。
+// 没有 User-Agent 时不请求 SEC：SEC 会拒，而且空跑不该把启动补拉的闸门写上。
+// skipped 仍只表示「13F 跳过」。众议院披露不依赖 SEC UA；只要本轮实际跑过机构（含仅 house-fd），就写 lastSyncAt。
 import {
   aggregatePositions, filingsFromSubmissions, informationTableXmlPath, parseInformationTable,
   selectReportPeriods,
@@ -43,8 +44,10 @@ export async function syncWhales(opts: {
   const extract = opts.extractPdfText ?? extractPdfText
   if (opts.userAgent) await refreshTickers(opts.transport, now())
   const counts: SyncCounts = { ok: 0, empty: 0, failed: 0, skipped: !opts.userAgent }
+  let ran = false
   for (const inst of listInstitutions()) {
     if (inst.source !== 'house-fd' && !opts.userAgent) continue
+    ran = true
     try {
       const outcome = inst.source === 'house-fd'
         ? await syncHouseInstitution(inst, opts.transport, at, now(), extract)
@@ -58,7 +61,7 @@ export async function syncWhales(opts: {
       markSync(inst.slug, at, message.slice(0, 500))
     }
   }
-  if (opts.userAgent) setLastSyncAt(at)
+  if (ran) setLastSyncAt(at)
   return counts
 }
 

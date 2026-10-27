@@ -97,15 +97,16 @@ export function parseHouseHoldings(text: string): AggregatedPosition[] {
     if (low === null || high === null) continue
     const ticker = name.match(/\(([A-Z]{1,5})\)\s*$/)?.[1]
     if (!ticker) continue
-    const puts = /put options/i.test(rest)
-    const contracts = rest.match(/(\d[\d,]*)\s+call options/i)
+    const callShares = sumOptionContracts(rest, 'call')
+    const putShares = sumOptionContracts(rest, 'put')
+    const puts = putShares > 0 || (callShares === 0 && /put options/i.test(rest))
     rows.push({
       cusip: ticker,
       putCall: code === 'OP' ? (puts ? 'Put' : 'Call') : '',
       shareType: '',
       issuerName: name,
       titleOfClass: code === 'OP' ? 'OPTION' : code === 'MF' ? 'FUND' : 'COM',
-      shares: contracts ? Number(contracts[1]?.replace(/,/g, '')) : 0,
+      shares: callShares + putShares,
       valueReported: high,
       valueUsd: (low + high) / 2,
       valueLabel: formatUsdRange(low, high),
@@ -118,6 +119,17 @@ export async function extractPdfText(bytes: Uint8Array): Promise<string> {
   const pdf = await getDocumentProxy(bytes)
   const extracted = await extractText(pdf, { mergePages: true })
   return extracted.text
+}
+
+/** 同一段说明里可能写多笔，例如「50 call options … and 20 call options」，合约数要加总。 */
+function sumOptionContracts(text: string, kind: 'call' | 'put'): number {
+  const re = new RegExp(`(\\d[\\d,]*)\\s+${kind} options`, 'gi')
+  let total = 0
+  for (const match of text.matchAll(re)) {
+    const n = Number(match[1]?.replace(/,/g, ''))
+    if (Number.isFinite(n)) total += n
+  }
+  return total
 }
 
 function issuerName(raw: string): string {
