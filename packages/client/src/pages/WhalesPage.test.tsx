@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { test, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import WhalesPage from './WhalesPage'
 import WhaleDetailPage from './WhaleDetailPage'
@@ -115,6 +116,48 @@ test('列表给出摘要，没有申报的机构标暂无数据', async () => {
   expect(screen.getByText('暂无数据')).toBeTruthy()
   expect(screen.getByText('最近一次拉取失败')).toBeTruthy()
   expect(screen.getByText('迈克尔·伯里')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: '添加机构' })).toBeNull()
+})
+
+test('管理员添加机构后，名单里能看到新人', async () => {
+  const user = userEvent.setup()
+  let added = false
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const path = String(url)
+    if (path.includes('/api/auth/')) {
+      return jsonResponse({
+        id: 'u1', username: 'admin', avatarUrl: null, messageCount: 0,
+        limit: 100, unlimited: false, isAdmin: true, remaining: 100,
+      })
+    }
+    if (path.endsWith('/api/whales') && init?.method === 'POST') {
+      added = true
+      return jsonResponse({ sync: 'empty' }, 201)
+    }
+    if (path.includes('/api/whales')) {
+      const institutions = added
+        ? [...LIST.institutions, {
+          slug: 'baidu-inc', manager: '李彦宏', nameZh: '百度', nameEn: 'Baidu, Inc.',
+          cik: '0001234567', dataStatus: 'empty' as const, syncError: null, latest: null,
+        }]
+        : LIST.institutions
+      return jsonResponse({ ...LIST, institutions })
+    }
+    return jsonResponse({ updatedAt: null, holdings: [] })
+  }))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('button', { name: '添加机构' }))
+  await user.type(screen.getByLabelText('CIK'), '1234567')
+  await user.type(screen.getByLabelText('管理人'), '李彦宏')
+  await user.type(screen.getByLabelText('中文名'), '百度')
+  await user.type(screen.getByLabelText('英文名'), 'Baidu, Inc.')
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  expect(await screen.findByRole('link', { name: '李彦宏' })).toBeTruthy()
+  expect(screen.getAllByText('暂无数据').length).toBeGreaterThan(1)
 })
 
 test('详情同时列出持仓和四类增减', async () => {

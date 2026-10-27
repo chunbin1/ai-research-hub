@@ -3,13 +3,22 @@ import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import fastify from 'fastify'
 
+// AUTH_DISABLED 必须在 auth.ts 求值前设好。本文件测管理员能写；未登录见 whales.auth.test.ts。
+process.env.AUTH_DISABLED = 'true'
+
 const { initWhaleTables, replaceFiling } = await import('../services/whales/store.ts')
 const { whaleRoutes } = await import('./whales.ts')
 
-async function appWithDb() {
+async function appWithDb(synced: string[] = []) {
   initWhaleTables(new Database(':memory:'))
   const app = fastify()
-  await app.register(whaleRoutes, { prefix: '/api' })
+  await app.register(whaleRoutes, {
+    prefix: '/api',
+    syncOne: async (slug: string) => {
+      synced.push(slug)
+      return 'empty'
+    },
+  })
   await app.ready()
   return app
 }
@@ -84,8 +93,85 @@ test('WHALES=off 时列表也 404', async () => {
     const detail = await app.inject({ method: 'GET', url: '/api/whales/berkshire' })
     assert.equal(detail.statusCode, 404)
     assert.deepEqual(detail.json(), { error: 'whales_disabled' })
+    const added = await app.inject({
+      method: 'POST', url: '/api/whales',
+      payload: { cik: '0001234567', manager: '甲', nameZh: '甲公司', nameEn: 'Jia' },
+    })
+    assert.equal(added.statusCode, 404)
+    assert.deepEqual(added.json(), { error: 'whales_disabled' })
   } finally {
     if (saved === undefined) delete process.env.WHALES
     else process.env.WHALES = saved
   }
+})
+
+test('管理员添加机构后出现在列表，冲突和坏 CIK 会拒绝', async () => {
+  const synced: string[] = []
+  const app = await appWithDb(synced)
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/whales',
+    payload: { cik: '1234567', manager: '李彦宏', nameZh: '百度', nameEn: 'Baidu, Inc.' },
+  })
+  assert.equal(created.statusCode, 201)
+  assert.equal(created.json().sync, 'empty')
+  assert.equal(created.json().institution.slug, 'baidu-inc')
+  assert.equal(created.json().institution.cik, '0001234567')
+  assert.equal(created.json().institution.dataStatus, 'empty')
+  assert.deepEqual(synced, ['baidu-inc'])
+
+  const list = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
+  assert.equal(list.institutions.at(-1).slug, 'baidu-inc')
+  assert.equal(list.institutions.at(-1).manager, '李彦宏')
+
+  const sameCik = await app.inject({
+    method: 'POST', url: '/api/whales',
+    payload: { cik: '1067983', manager: '别人', nameZh: '另一家', nameEn: 'Other Fund', slug: 'other-fund' },
+  })
+  assert.equal(sameCik.statusCode, 409)
+  assert.equal(sameCik.json().error, 'cik_taken')
+
+  const sameSlug = await app.inject({
+    method: 'POST', url: '/api/whales',
+    payload: { cik: '0000000099', manager: '别人', nameZh: '另一家', slug: 'Berkshire' },
+  })
+  assert.equal(sameSlug.statusCode, 409)
+  assert.equal(sameSlug.json().error, 'slug_taken')
+
+  const badCik = await app.inject({
+    method: 'POST', url: '/api/whales',
+    payload: { cik: '12ab', manager: '甲', nameZh: '甲公司' },
+  })
+  assert.equal(badCik.statusCode, 400)
+  assert.equal(badCik.json().error, 'invalid_input')
+
+  const chineseOnly = await app.inject({
+    method: 'POST', url: '/api/whales',
+    payload: { cik: '0000000099', manager: '甲', nameZh: '甲公司' },
+  })
+  assert.equal(chineseOnly.statusCode, 400)
+  assert.equal(chineseOnly.json().error, 'slug_required')
+})
+
+test('管理员可以硬删机构，申报一起清掉', async () => {
+  const app = await appWithDb()
+  replaceFiling({
+    slug: 'scion', accession: '0001193125-26-000009', form: '13F-HR',
+    reportPeriod: '2025-09-30', filedAt: '2025-11-14', sourceUrl: 'https://www.sec.gov/scion',
+    valueUnit: 'dollars', fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [{
+      cusip: '69608A108', putCall: '', shareType: 'SH', issuerName: 'PALANTIR', titleOfClass: 'COM',
+      shares: 1, valueReported: 10, valueUsd: 10,
+    }],
+  })
+  const removed = await app.inject({ method: 'DELETE', url: '/api/whales/scion' })
+  assert.equal(removed.statusCode, 200)
+  assert.deepEqual(removed.json(), { ok: true })
+  const detail = await app.inject({ method: 'GET', url: '/api/whales/scion' })
+  assert.equal(detail.statusCode, 404)
+  const list = (await app.inject({ method: 'GET', url: '/api/whales' })).json()
+  assert.equal(list.institutions.some((row: { slug: string }) => row.slug === 'scion'), false)
+  const missing = await app.inject({ method: 'DELETE', url: '/api/whales/scion' })
+  assert.equal(missing.statusCode, 404)
+  assert.equal(missing.json().error, 'not_found')
 })

@@ -24,7 +24,7 @@
 
 - 不接 OpenFIGI、Yahoo 或其它行情源来补 ticker、补价格
 - 不把 13F 写进 `holdings_*` 表，也不进信号自选股
-- 不做管理员手动触发（可以以后加，本轮不依赖它）
+- 不做「立刻同步全部」按钮。管理员添加机构时会拉这一家；全量仍走定时任务
 - 不做报告期切换器。页面只展示最新一期，并和库里相邻的上一期对比
 - 不展示投票权、`otherManager`、投资裁量拆分。同一证券的多行在入库前合并
 - 不把历史每一期都摊到页面上。库里保留最近 8 个报告期，供对比和日后扩展
@@ -37,7 +37,7 @@
 | 开关 | `HOLDINGS_API_KEY` 只关上传 | `SIGNALS=off` | `WHALES=off` |
 | 表 | `holdings_meta` / `holdings_positions` | `signal_*` / `watchlist` | `whale_*` / `sec_company_tickers` |
 | 空数据时导航 | 隐藏「持仓」，直开会回首页 | 栏目一直在 | 栏目一直在；`WHALES=off` 才藏 |
-| 收录 | noindex，不进 sitemap | 可收录 | 列表和六家详情可收录；未知 slug noindex |
+| 收录 | noindex，不进 sitemap | 可收录 | 列表和库里已有机构的详情可收录；未知 slug noindex |
 
 三条线不互相读写。关其中一条不影响另外两条。
 
@@ -190,11 +190,11 @@ SEC Release 34-95148：2023-01-03 及之后**提交**的 13F，`value` 改为四
 
 ## API
 
-公开读，与 `GET /api/signals` 同一档，不要求登录。`WHALES=off` 时整组 404，体为 `{ "error": "whales_disabled" }`。
+读接口公开，与 `GET /api/signals` 同一档，不要求登录。增删仅管理员。`WHALES=off` 时整组 404，体为 `{ "error": "whales_disabled" }`。
 
 ### `GET /api/whales`
 
-按 `sort_order` 返回六家。没有申报的机构也在里面：`dataStatus` 为 `empty`，`latest` 为 `null`。有申报为 `ready`。`syncError` 是最近一次失败的短文本，成功或尚未拉取时为 `null`。
+按 `sort_order` 返回种子机构和后来添加的机构。没有申报的机构也在里面：`dataStatus` 为 `empty`，`latest` 为 `null`。有申报为 `ready`。`syncError` 是最近一次失败的短文本，成功或尚未拉取时为 `null`。
 
 `latest` 含 `reportPeriod`、`filedAt`、`form`、`positionCount`、`totalValueUsd`，以及市值最大的一持仓 `top`（`issuerName`、`ticker`、`cusip`）。没有持仓行时 `top` 为 `null`。
 
@@ -209,6 +209,20 @@ SEC Release 34-95148：2023-01-03 及之后**提交**的 13F，`value` 改为四
 `positions` 按 `valueUsd` 降序。每行：`cusip`、`ticker`、`issuerName`、`titleOfClass`、`putCall`、`shareType`、`shares`、`valueUsd`、`weight`、`change`、`prevShares`、`prevValueUsd`、`shareDelta`、`valueDeltaUsd`。没有上期时，`change` 和 `prev*`、`shareDelta`、`valueDeltaUsd` 为 `null`。
 
 `closed` 是清仓行，按上期市值降序。`weight` 为 `null`。
+
+### `POST /api/whales`
+
+仅管理员，与信号页添加标的一样走 `requireAdmin`。未登录 401，非管理员 403。
+
+请求体：`cik`、`manager`、`nameZh` 必填，`nameEn`、`slug` 可选。CIK 是 1–10 位数字，入库前补零到 10 位。短名不填时从英文名生成；生成不了返回 400 `{ "error": "slug_required" }`。手填短名若含无法变成 URL 片段的字符，返回 400 `{ "error": "invalid_input" }`。
+
+slug 或 CIK 与现有行冲突：409，`error` 为 `slug_taken` 或 `cik_taken`，`message` 说明冲突的是哪一个。
+
+成功 201。写入后立刻只拉这一家，不改全量同步的 `last_sync_at`。没有 13F 仍保留。响应带 `institution`（与列表里同一行）和 `sync`（`ok` / `empty` / `failed` / `skipped`）。
+
+### `DELETE /api/whales/:slug`
+
+仅管理员。硬删这一家，并删除它的申报、持仓和同步记录。没有这家是 404 `{ "error": "not_found" }`。六家种子在进程下次启动时会按代码重新写回；管理员后加的机构不会。
 
 ## 定时任务
 
@@ -230,7 +244,8 @@ SEC Release 34-95148：2023-01-03 及之后**提交**的 13F，`value` 改为四
 ### 列表 `/whales`
 
 - 标题「大佬持仓」
-- 说明：数据来自美国 SEC Form 13F，与本站「持仓」里的实盘账户不是同一份
+- 说明：「美国 SEC Form 13F 的公开申报。」
+- 管理员（与信号页「添加标的」同一套 `requireAdmin`）在列表标题旁看到「添加机构」。必填 CIK、管理人、中文名；英文名和短名可选。短名不填时从英文名生成，纯中文生成不了就要求手填。写入后立刻拉这一家；没有 13F 仍留在列表，状态「暂无数据」。slug 或 CIK 与现有行冲突时接口 409，页面展示返回的说明。删除是硬删，申报和持仓一并清掉；代码里的六家种子会在下次进程启动时写回，管理员后加的机构删了就没有了
 - 列：管理人（链到详情）、机构、报告期、持仓数、市值合计（美元）、第一大持仓、状态
 - `empty`：状态格写「暂无数据」，数字列用「—」
 - 有 `syncError` 且没有申报：状态仍是「暂无数据」，下面一行小字「最近一次拉取失败」
@@ -249,7 +264,7 @@ SEC Release 34-95148：2023-01-03 及之后**提交**的 13F，`value` 改为四
 
 ## SEO
 
-`/whales` 与六家已知 slug 可收录，标题类似「大佬持仓 — 研报站」「巴菲特持仓 — 研报站」。未知 slug、以及 `WHALES=off` 时，按 noindex 处理，sitemap 也不列出这些 URL。`/holdings` 维持 noindex。
+`/whales` 与库里已有机构的详情可收录，标题类似「大佬持仓 — 研报站」「巴菲特持仓 — 研报站」。未知 slug、以及 `WHALES=off` 时，按 noindex 处理，sitemap 也不列出这些 URL。`/holdings` 维持 noindex。
 
 ## 环境变量
 

@@ -12,6 +12,7 @@ import { getAllDocuments, getDocument, readRawMarkdown } from '../services/docum
 import type { Document } from '../types.js'
 import { isWhalesEnabled } from '../services/whales/enabled.js'
 import { WHALE_SEEDS } from '../services/whales/seed.js'
+import { listInstitutions } from '../services/whales/store.js'
 import {
   SITE_NAME, SITE_DESCRIPTION, classifyPath, excerpt, renderHead, robotsTxt, sitemapXml,
   type HeadInput,
@@ -36,6 +37,14 @@ function reportDescription(doc: Document): string {
   return text
 }
 
+function indexedWhales(): { slug: string; manager: string; nameZh: string }[] {
+  try {
+    return listInstitutions().map(row => ({ slug: row.slug, manager: row.manager, nameZh: row.nameZh }))
+  } catch {
+    return WHALE_SEEDS.map(row => ({ slug: row.slug, manager: row.manager, nameZh: row.nameZh }))
+  }
+}
+
 function headFor(path: string, site: string): HeadInput {
   const page = classifyPath(path)
   switch (page.kind) {
@@ -56,12 +65,12 @@ function headFor(path: string, site: string): HeadInput {
           url: `${site}/whales`,
         }
       }
-      const seed = WHALE_SEEDS.find(item => item.slug === page.slug)
-      if (!seed) return { title: SITE_NAME, noindex: true }
+      const institution = indexedWhales().find(item => item.slug === page.slug)
+      if (!institution) return { title: SITE_NAME, noindex: true }
       return {
-        title: `${seed.manager}持仓 — ${SITE_NAME}`,
-        description: `${seed.manager}（${seed.nameZh}）向美国 SEC 申报的 13F 持仓，以及相对上一报告期的增减。`,
-        url: `${site}/whales/${seed.slug}`,
+        title: `${institution.manager}持仓 — ${SITE_NAME}`,
+        description: `${institution.manager}（${institution.nameZh}）向美国 SEC 申报的 13F 持仓，以及相对上一报告期的增减。`,
+        url: `${site}/whales/${institution.slug}`,
       }
     }
     case 'report': {
@@ -108,7 +117,7 @@ export const seoRoutes: FastifyPluginAsync = async (app) => {
   ), async (_request, reply) => {
     reply.type('application/xml; charset=utf-8')
     const whalePaths = isWhalesEnabled()
-      ? ['/whales', ...WHALE_SEEDS.map(item => `/whales/${item.slug}`)]
+      ? ['/whales', ...indexedWhales().map(item => `/whales/${item.slug}`)]
       : []
     return sitemapXml(appUrl(), getAllDocuments(), whalePaths)
   })

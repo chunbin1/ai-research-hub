@@ -140,9 +140,49 @@ export function listInstitutions(): WhaleInstitution[] {
   const rows = db().prepare(`
     SELECT slug, name_zh, name_en, manager, cik, sort_order
     FROM whale_institutions
-    ORDER BY sort_order
+    ORDER BY sort_order, slug
   `).all() as InstitutionRow[]
   return rows.map(toInstitution)
+}
+
+export class WhaleWriteError extends Error {
+  constructor(readonly code: 'slug_taken' | 'cik_taken', message: string) {
+    super(message)
+  }
+}
+
+/** 管理员新加的机构排在已有名单后面。slug、CIK 与现有行冲突则抛 WhaleWriteError。 */
+export function insertInstitution(input: Omit<WhaleInstitution, 'sortOrder'>): WhaleInstitution {
+  const database = db()
+  const existing = listInstitutions()
+  if (existing.some(row => row.slug === input.slug)) {
+    throw new WhaleWriteError('slug_taken', `短名 ${input.slug} 已被使用`)
+  }
+  if (existing.some(row => row.cik === input.cik)) {
+    throw new WhaleWriteError('cik_taken', `CIK ${input.cik} 已在列表中`)
+  }
+  const sortOrder = existing.reduce((max, row) => Math.max(max, row.sortOrder), 0) + 1
+  database.prepare(`
+    INSERT INTO whale_institutions (slug, name_zh, name_en, manager, cik, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(input.slug, input.nameZh, input.nameEn, input.manager, input.cik, sortOrder)
+  return { ...input, sortOrder }
+}
+
+/** 硬删机构，并清掉它的申报、持仓和同步记录。没有这家则返回 false。 */
+export function deleteInstitution(slug: string): boolean {
+  const database = db()
+  if (!getInstitution(slug)) return false
+  database.transaction(() => {
+    database.prepare(`
+      DELETE FROM whale_positions
+      WHERE filing_id IN (SELECT id FROM whale_filings WHERE slug = ?)
+    `).run(slug)
+    database.prepare('DELETE FROM whale_filings WHERE slug = ?').run(slug)
+    database.prepare('DELETE FROM whale_sync WHERE slug = ?').run(slug)
+    database.prepare('DELETE FROM whale_institutions WHERE slug = ?').run(slug)
+  })()
+  return true
 }
 
 export function getInstitution(slug: string): WhaleInstitution | null {

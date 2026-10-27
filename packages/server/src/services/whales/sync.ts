@@ -4,12 +4,13 @@ import {
   aggregatePositions, filingsFromSubmissions, informationTableXmlPath, parseInformationTable,
   selectReportPeriods,
 } from './parser.js'
+import { resolveSecUserAgent } from './enabled.js'
 import {
-  absoluteArchiveUrl, COMPANY_TICKERS_URL, filingIndexUrl, submissionsUrl,
+  absoluteArchiveUrl, COMPANY_TICKERS_URL, createSecTransport, filingIndexUrl, submissionsUrl,
   type SecTransport,
 } from './sec.js'
 import {
-  getFiling, getMeta, listInstitutions, markSync, replaceFiling, replaceTickers, setLastSyncAt,
+  getFiling, getInstitution, getMeta, listInstitutions, markSync, replaceFiling, replaceTickers, setLastSyncAt,
   type WhaleInstitution,
 } from './store.js'
 import { parseCompanyTickers } from './tickers.js'
@@ -51,6 +52,37 @@ export async function syncWhales(opts: {
   }
   setLastSyncAt(at)
   return counts
+}
+
+export type OneSync = 'ok' | 'empty' | 'failed' | 'skipped'
+
+/** 只拉一家。不改 whale_meta.last_sync_at，避免一次手加就把启动补拉的闸门写上。 */
+export async function syncOneWhale(slug: string, opts: {
+  transport?: SecTransport
+  userAgent?: string | null
+  now?: () => Date
+  periods?: number
+} = {}): Promise<OneSync> {
+  const inst = getInstitution(slug)
+  if (!inst) throw new Error(`没有这家机构 ${slug}`)
+  const now = opts.now ?? (() => new Date())
+  const at = now().toISOString()
+  const userAgent = opts.userAgent === undefined ? resolveSecUserAgent() : opts.userAgent
+  if (!userAgent) {
+    markSync(slug, at, '未配置 SEC_USER_AGENT 或 WHALES_CONTACT_EMAIL')
+    return 'skipped'
+  }
+  const transport = opts.transport ?? createSecTransport(userAgent)
+  try {
+    await refreshTickers(transport, now())
+    const outcome = await syncInstitution(inst, transport, opts.periods ?? WHALE_PERIODS, at)
+    markSync(slug, at, null)
+    return outcome
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    markSync(slug, at, message.slice(0, 500))
+    return 'failed'
+  }
 }
 
 async function refreshTickers(transport: SecTransport, now: Date): Promise<void> {
