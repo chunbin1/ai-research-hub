@@ -28,6 +28,8 @@ export interface AggregatedPosition {
   shares: number
   valueReported: number
   valueUsd: number
+  /** 众议院披露的金额区间。有它时页面不把 valueUsd 当成精确市值。 */
+  valueLabel?: string | null
 }
 
 const FORM_13F = new Set(['13F-HR', '13F-HR/A'])

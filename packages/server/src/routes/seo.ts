@@ -60,7 +60,7 @@ function headFor(path: string, site: string): HeadInput {
       if (!isWhalesEnabled()) return { title: SITE_NAME, noindex: true }
       if (page.slug === null) {
         return {
-          title: `大佬持仓 — ${SITE_NAME}`,
+          title: `名家持仓 — ${SITE_NAME}`,
           description: '多家机构向美国 SEC 申报的 13F 持仓，以及相对上一报告期的增减。',
           url: `${site}/whales`,
         }
@@ -113,7 +113,7 @@ export const seoRoutes: FastifyPluginAsync = async (app) => {
   app.get('/seo/sitemap.xml', describeRoute(
     ['seo'],
     'sitemap.xml',
-    'XML。列出首页、信号页、大佬持仓和每篇研报。实盘持仓和接口文档不进站点地图。WHALES=off 时也不列大佬持仓。nginx 把它挂在 /sitemap.xml。',
+    'XML。列出首页、信号页、名家持仓和每篇研报。实盘持仓和接口文档不进站点地图。WHALES=off 时也不列名家持仓。nginx 把它挂在 /sitemap.xml。',
   ), async (_request, reply) => {
     reply.type('application/xml; charset=utf-8')
     const whalePaths = isWhalesEnabled()

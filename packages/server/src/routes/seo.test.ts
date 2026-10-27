@@ -60,9 +60,9 @@ test('robots.txt 与 sitemap.xml', async () => {
   assert.ok(sitemap.body.includes('<loc>https://example.test/whales/hhlr</loc>'))
 })
 
-test('head:大佬持仓可收录，未知 slug 不收录', async () => {
+test('head:名家持仓可收录，未知 slug 不收录', async () => {
   const list = await app.inject({ url: '/api/seo/head/whales' })
-  assert.ok(list.body.includes('<title>大佬持仓 — 研报站</title>'))
+  assert.ok(list.body.includes('<title>名家持仓 — 研报站</title>'))
   assert.ok(list.body.includes('多家机构向美国 SEC 申报的 13F 持仓'))
   assert.equal(list.body.includes('巴菲特、李录'), false)
   assert.ok(!list.body.includes('noindex'))
@@ -72,7 +72,7 @@ test('head:大佬持仓可收录，未知 slug 不收录', async () => {
   assert.ok(missing.body.includes('noindex'))
 })
 
-test('WHALES=off 时大佬持仓 noindex 且不进 sitemap', async () => {
+test('WHALES=off 时名家持仓 noindex 且不进 sitemap', async () => {
   const saved = process.env.WHALES
   process.env.WHALES = 'off'
   try {

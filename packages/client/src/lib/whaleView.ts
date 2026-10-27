@@ -1,4 +1,4 @@
-/** 大佬持仓页的数字和增减文案。页面和测试共用。 */
+/** 名家持仓页的数字和增减文案。页面和测试共用。 */
 
 export type WhaleChange = 'new' | 'increased' | 'decreased' | 'unchanged' | 'closed'
 
@@ -11,6 +11,7 @@ export interface WhalePosition {
   shareType: string
   shares: number
   valueUsd: number
+  valueLabel?: string | null
   weight: number | null
   change: WhaleChange | null
   prevShares: number | null
@@ -25,6 +26,7 @@ export interface WhaleLatest {
   form: string
   positionCount: number
   totalValueUsd: number
+  totalValueLabel?: string | null
   top: { issuerName: string; ticker: string | null; cusip: string } | null
 }
 
@@ -34,6 +36,7 @@ export interface WhaleSummary {
   nameZh: string
   nameEn: string
   cik: string
+  source?: 'sec-13f' | 'house-fd'
   dataStatus: 'ready' | 'empty'
   syncError: string | null
   latest: WhaleLatest | null
@@ -46,6 +49,7 @@ export interface WhaleDetail {
     nameZh: string
     nameEn: string
     cik: string
+    source?: 'sec-13f' | 'house-fd'
     dataStatus: 'ready' | 'empty'
     syncError: string | null
   }

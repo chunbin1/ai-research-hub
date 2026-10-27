@@ -29,7 +29,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: '研报', to: '/', adminOnly: false },
   { label: '信号', to: '/signals', adminOnly: false },
   { label: '持仓', to: '/holdings', adminOnly: false, whenHoldings: true },
-  { label: '大佬持仓', to: '/whales', adminOnly: false, whenWhales: true },
+  { label: '名家持仓', to: '/whales', adminOnly: false, whenWhales: true },
   { label: '评估', to: '/eval', adminOnly: true },
   { label: '站点模型', to: '/admin', adminOnly: true },
   { label: 'trace', to: '/traces', adminOnly: true },

@@ -2,7 +2,7 @@
 // ticker 不写进行里：公司名表更新后，读的时候重新配。
 import type { DB } from '../db.js'
 import type { AggregatedPosition } from './parser.js'
-import { WHALE_SEEDS } from './seed.js'
+import { WHALE_SEEDS, type WhaleSource } from './seed.js'
 import type { ValueUnit } from './valueUnit.js'
 
 export interface WhaleInstitution {
@@ -12,6 +12,7 @@ export interface WhaleInstitution {
   manager: string
   cik: string
   sortOrder: number
+  source: WhaleSource
 }
 
 export interface WhaleFiling {
@@ -55,7 +56,8 @@ export function initWhaleTables(db: DB): void {
       name_en    TEXT NOT NULL,
       manager    TEXT NOT NULL,
       cik        TEXT NOT NULL,
-      sort_order INTEGER NOT NULL
+      sort_order INTEGER NOT NULL,
+      source     TEXT NOT NULL DEFAULT 'sec-13f'
     );
     CREATE TABLE IF NOT EXISTS whale_filings (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,6 +81,7 @@ export function initWhaleTables(db: DB): void {
       shares         REAL NOT NULL,
       value_usd      REAL NOT NULL,
       value_reported REAL NOT NULL,
+      value_label    TEXT,
       PRIMARY KEY (filing_id, cusip, put_call, share_type)
     );
     CREATE TABLE IF NOT EXISTS whale_sync (
@@ -98,21 +101,24 @@ export function initWhaleTables(db: DB): void {
       cik    TEXT NOT NULL
     );
   `)
-  // 表已存在时 CREATE TABLE 不会补约束。先收掉重复 CIK，再建唯一索引，避免脏库直接启动失败。
+  // 表已存在时 CREATE TABLE 不会补列。先补列，再收掉重复 CIK，再建唯一索引。
+  addColumn(db, 'whale_institutions', 'source', `TEXT NOT NULL DEFAULT 'sec-13f'`)
+  addColumn(db, 'whale_positions', 'value_label', 'TEXT')
   collapseDuplicateCiks(db)
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_whale_institutions_cik ON whale_institutions (cik)')
   const holderOf = db.prepare(`
     SELECT slug FROM whale_institutions WHERE cik = ? AND slug != ?
   `)
   const upsert = db.prepare(`
-    INSERT INTO whale_institutions (slug, name_zh, name_en, manager, cik, sort_order)
-    VALUES (@slug, @nameZh, @nameEn, @manager, @cik, @sortOrder)
+    INSERT INTO whale_institutions (slug, name_zh, name_en, manager, cik, sort_order, source)
+    VALUES (@slug, @nameZh, @nameEn, @manager, @cik, @sortOrder, @source)
     ON CONFLICT(slug) DO UPDATE SET
       name_zh = excluded.name_zh,
       name_en = excluded.name_en,
       manager = excluded.manager,
       cik = excluded.cik,
-      sort_order = excluded.sort_order
+      sort_order = excluded.sort_order,
+      source = excluded.source
   `)
   for (const seed of WHALE_SEEDS) {
     // 删掉种子后又用同一 CIK 加了别人时，不要把种子写回去造成两行。
@@ -122,7 +128,7 @@ export function initWhaleTables(db: DB): void {
       continue
     }
     try {
-      upsert.run(seed)
+      upsert.run({ ...seed, source: seed.source ?? 'sec-13f' })
     } catch (err) {
       if (!isInstitutionConstraint(err)) throw err
       console.warn(`[whales] 跳过种子 ${seed.slug}：CIK ${seed.cik} 写入冲突`)
@@ -153,6 +159,12 @@ function collapseDuplicateCiks(database: DB): void {
   }
 }
 
+function addColumn(database: DB, table: string, column: string, definition: string): void {
+  const cols = database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  if (cols.some(col => col.name === column)) return
+  database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+}
+
 function db(): DB {
   if (!_db) throw new Error('whale store 未初始化 —— 先调用 initWhaleTables()')
   return _db
@@ -165,6 +177,7 @@ interface InstitutionRow {
   manager: string
   cik: string
   sort_order: number
+  source: string | null
 }
 
 function toInstitution(row: InstitutionRow): WhaleInstitution {
@@ -175,12 +188,13 @@ function toInstitution(row: InstitutionRow): WhaleInstitution {
     manager: row.manager,
     cik: row.cik,
     sortOrder: row.sort_order,
+    source: row.source === 'house-fd' ? 'house-fd' : 'sec-13f',
   }
 }
 
 export function listInstitutions(): WhaleInstitution[] {
   const rows = db().prepare(`
-    SELECT slug, name_zh, name_en, manager, cik, sort_order
+    SELECT slug, name_zh, name_en, manager, cik, sort_order, source
     FROM whale_institutions
     ORDER BY sort_order, slug
   `).all() as InstitutionRow[]
@@ -194,7 +208,7 @@ export class WhaleWriteError extends Error {
 }
 
 /** 管理员新加的机构排在已有名单后面。slug、CIK 与现有行冲突则抛 WhaleWriteError。 */
-export function insertInstitution(input: Omit<WhaleInstitution, 'sortOrder'>): WhaleInstitution {
+export function insertInstitution(input: Omit<WhaleInstitution, 'sortOrder' | 'source'>): WhaleInstitution {
   const database = db()
   const existing = listInstitutions()
   if (existing.some(row => row.slug === input.slug)) {
@@ -217,7 +231,7 @@ export function insertInstitution(input: Omit<WhaleInstitution, 'sortOrder'>): W
     }
     throw new WhaleWriteError('slug_taken', `短名 ${input.slug} 已被使用`)
   }
-  return { ...input, sortOrder }
+  return { ...input, source: 'sec-13f', sortOrder }
 }
 
 function isInstitutionConstraint(err: unknown): boolean {
@@ -243,7 +257,7 @@ export function deleteInstitution(slug: string): boolean {
 
 export function getInstitution(slug: string): WhaleInstitution | null {
   const row = db().prepare(`
-    SELECT slug, name_zh, name_en, manager, cik, sort_order
+    SELECT slug, name_zh, name_en, manager, cik, sort_order, source
     FROM whale_institutions WHERE slug = ?
   `).get(slug) as InstitutionRow | undefined
   return row ? toInstitution(row) : null
@@ -303,11 +317,12 @@ interface PositionRow {
   shares: number
   value_usd: number
   value_reported: number
+  value_label: string | null
 }
 
 export function listPositions(filingId: number): AggregatedPosition[] {
   const rows = db().prepare(`
-    SELECT cusip, put_call, share_type, issuer_name, title_of_class, shares, value_usd, value_reported
+    SELECT cusip, put_call, share_type, issuer_name, title_of_class, shares, value_usd, value_reported, value_label
     FROM whale_positions
     WHERE filing_id = ?
   `).all(filingId) as PositionRow[]
@@ -320,6 +335,7 @@ export function listPositions(filingId: number): AggregatedPosition[] {
     shares: row.shares,
     valueUsd: row.value_usd,
     valueReported: row.value_reported,
+    valueLabel: row.value_label,
   }))
 }
 
@@ -334,8 +350,8 @@ export function replaceFiling(input: ReplaceFilingInput): void {
   `)
   const insertPosition = database.prepare(`
     INSERT INTO whale_positions (
-      filing_id, cusip, put_call, share_type, issuer_name, title_of_class, shares, value_usd, value_reported
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      filing_id, cusip, put_call, share_type, issuer_name, title_of_class, shares, value_usd, value_reported, value_label
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   database.transaction(() => {
     const existing = findExisting.get(input.slug, input.reportPeriod) as { id: number } | undefined
@@ -365,6 +381,7 @@ export function replaceFiling(input: ReplaceFilingInput): void {
         row.shares,
         row.valueUsd,
         row.valueReported,
+        row.valueLabel ?? null,
       )
     }
   })()

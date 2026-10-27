@@ -1,4 +1,4 @@
-// 大佬持仓。公开读，管理员可增删。WHALES=off 时整组 404，与信号开关同一档。
+// 名家持仓。公开读，管理员可增删。WHALES=off 时整组 404，与信号开关同一档。
 import type { FastifyPluginAsync } from 'fastify'
 import { describeRoute } from '../openapi/doc.js'
 import { requireAdmin } from './auth.js'
@@ -25,7 +25,7 @@ export const whaleRoutes: FastifyPluginAsync<WhaleRouteOptions> = async (app, op
 
   app.get('/whales', describeRoute(
     ['whales'],
-    '大佬持仓列表',
+    '名家持仓列表',
     '公开读。返回种子机构和后来添加的机构。没有 13F 的机构 dataStatus 为 empty，latest 为 null。WHALES=off 时 404 { error: "whales_disabled" }。',
   ), async () => listWhaleSummaries())
 
@@ -90,7 +90,7 @@ export const whaleRoutes: FastifyPluginAsync<WhaleRouteOptions> = async (app, op
   app.delete<{ Params: { slug: string } }>('/whales/:slug', describeRoute(
     ['whales'],
     '删除机构',
-    '仅管理员。硬删这一家，并清掉它的申报、持仓和同步记录。代码里的六家种子会在下次进程启动时写回。',
+    '仅管理员。硬删这一家，并清掉它的申报、持仓和同步记录。代码里的种子会在下次进程启动时写回。',
   ), async (request, reply) => {
     if (!requireAdmin(request, reply)) return
     if (!deleteInstitution(request.params.slug)) return reply.status(404).send({ error: 'not_found' })

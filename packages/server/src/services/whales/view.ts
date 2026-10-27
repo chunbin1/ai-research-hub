@@ -1,5 +1,6 @@
 // 列表和详情的读模型。增减在这里算，不落库。
 import { diffPositions, type DiffPosition } from './diff.js'
+import { parseUsdRangeLabel, formatUsdRange } from './houseDisclosure.js'
 import {
   getInstitution, getSync, listFilings, listInstitutions, listPositions, loadTickers,
 } from './store.js'
@@ -8,6 +9,12 @@ import type { ValueUnit } from './valueUnit.js'
 
 export const VALUE_NOTE =
   '市值为美元。2023-01-03 及之后提交的 13F，SEC 要求 value 按美元填报；更早的申报按千美元换算（×1000）后入库。'
+
+export const HOUSE_VALUE_NOTE =
+  '金额是美国众议院年度财务披露的申报区间，不是精确市值。表内上市股票和期权多记在配偶名下。占比和名单合计按区间中点估算。有上一期时，增减也按区间中点，不按股数。'
+
+export const MIXED_VALUE_NOTE =
+  '名单同时有 SEC Form 13F 和美国众议院年度财务披露。13F 市值为美元（2023-01-03 及之后按美元填报，更早按千美元换算后入库）。众议院金额是申报区间，不是精确市值，合计按区间中点估算。'
 
 export interface WhalePositionView {
   cusip: string
@@ -18,6 +25,7 @@ export interface WhalePositionView {
   shareType: string
   shares: number
   valueUsd: number
+  valueLabel: string | null
   weight: number | null
   change: DiffPosition['change']
   prevShares: number | null
@@ -32,6 +40,7 @@ export interface WhaleSummary {
   nameZh: string
   nameEn: string
   cik: string
+  source: 'sec-13f' | 'house-fd'
   dataStatus: 'ready' | 'empty'
   syncError: string | null
   latest: {
@@ -40,6 +49,7 @@ export interface WhaleSummary {
     form: string
     positionCount: number
     totalValueUsd: number
+    totalValueLabel: string | null
     top: { issuerName: string; ticker: string | null; cusip: string } | null
   } | null
 }
@@ -47,13 +57,14 @@ export interface WhaleSummary {
 function decorate(row: DiffPosition, ticker: string | null, weight: number | null): WhalePositionView {
   return {
     cusip: row.cusip,
-    ticker,
+    ticker: ticker ?? (/^[A-Z]{1,5}$/.test(row.cusip) ? row.cusip : null),
     issuerName: row.issuerName,
     titleOfClass: row.titleOfClass,
     putCall: row.putCall,
     shareType: row.shareType,
     shares: row.shares,
     valueUsd: row.valueUsd,
+    valueLabel: row.valueLabel ?? null,
     weight,
     change: row.change,
     prevShares: row.prevShares,
@@ -75,6 +86,7 @@ export function listWhaleSummaries(): { institutions: WhaleSummary[]; valueNote:
         nameZh: inst.nameZh,
         nameEn: inst.nameEn,
         cik: inst.cik,
+        source: inst.source,
         dataStatus: 'empty' as const,
         syncError: sync.lastError,
         latest: null,
@@ -83,12 +95,16 @@ export function listWhaleSummaries(): { institutions: WhaleSummary[]; valueNote:
     const positions = listPositions(latest.id)
     const total = positions.reduce((sum, row) => sum + row.valueUsd, 0)
     const top = [...positions].sort((a, b) => b.valueUsd - a.valueUsd)[0]
+    const topTicker = top
+      ? index.get(normalizeIssuerName(top.issuerName)) ?? (/^[A-Z]{1,5}$/.test(top.cusip) ? top.cusip : null)
+      : null
     return {
       slug: inst.slug,
       manager: inst.manager,
       nameZh: inst.nameZh,
       nameEn: inst.nameEn,
       cik: inst.cik,
+      source: inst.source,
       dataStatus: 'ready' as const,
       syncError: sync.lastError,
       latest: {
@@ -97,17 +113,39 @@ export function listWhaleSummaries(): { institutions: WhaleSummary[]; valueNote:
         form: latest.form,
         positionCount: positions.length,
         totalValueUsd: total,
-          top: top
+        totalValueLabel: totalRangeLabel(positions),
+        top: top
           ? {
               issuerName: top.issuerName,
-              ticker: index.get(normalizeIssuerName(top.issuerName)) ?? null,
+              ticker: topTicker,
               cusip: top.cusip,
             }
           : null,
       },
     }
   })
-  return { institutions, valueNote: VALUE_NOTE }
+  return { institutions, valueNote: valueNoteForSources(institutions.map(row => row.source)) }
+}
+
+function valueNoteForSources(sources: readonly ('sec-13f' | 'house-fd')[]): string {
+  const hasHouse = sources.some(source => source === 'house-fd')
+  const has13f = sources.some(source => source !== 'house-fd')
+  if (hasHouse && has13f) return MIXED_VALUE_NOTE
+  if (hasHouse) return HOUSE_VALUE_NOTE
+  return VALUE_NOTE
+}
+
+function totalRangeLabel(rows: { valueLabel?: string | null }[]): string | null {
+  if (rows.length === 0 || rows.some(row => !row.valueLabel)) return null
+  let low = 0
+  let high = 0
+  for (const row of rows) {
+    const parsed = parseUsdRangeLabel(row.valueLabel ?? '')
+    if (!parsed) return null
+    low += parsed.low
+    high += parsed.high
+  }
+  return formatUsdRange(low, high)
 }
 
 export interface WhaleDetail {
@@ -117,6 +155,7 @@ export interface WhaleDetail {
     nameZh: string
     nameEn: string
     cik: string
+    source: 'sec-13f' | 'house-fd'
     dataStatus: 'ready' | 'empty'
     syncError: string | null
   }
@@ -147,13 +186,15 @@ export function getWhaleDetail(slug: string): WhaleDetail | null {
     nameZh: inst.nameZh,
     nameEn: inst.nameEn,
     cik: inst.cik,
+    source: inst.source,
     dataStatus: latest ? 'ready' as const : 'empty' as const,
     syncError: sync.lastError,
   }
+  const valueNote = inst.source === 'house-fd' ? HOUSE_VALUE_NOTE : VALUE_NOTE
   if (!latest) {
     return {
       institution,
-      valueNote: VALUE_NOTE,
+      valueNote,
       period: null,
       previousPeriod: null,
       positions: [],
@@ -163,7 +204,7 @@ export function getWhaleDetail(slug: string): WhaleDetail | null {
   const index = buildTickerIndex(loadTickers())
   const current = listPositions(latest.id)
   const prevRows = previous ? listPositions(previous.id) : null
-  const diff = diffPositions(current, prevRows)
+  const diff = diffPositions(current, prevRows, inst.source === 'house-fd' ? 'midpoint' : 'shares')
   const total = diff.positions.reduce((sum, row) => sum + row.valueUsd, 0)
   const tickerOf = (issuerName: string) => index.get(normalizeIssuerName(issuerName)) ?? null
   const positions = [...diff.positions]
@@ -174,7 +215,7 @@ export function getWhaleDetail(slug: string): WhaleDetail | null {
     .map(row => decorate(row, tickerOf(row.issuerName), null))
   return {
     institution,
-    valueNote: VALUE_NOTE,
+    valueNote,
     period: {
       reportPeriod: latest.reportPeriod,
       filedAt: latest.filedAt,

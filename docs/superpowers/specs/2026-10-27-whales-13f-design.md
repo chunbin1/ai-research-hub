@@ -1,4 +1,4 @@
-# 各路大佬 13F 持仓追踪
+# 名家 13F 持仓追踪
 
 ## 背景
 
@@ -13,7 +13,7 @@
 
 ## 目标
 
-- 新栏目「大佬持仓」，路由 `/whales` 与 `/whales/:slug`，和 `/holdings` 完全分开
+- 新栏目「名家持仓」，路由 `/whales` 与 `/whales/:slug`，和 `/holdings` 完全分开
 - 首批固定六家机构，CIK 写进种子数据。名单见下节，2026-10-27 用 `data.sec.gov/submissions` 核对过
 - 列表给出摘要；详情同时给出本期持仓表，以及相对上一报告期的新建仓 / 加仓 / 减仓 / 清仓
 - 定时从 SEC 拉取。`WHALES=off` 时不注册 cron，相关路由 404
@@ -31,7 +31,7 @@
 
 ## 与 holdings / signals 的边界
 
-| | 实盘 `/holdings` | 信号 `/signals` | 大佬 `/whales` |
+| | 实盘 `/holdings` | 信号 `/signals` | 名家 `/whales` |
 |---|---|---|---|
 | 数据从哪来 | 外部 `PUT` 快照 | Yahoo 行情 + 自选股 | SEC Form 13F |
 | 开关 | `HOLDINGS_API_KEY` 只关上传 | `SIGNALS=off` | `WHALES=off` |
@@ -237,13 +237,13 @@ slug 或 CIK 与现有行冲突：409，`error` 为 `slug_taken` 或 `cik_taken`
 
 版式对齐 `/holdings` 与 `/signals`：顶栏由 `SiteLayout` 提供，内容 `max-w-[1440px]`，标题 `font-serif-sc`，数字 `font-sans-sc` + `tabular-nums`，表顶线 `border-ink`。页面不引用 antd，单独懒加载。
 
-导航「大佬持仓」放在「持仓」后面（持仓被隐藏时紧跟「信号」）。桌面和移动两行都有。`/whales/:slug` 仍高亮这一项。
+导航「名家持仓」放在「持仓」后面（持仓被隐藏时紧跟「信号」）。桌面和移动两行都有。`/whales/:slug` 仍高亮这一项。
 
 `WHALES=off`（接口 404 且 `error === whales_disabled`）时两行导航都去掉。其它失败不藏入口，页面自己显示错误。
 
 ### 列表 `/whales`
 
-- 标题「大佬持仓」
+- 标题「名家持仓」
 - 说明：「美国 SEC Form 13F 的公开申报。」
 - 管理员（与信号页「添加标的」同一套 `requireAdmin`）在列表标题旁看到「添加机构」。必填 CIK、管理人、中文名；英文名和短名可选。短名不填时从英文名生成，纯中文生成不了就要求手填。写入后立刻拉这一家；没有 13F 仍留在列表，状态「暂无数据」。slug 或 CIK 与现有行冲突时接口 409，页面展示返回的说明。删除是硬删，申报和持仓一并清掉；代码里的六家种子会在下次进程启动时写回，管理员后加的机构删了就没有了
 - 列：管理人（链到详情）、机构、报告期、持仓数、市值合计（美元）、第一大持仓、状态
@@ -264,7 +264,7 @@ slug 或 CIK 与现有行冲突：409，`error` 为 `slug_taken` 或 `cik_taken`
 
 ## SEO
 
-`/whales` 与库里已有机构的详情可收录，标题类似「大佬持仓 — 研报站」「巴菲特持仓 — 研报站」。未知 slug、以及 `WHALES=off` 时，按 noindex 处理，sitemap 也不列出这些 URL。`/holdings` 维持 noindex。
+`/whales` 与库里已有机构的详情可收录，标题类似「名家持仓 — 研报站」「巴菲特持仓 — 研报站」。未知 slug、以及 `WHALES=off` 时，按 noindex 处理，sitemap 也不列出这些 URL。`/holdings` 维持 noindex。
 
 ## 环境变量
 
@@ -286,7 +286,7 @@ slug 或 CIK 与现有行冲突：409，`error` 为 `slug_taken` 或 `cik_taken`
 - ticker：唯一命中、重名放弃、对不上
 - API：六家都在；无申报是 `empty` 而不是 404；详情含增减；未知 slug 404；`WHALES=off` 时列表也 404
 - 启动补拉闸门：没同步过要补，刚同步过不补
-- 前端：列表有「暂无数据」和摘要列；详情能看见四类增减和「市值（美元）」；导航有「大佬持仓」，功能关闭时没有
+- 前端：列表有「暂无数据」和摘要列；详情能看见四类增减和「市值（美元）」；导航有「名家持仓」，功能关闭时没有
 
 `pnpm typecheck`、`pnpm test`、`pnpm build:client` 必须通过。
 

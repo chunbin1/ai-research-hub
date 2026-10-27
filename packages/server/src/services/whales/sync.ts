@@ -1,5 +1,6 @@
 // 一家一家拉。传输层可换成测试夹具，正式环境走 sec.ts。
-// 没有 User-Agent 时零请求：SEC 会拒，空跑还会把启动补拉的闸门写上。
+// 没有 User-Agent 时不请求 SEC：SEC 会拒，而且空跑不该把启动补拉的闸门写上。
+// skipped 仍只表示「13F 跳过」。众议院披露不依赖 SEC UA；只要本轮实际跑过机构（含仅 house-fd），就写 lastSyncAt。
 import {
   aggregatePositions, filingsFromSubmissions, informationTableXmlPath, parseInformationTable,
   selectReportPeriods,
@@ -15,6 +16,10 @@ import {
 } from './store.js'
 import { parseCompanyTickers } from './tickers.js'
 import { valueUnitForFilingDate } from './valueUnit.js'
+import { HOUSE_DISCLOSURE_MEMBERS } from './seed.js'
+import {
+  extractPdfText, findHouseAnnual, parseHouseHoldings,
+} from './houseDisclosure.js'
 
 export interface SyncCounts {
   ok: number
@@ -31,16 +36,22 @@ export async function syncWhales(opts: {
   userAgent: string | null
   now?: () => Date
   periods?: number
+  extractPdfText?: (bytes: Uint8Array) => Promise<string>
 }): Promise<SyncCounts> {
-  if (!opts.userAgent) return { ok: 0, empty: 0, failed: 0, skipped: true }
   const now = opts.now ?? (() => new Date())
   const at = now().toISOString()
   const periods = opts.periods ?? WHALE_PERIODS
-  await refreshTickers(opts.transport, now())
-  const counts: SyncCounts = { ok: 0, empty: 0, failed: 0, skipped: false }
+  const extract = opts.extractPdfText ?? extractPdfText
+  if (opts.userAgent) await refreshTickers(opts.transport, now())
+  const counts: SyncCounts = { ok: 0, empty: 0, failed: 0, skipped: !opts.userAgent }
+  let ran = false
   for (const inst of listInstitutions()) {
+    if (inst.source !== 'house-fd' && !opts.userAgent) continue
+    ran = true
     try {
-      const outcome = await syncInstitution(inst, opts.transport, periods, at)
+      const outcome = inst.source === 'house-fd'
+        ? await syncHouseInstitution(inst, opts.transport, at, now(), extract)
+        : await syncInstitution(inst, opts.transport, periods, at)
       if (outcome === 'empty') counts.empty += 1
       else counts.ok += 1
       markSync(inst.slug, at, null)
@@ -50,7 +61,7 @@ export async function syncWhales(opts: {
       markSync(inst.slug, at, message.slice(0, 500))
     }
   }
-  setLastSyncAt(at)
+  if (ran) setLastSyncAt(at)
   return counts
 }
 
@@ -98,6 +109,37 @@ async function refreshTickers(transport: SecTransport, now: Date): Promise<void>
   } catch {
     // 公司名表失败不影响已经能展示的申报名称
   }
+}
+
+async function syncHouseInstitution(
+  inst: WhaleInstitution,
+  transport: SecTransport,
+  fetchedAt: string,
+  now: Date,
+  extract: (bytes: Uint8Array) => Promise<string>,
+): Promise<'ok' | 'empty'> {
+  const member = HOUSE_DISCLOSURE_MEMBERS[inst.slug]
+  if (!member) throw new Error(`没有众议院披露对象 ${inst.slug}`)
+  const annual = await findHouseAnnual(transport, member, now)
+  if (!annual) return 'empty'
+  const existing = getFiling(inst.slug, annual.reportPeriod)
+  if (existing?.accession === annual.docId) return 'ok'
+  if (!transport.getBytes) throw new Error('传输层不能下载 PDF')
+  const text = await extract(await transport.getBytes(annual.pdfUrl))
+  const positions = parseHouseHoldings(text)
+  if (positions.length === 0) throw new Error('年度披露没有解析出上市证券')
+  replaceFiling({
+    slug: inst.slug,
+    accession: annual.docId,
+    form: '年度披露',
+    reportPeriod: annual.reportPeriod,
+    filedAt: annual.filedAt,
+    sourceUrl: annual.pdfUrl,
+    valueUnit: 'dollars',
+    fetchedAt,
+    positions,
+  })
+  return 'ok'
 }
 
 async function syncInstitution(
