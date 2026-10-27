@@ -61,7 +61,7 @@ function headFor(path: string, site: string): HeadInput {
       if (page.slug === null) {
         return {
           title: `大佬持仓 — ${SITE_NAME}`,
-          description: '巴菲特、李录、高瓴、Ackman、Burry 与 Cathie Wood 向美国 SEC 申报的 13F 持仓，以及相对上一报告期的增减。',
+          description: '多家机构向美国 SEC 申报的 13F 持仓，以及相对上一报告期的增减。',
           url: `${site}/whales`,
         }
       }
