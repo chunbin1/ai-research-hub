@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { test, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import WhalesPage from './WhalesPage'
@@ -117,6 +117,9 @@ test('列表给出摘要，没有申报的机构标暂无数据', async () => {
   expect(screen.getByText('最近一次拉取失败')).toBeTruthy()
   expect(screen.getByText('迈克尔·伯里')).toBeTruthy()
   expect(screen.queryByRole('button', { name: '添加机构' })).toBeNull()
+  expect(screen.queryByRole('columnheader', { name: '操作' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '删除' })).toBeNull()
+  expect(screen.queryByRole('dialog')).toBeNull()
 })
 
 test('管理员添加机构后，名单里能看到新人', async () => {
@@ -150,13 +153,17 @@ test('管理员添加机构后，名单里能看到新人', async () => {
       <WhalesPage />
     </MemoryRouter>,
   )
+  expect(screen.queryByRole('dialog')).toBeNull()
   await user.click(await screen.findByRole('button', { name: '添加机构' }))
+  const dialog = screen.getByRole('dialog', { name: '添加机构' })
+  expect(dialog.getAttribute('aria-modal')).toBe('true')
   await user.type(screen.getByLabelText('CIK'), '1234567')
   await user.type(screen.getByLabelText('管理人'), '李彦宏')
   await user.type(screen.getByLabelText('中文名'), '百度')
   await user.type(screen.getByLabelText('英文名'), 'Baidu, Inc.')
   await user.click(screen.getByRole('button', { name: '保存' }))
   expect(await screen.findByRole('link', { name: '李彦宏' })).toBeTruthy()
+  expect(screen.queryByRole('dialog')).toBeNull()
   expect(screen.getAllByText('暂无数据').length).toBeGreaterThan(1)
 })
 
@@ -175,6 +182,72 @@ function stubAdminFetch(onDelete: () => Promise<Response> | Response) {
     return jsonResponse({ updatedAt: null, holdings: [] })
   }))
 }
+
+test('添加失败时弹窗留着，并显示接口返回的原因', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const path = String(url)
+    if (path.includes('/api/auth/')) return jsonResponse(ADMIN)
+    if (path.endsWith('/api/whales') && init?.method === 'POST') {
+      return jsonResponse({ message: '这个 CIK 已经有机构了' }, 409)
+    }
+    if (path.includes('/api/whales')) return jsonResponse(LIST)
+    return jsonResponse({ updatedAt: null, holdings: [] })
+  }))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('button', { name: '添加机构' }))
+  await user.type(screen.getByLabelText('CIK'), '1067983')
+  await user.type(screen.getByLabelText('管理人'), '巴菲特')
+  await user.type(screen.getByLabelText('中文名'), '伯克希尔')
+  await user.click(screen.getByRole('button', { name: '保存' }))
+  expect(await screen.findByText('这个 CIK 已经有机构了')).toBeTruthy()
+  expect(screen.getByRole('dialog', { name: '添加机构' })).toBeTruthy()
+  expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
+})
+
+test('按 Esc 或点遮罩会关掉添加弹窗', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const path = String(url)
+    if (path.includes('/api/auth/')) return jsonResponse(ADMIN)
+    if (path.includes('/api/whales')) return jsonResponse(LIST)
+    return jsonResponse({ updatedAt: null, holdings: [] })
+  }))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  await user.click(await screen.findByRole('button', { name: '添加机构' }))
+  expect(screen.getByRole('dialog', { name: '添加机构' })).toBeTruthy()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).toBeNull()
+
+  await user.click(screen.getByRole('button', { name: '添加机构' }))
+  const dialog = screen.getByRole('dialog', { name: '添加机构' })
+  fireEvent.mouseDown(dialog.parentElement!)
+  expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test('删除在表格最右一列，不跟管理人挤在一起', async () => {
+  stubAdminFetch(async () => jsonResponse(null, 204))
+  render(
+    <MemoryRouter>
+      <WhalesPage />
+    </MemoryRouter>,
+  )
+  const link = await screen.findByRole('link', { name: '巴菲特' })
+  const headers = screen.getAllByRole('columnheader').map(header => header.textContent)
+  expect(headers.at(-1)).toBe('操作')
+  const cells = link.closest('tr')!.querySelectorAll('td')
+  expect(cells[0]!.querySelector('button')).toBeNull()
+  expect(cells[cells.length - 1]!.querySelector('button')?.textContent).toBe('删除')
+  expect(cells[cells.length - 1]!.className).toContain('text-right')
+})
 
 test('删除接口失败时名单还在，只提示删除失败', async () => {
   const user = userEvent.setup()

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { formatUsd, securityTitle, type WhaleSummary } from '../lib/whaleView'
@@ -28,6 +29,16 @@ export default function WhalesPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
+  const cikInputRef = useRef<HTMLInputElement>(null)
+  savingRef.current = saving
+
+  function closeForm() {
+    if (savingRef.current) return
+    setFormOpen(false)
+    setFormError(null)
+    setForm(EMPTY_FORM)
+  }
 
   const load = useCallback((cancelled?: () => boolean) => {
     void fetch('/api/whales')
@@ -65,6 +76,18 @@ export default function WhalesPage() {
     load(() => stopped)
     return () => { stopped = true }
   }, [load])
+
+  useEffect(() => {
+    if (!formOpen) return
+    cikInputRef.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      closeForm()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [formOpen])
 
   async function onAdd(event: FormEvent) {
     event.preventDefault()
@@ -131,7 +154,7 @@ export default function WhalesPage() {
         {isAdmin && (
           <button
             type="button"
-            onClick={() => { setFormOpen(open => !open); setFormError(null) }}
+            onClick={() => { setForm(EMPTY_FORM); setFormError(null); setFormOpen(true) }}
             className="flex h-11 shrink-0 items-center justify-center rounded-[4px] border border-edge bg-white px-[15px] text-[13px] text-ink-soft hover:border-ink-faint"
           >
             添加机构
@@ -141,35 +164,55 @@ export default function WhalesPage() {
       {deleteError && (
         <p role="alert" className={`m-0 border-b border-rule py-3 text-[13px] text-danger ${GUTTER}`}>{deleteError}</p>
       )}
-      {isAdmin && formOpen && (
-        <form onSubmit={event => void onAdd(event)} className={`flex flex-col gap-3 border-b border-rule py-4 ${GUTTER}`}>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-[12px] text-ink-mute">
-              CIK
-              <input required value={form.cik} onChange={event => setForm(current => ({ ...current, cik: event.target.value }))} className="h-10 rounded-[4px] border border-edge px-3 font-sans-sc text-[14px] text-ink" />
-            </label>
-            <label className="flex flex-col gap-1 text-[12px] text-ink-mute">
-              管理人
-              <input required value={form.manager} onChange={event => setForm(current => ({ ...current, manager: event.target.value }))} className="h-10 rounded-[4px] border border-edge px-3 text-[14px] text-ink" />
-            </label>
-            <label className="flex flex-col gap-1 text-[12px] text-ink-mute">
-              中文名
-              <input required value={form.nameZh} onChange={event => setForm(current => ({ ...current, nameZh: event.target.value }))} className="h-10 rounded-[4px] border border-edge px-3 text-[14px] text-ink" />
-            </label>
-            <label className="flex flex-col gap-1 text-[12px] text-ink-mute">
-              英文名
-              <input value={form.nameEn} onChange={event => setForm(current => ({ ...current, nameEn: event.target.value }))} className="h-10 rounded-[4px] border border-edge px-3 text-[14px] text-ink" />
-            </label>
-            <label className="flex flex-col gap-1 text-[12px] text-ink-mute md:col-span-2">
-              短名
-              <input value={form.slug} placeholder="不填则从英文名生成" onChange={event => setForm(current => ({ ...current, slug: event.target.value }))} className="h-10 rounded-[4px] border border-edge px-3 text-[14px] text-ink" />
-            </label>
+      {isAdmin && formOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-[rgba(20,22,26,0.45)] p-4 md:items-center"
+          onMouseDown={() => closeForm()}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="whale-add-title"
+            className="w-full max-w-[520px] rounded-[8px] border border-edge bg-page p-5 shadow-[0_12px_40px_rgba(20,22,26,0.18)]"
+            onMouseDown={event => event.stopPropagation()}
+          >
+            <h2 id="whale-add-title" className="m-0 font-serif-sc text-[18px] font-semibold text-ink">添加机构</h2>
+            <form onSubmit={event => void onAdd(event)} className="mt-4 flex flex-col gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-[12px] text-ink-mute">
+                  CIK
+                  <input ref={cikInputRef} required value={form.cik} onChange={event => setForm(current => ({ ...current, cik: event.target.value }))} className="h-10 rounded-[4px] border border-edge bg-white px-3 font-sans-sc text-[14px] text-ink" />
+                </label>
+                <label className="flex flex-col gap-1 text-[12px] text-ink-mute">
+                  管理人
+                  <input required value={form.manager} onChange={event => setForm(current => ({ ...current, manager: event.target.value }))} className="h-10 rounded-[4px] border border-edge bg-white px-3 text-[14px] text-ink" />
+                </label>
+                <label className="flex flex-col gap-1 text-[12px] text-ink-mute">
+                  中文名
+                  <input required value={form.nameZh} onChange={event => setForm(current => ({ ...current, nameZh: event.target.value }))} className="h-10 rounded-[4px] border border-edge bg-white px-3 text-[14px] text-ink" />
+                </label>
+                <label className="flex flex-col gap-1 text-[12px] text-ink-mute">
+                  英文名
+                  <input value={form.nameEn} onChange={event => setForm(current => ({ ...current, nameEn: event.target.value }))} className="h-10 rounded-[4px] border border-edge bg-white px-3 text-[14px] text-ink" />
+                </label>
+                <label className="flex flex-col gap-1 text-[12px] text-ink-mute sm:col-span-2">
+                  短名
+                  <input value={form.slug} placeholder="不填则从英文名生成" onChange={event => setForm(current => ({ ...current, slug: event.target.value }))} className="h-10 rounded-[4px] border border-edge bg-white px-3 text-[14px] text-ink" />
+                </label>
+              </div>
+              {formError && <p className="m-0 text-[13px] text-danger">{formError}</p>}
+              <div className="mt-1 flex justify-end gap-2">
+                <button type="button" disabled={saving} onClick={closeForm} className="h-10 rounded-[4px] border border-edge bg-white px-4 text-[13px] text-ink-soft disabled:opacity-60">
+                  取消
+                </button>
+                <button type="submit" disabled={saving} className="h-10 rounded-[4px] bg-ink px-4 text-[13px] text-page disabled:opacity-60">
+                  {saving ? '添加中…' : '保存'}
+                </button>
+              </div>
+            </form>
           </div>
-          {formError && <p className="m-0 text-[13px] text-danger">{formError}</p>}
-          <button type="submit" disabled={saving} className="h-10 self-start rounded-[4px] bg-ink px-4 text-[13px] text-page disabled:opacity-60">
-            {saving ? '添加中…' : '保存'}
-          </button>
-        </form>
+        </div>,
+        document.body,
       )}
 
       <main className={`flex-1 ${GUTTER}`}>
@@ -183,23 +226,17 @@ export default function WhalesPage() {
                 <th scope="col" className="py-3 pr-3 text-right font-normal">持仓数</th>
                 <th scope="col" className="py-3 pr-3 text-right font-normal">市值合计（美元）</th>
                 <th scope="col" className="py-3 pr-3 font-normal">第一大持仓</th>
-                <th scope="col" className="py-3 font-normal">状态</th>
+                <th scope="col" className="py-3 pr-3 font-normal">状态</th>
+                {isAdmin && <th scope="col" className="py-3 text-right font-normal">操作</th>}
               </tr>
             </thead>
             <tbody>
               {(institutions ?? []).map(row => (
                 <tr key={row.slug} className="border-b border-row-rule">
                   <td className="py-4 pr-3">
-                    <div className="flex flex-col items-start gap-1">
-                      <Link to={`/whales/${row.slug}`} className="text-[15px] font-medium text-ink hover:text-brick">
-                        {row.manager}
-                      </Link>
-                      {isAdmin && (
-                        <button type="button" className="text-[12px] text-danger" onClick={() => void onDelete(row)}>
-                          删除
-                        </button>
-                      )}
-                    </div>
+                    <Link to={`/whales/${row.slug}`} className="text-[15px] font-medium text-ink hover:text-brick">
+                      {row.manager}
+                    </Link>
                   </td>
                   <td className="py-4 pr-3 text-[13px] text-ink-soft">{row.nameZh}</td>
                   <td className="py-4 pr-3 font-sans-sc text-[14px] tabular-nums text-ink">
@@ -214,7 +251,7 @@ export default function WhalesPage() {
                   <td className="py-4 pr-3 text-[13px] text-ink">
                     {row.latest?.top ? securityTitle(row.latest.top) : '—'}
                   </td>
-                  <td className="py-4 text-[13px]">
+                  <td className="py-4 pr-3 text-[13px]">
                     {row.dataStatus === 'empty' ? (
                       <div className="flex flex-col gap-1">
                         <span className="text-ink-mute">暂无数据</span>
@@ -224,6 +261,13 @@ export default function WhalesPage() {
                       <span className="text-ink-soft">{row.latest?.form}</span>
                     )}
                   </td>
+                  {isAdmin && (
+                    <td className="py-4 text-right">
+                      <button type="button" className="text-[13px] text-danger" onClick={() => void onDelete(row)}>
+                        删除
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
