@@ -57,8 +57,6 @@ export function initWhaleTables(db: DB): void {
       cik        TEXT NOT NULL,
       sort_order INTEGER NOT NULL
     );
-    -- 表已存在时 CREATE TABLE 不会补约束，所以用独立唯一索引。
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_whale_institutions_cik ON whale_institutions (cik);
     CREATE TABLE IF NOT EXISTS whale_filings (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       slug          TEXT NOT NULL,
@@ -100,6 +98,9 @@ export function initWhaleTables(db: DB): void {
       cik    TEXT NOT NULL
     );
   `)
+  // 表已存在时 CREATE TABLE 不会补约束。先收掉重复 CIK，再建唯一索引，避免脏库直接启动失败。
+  collapseDuplicateCiks(db)
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_whale_institutions_cik ON whale_institutions (cik)')
   const holderOf = db.prepare(`
     SELECT slug FROM whale_institutions WHERE cik = ? AND slug != ?
   `)
@@ -121,6 +122,29 @@ export function initWhaleTables(db: DB): void {
       continue
     }
     upsert.run(seed)
+  }
+}
+
+/** 同一 CIK 留最早写入的一行，并清掉后来那行的申报。 */
+function collapseDuplicateCiks(database: DB): void {
+  const dupes = database.prepare(`
+    SELECT cik FROM whale_institutions GROUP BY cik HAVING COUNT(*) > 1
+  `).all() as { cik: string }[]
+  for (const { cik } of dupes) {
+    const rows = database.prepare(`
+      SELECT rowid AS id, slug FROM whale_institutions WHERE cik = ? ORDER BY rowid
+    `).all(cik) as { id: number; slug: string }[]
+    const keep = rows[0]
+    for (const extra of rows.slice(1)) {
+      console.warn(`[whales] CIK ${cik} 重复，保留 ${keep.slug}，删除 ${extra.slug}`)
+      database.prepare(`
+        DELETE FROM whale_positions
+        WHERE filing_id IN (SELECT id FROM whale_filings WHERE slug = ?)
+      `).run(extra.slug)
+      database.prepare('DELETE FROM whale_filings WHERE slug = ?').run(extra.slug)
+      database.prepare('DELETE FROM whale_sync WHERE slug = ?').run(extra.slug)
+      database.prepare('DELETE FROM whale_institutions WHERE slug = ?').run(extra.slug)
+    }
   }
 }
 
