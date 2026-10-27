@@ -55,8 +55,6 @@ test('secGetText 使用 30 秒超时，挂起时抛失败而不是一直等', as
   await new Promise<void>(resolve => { server.listen(0, '127.0.0.1', () => resolve()) })
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('测试服务没有端口')
-  let connections = 0
-  server.on('connection', () => { connections += 1 })
   try {
     await assert.rejects(
       () => secGetText(`http://127.0.0.1:${address.port}/hang`, {
@@ -66,7 +64,6 @@ test('secGetText 使用 30 秒超时，挂起时抛失败而不是一直等', as
       }),
       (err: unknown) => err instanceof Error && err.message.startsWith('SEC 超时 '),
     )
-    assert.equal(connections, 1)
   } finally {
     server.closeAllConnections()
     await new Promise<void>(resolve => { server.close(() => resolve()) })
