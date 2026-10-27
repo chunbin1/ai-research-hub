@@ -1,4 +1,4 @@
-/** 大佬持仓页的数字和增减文案。页面和测试共用。 */
+/** 名家持仓页的数字和增减文案。页面和测试共用。 */
 
 export type WhaleChange = 'new' | 'increased' | 'decreased' | 'unchanged' | 'closed'
 

@@ -104,7 +104,7 @@ curl -X PUT http://localhost:3001/api/holdings \
 
 也接受 `X-Holdings-Key`。`holdings: []` 清空。密钥来自 `HOLDINGS_API_KEY`;不配则上传返回 503。只在 HTTPS 上使用,不要把密钥打进日志。同一份快照里的 `marketValue`、`cost`、`pnl` 须先折算到同一计价币种再上传:服务端不识别币种,仓位占比按市值原值合计。`holdings` 最多 500 条,`symbol` 最长 64 个字符,`name` 最长 200 个字符。字段与页面说明见 [设计文档](docs/superpowers/specs/2026-10-15-holdings-page-design.md)。
 
-## 大佬持仓
+## 名家持仓
 
 `/whales` 展示六家机构的美国 SEC Form 13F，和上面的实盘持仓不是同一份数据。详情页是最新一期持仓，以及相对上一报告期的新建仓、加仓、减仓、清仓。没有申报的机构仍在列表里，标「暂无数据」。
 

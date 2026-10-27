@@ -12,7 +12,7 @@ const { initWhaleTables } = await import('../services/whales/store.ts')
 const { initUserTables } = await import('../services/userStore.ts')
 const { whaleRoutes } = await import('./whales.ts')
 
-test('大佬持仓读公开，增删未登录一律 401', async () => {
+test('名家持仓读公开，增删未登录一律 401', async () => {
   initWhaleTables(new Database(':memory:'))
   const app = fastify()
   await app.register(whaleRoutes, {

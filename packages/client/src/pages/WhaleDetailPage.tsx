@@ -82,7 +82,7 @@ export default function WhaleDetailPage() {
         if (cancelled) return
         if (response.status === 404) {
           const body = await response.json().catch(() => null) as { error?: string } | null
-          setError(body?.error === 'whales_disabled' ? '大佬持仓已关闭' : '没有这家机构')
+          setError(body?.error === 'whales_disabled' ? '名家持仓已关闭' : '没有这家机构')
           setLoading(false)
           return
         }
@@ -110,7 +110,7 @@ export default function WhaleDetailPage() {
     return (
       <div className={`mx-auto w-full max-w-[1440px] py-8 text-[13px] text-danger ${GUTTER}`}>
         <p className="m-0">{error ?? '持仓加载失败'}</p>
-        <p className="mt-3"><Link to="/whales" className="text-navy">返回大佬持仓</Link></p>
+        <p className="mt-3"><Link to="/whales" className="text-navy">返回名家持仓</Link></p>
       </div>
     )
   }
@@ -120,7 +120,7 @@ export default function WhaleDetailPage() {
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
       <div className={`flex flex-col gap-2 border-b border-rule pb-4 pt-3.5 md:border-b-0 md:pb-6 md:pt-8 ${GUTTER}`}>
-        <Link to="/whales" className="text-[13px] text-navy">← 大佬持仓</Link>
+        <Link to="/whales" className="text-[13px] text-navy">← 名家持仓</Link>
         <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">{institution.manager}</h1>
         <p className="m-0 max-w-[720px] text-[12px] leading-[1.65] text-ink-mute md:text-[13px]">
           {institution.nameZh} · {institution.nameEn} · CIK {institution.cik}

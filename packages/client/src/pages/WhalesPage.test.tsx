@@ -259,10 +259,10 @@ test('删除接口失败时名单还在，只提示删除失败', async () => {
   )
   await user.click((await screen.findAllByRole('button', { name: '删除' }))[0]!)
   expect(await screen.findByText('删除失败')).toBeTruthy()
-  expect(screen.getByRole('heading', { name: '大佬持仓' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '名家持仓' })).toBeTruthy()
   expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
   expect(screen.getByRole('link', { name: '迈克尔·伯里' })).toBeTruthy()
-  expect(screen.queryByText('大佬持仓加载失败')).toBeNull()
+  expect(screen.queryByText('名家持仓加载失败')).toBeNull()
 })
 
 test('删除请求抛错时名单还在，走同一句删除失败', async () => {
@@ -275,7 +275,7 @@ test('删除请求抛错时名单还在，走同一句删除失败', async () =>
   )
   await user.click((await screen.findAllByRole('button', { name: '删除' }))[0]!)
   expect(await screen.findByText('删除失败')).toBeTruthy()
-  expect(screen.getByRole('heading', { name: '大佬持仓' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '名家持仓' })).toBeTruthy()
   expect(screen.getByRole('link', { name: '巴菲特' })).toBeTruthy()
   expect(screen.getByRole('link', { name: '迈克尔·伯里' })).toBeTruthy()
 })
@@ -310,7 +310,7 @@ test('详情同时列出持仓和四类增减', async () => {
   expect(screen.getByRole('heading', { name: '清仓' })).toBeTruthy()
 })
 
-test('导航有大佬持仓；功能关闭时去掉', async () => {
+test('导航有名家持仓；功能关闭时去掉', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (String(url).includes('/api/whales')) return jsonResponse({ error: 'whales_disabled' }, 404)
     return jsonResponse(null, 500)
@@ -324,10 +324,10 @@ test('导航有大佬持仓；功能关闭时去掉', async () => {
       </MemoryRouter>
     </StrictMode>,
   )
-  await waitFor(() => expect(screen.queryAllByRole('link', { name: '大佬持仓' })).toHaveLength(0))
+  await waitFor(() => expect(screen.queryAllByRole('link', { name: '名家持仓' })).toHaveLength(0))
 })
 
-test('功能开启时桌面和移动导航都有大佬持仓', async () => {
+test('功能开启时桌面和移动导航都有名家持仓', async () => {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const path = String(url)
     if (path.includes('/api/whales')) return jsonResponse(LIST)
@@ -341,8 +341,8 @@ test('功能开启时桌面和移动导航都有大佬持仓', async () => {
       </HoldingsProvider>
     </MemoryRouter>,
   )
-  await waitFor(() => expect(screen.getAllByRole('link', { name: '大佬持仓' })).toHaveLength(2))
-  for (const link of screen.getAllByRole('link', { name: '大佬持仓' })) {
+  await waitFor(() => expect(screen.getAllByRole('link', { name: '名家持仓' })).toHaveLength(2))
+  for (const link of screen.getAllByRole('link', { name: '名家持仓' })) {
     expect(link.getAttribute('href')).toBe('/whales')
     expect(link.getAttribute('aria-current')).toBe('page')
   }

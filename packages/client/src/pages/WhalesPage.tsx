@@ -47,13 +47,13 @@ export default function WhalesPage() {
         if (response.status === 404) {
           const body = await response.json().catch(() => null) as { error?: string } | null
           if (body?.error === 'whales_disabled') {
-            setError('大佬持仓已关闭')
+            setError('名家持仓已关闭')
             setLoading(false)
             return
           }
         }
         if (!response.ok) {
-          setError('大佬持仓加载失败')
+          setError('名家持仓加载失败')
           setLoading(false)
           return
         }
@@ -65,7 +65,7 @@ export default function WhalesPage() {
       })
       .catch(() => {
         if (!cancelled?.()) {
-          setError('大佬持仓加载失败')
+          setError('名家持仓加载失败')
           setLoading(false)
         }
       })
@@ -146,7 +146,7 @@ export default function WhalesPage() {
     <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
       <div className={`flex flex-col gap-3.5 border-b border-rule pb-4 pt-3.5 md:flex-row md:items-end md:justify-between md:gap-10 md:border-b-0 md:pb-6 md:pt-8 ${GUTTER}`}>
         <div className="flex flex-col gap-2">
-          <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">大佬持仓</h1>
+          <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">名家持仓</h1>
           <p className="m-0 max-w-[640px] text-[12px] leading-[1.65] text-ink-mute md:text-[13px] md:leading-[1.6]">
             美国 SEC Form 13F 的公开申报。
           </p>
