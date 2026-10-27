@@ -430,12 +430,23 @@ test('详情同时列出持仓和四类增减', async () => {
   expect(screen.getByRole('heading', { name: '清仓' })).toBeTruthy()
 })
 
-test('众议院详情不展示按股数的增减', async () => {
+test('众议院详情按区间中点说明增减，股数差为 0 时不带 +0', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
     ...DETAIL,
     institution: { ...DETAIL.institution, source: 'house-fd', manager: '佩洛西', slug: 'pelosi' },
-    valueNote: '金额是美国众议院年度财务披露的申报区间。',
+    valueNote: '金额是申报区间。有上一期时，增减也按区间中点，不按股数。',
     period: { ...DETAIL.period, form: '年度披露', reportPeriod: '2025-12-31' },
+    previousPeriod: { reportPeriod: '2024-12-31', filedAt: '2025-05-15' },
+    positions: [{
+      cusip: 'AAPL', ticker: 'AAPL', issuerName: 'Apple Inc. (AAPL)', titleOfClass: 'COM',
+      putCall: '', shareType: '', shares: 0, valueUsd: 15_000_000, valueLabel: '5,000,001–25,000,000',
+      weight: 1, change: 'increased', prevShares: 0, prevValueUsd: 3_000_000, shareDelta: 0, valueDeltaUsd: 12_000_000,
+    }],
+    closed: [{
+      cusip: 'DIS', ticker: 'DIS', issuerName: 'Walt Disney Company (DIS)', titleOfClass: 'COM',
+      putCall: '', shareType: '', shares: 0, valueUsd: 0, valueLabel: '500,001–1,000,000',
+      weight: null, change: 'closed', prevShares: 0, prevValueUsd: 750_000, shareDelta: 0, valueDeltaUsd: -750_000,
+    }],
   })))
   render(
     <MemoryRouter initialEntries={['/whales/pelosi']}>
@@ -445,12 +456,13 @@ test('众议院详情不展示按股数的增减', async () => {
     </MemoryRouter>,
   )
   expect(await screen.findByRole('heading', { name: '佩洛西' })).toBeTruthy()
-  expect(screen.getByText(/没有股数，不标相对上期的增减/)).toBeTruthy()
+  expect(screen.getByText(/增减按申报区间中点，不按股数/)).toBeTruthy()
   expect(screen.queryByText(/增减按股数/)).toBeNull()
-  expect(screen.queryByRole('columnheader', { name: '相对上期' })).toBeNull()
-  expect(screen.queryByRole('heading', { name: '清仓' })).toBeNull()
-  expect(screen.queryByText(/加仓、新建仓为红/)).toBeNull()
-  expect(screen.getByText(/申报区间/)).toBeTruthy()
+  expect(screen.getAllByRole('columnheader', { name: '相对上期' }).length).toBeGreaterThan(0)
+  expect(screen.getByText('加仓').textContent).toBe('加仓')
+  expect(screen.getAllByText('清仓').length).toBeGreaterThan(1)
+  expect(screen.getByRole('heading', { name: '清仓' })).toBeTruthy()
+  expect(screen.getByText(/加仓、新建仓为红/)).toBeTruthy()
 })
 
 test('导航有名家持仓；功能关闭时去掉', async () => {

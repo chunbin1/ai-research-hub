@@ -9,9 +9,11 @@ import {
 
 const GUTTER = 'px-[18px] md:px-7 lg:px-10'
 
-function ChangeCell({ row }: { row: WhalePosition }) {
+function ChangeCell({ row, byShares }: { row: WhalePosition; byShares: boolean }) {
   if (!row.change) return <span className="text-ink-mute">—</span>
-  const delta = row.change === 'unchanged' || row.shareDelta === null ? '' : ` ${formatShareDelta(row.shareDelta)}`
+  const delta = !byShares || row.change === 'unchanged' || row.shareDelta === null
+    ? ''
+    : ` ${formatShareDelta(row.shareDelta)}`
   return <span className={changeClassName(row.change)}>{changeLabel(row.change)}{delta}</span>
 }
 
@@ -33,7 +35,7 @@ function SecurityCell({ row }: { row: WhalePosition }) {
   )
 }
 
-function PositionTable({ rows, showWeight, showChange }: { rows: WhalePosition[]; showWeight: boolean; showChange: boolean }) {
+function PositionTable({ rows, showWeight, byShares }: { rows: WhalePosition[]; showWeight: boolean; byShares: boolean }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-t border-ink text-left">
@@ -43,7 +45,7 @@ function PositionTable({ rows, showWeight, showChange }: { rows: WhalePosition[]
             <th scope="col" className="py-3 pr-3 text-right font-normal">数量</th>
             <th scope="col" className="py-3 pr-3 text-right font-normal">市值（美元）</th>
             {showWeight && <th scope="col" className="py-3 pr-3 text-right font-normal">占比</th>}
-            {showChange && <th scope="col" className="py-3 text-right font-normal">相对上期</th>}
+            <th scope="col" className="py-3 text-right font-normal">相对上期</th>
           </tr>
         </thead>
         <tbody>
@@ -61,9 +63,7 @@ function PositionTable({ rows, showWeight, showChange }: { rows: WhalePosition[]
                   {row.weight === null ? '—' : formatWeight(row.weight)}
                 </td>
               )}
-              {showChange && (
-                <td className="py-4 text-right font-sans-sc text-[14px] tabular-nums"><ChangeCell row={row} /></td>
-              )}
+              <td className="py-4 text-right font-sans-sc text-[14px] tabular-nums"><ChangeCell row={row} byShares={byShares} /></td>
             </tr>
           ))}
         </tbody>
@@ -151,18 +151,18 @@ export default function WhaleDetailPage() {
                 </a>
               </p>
               <p className="m-0 text-[12px] text-ink-faint">
-                {house
-                  ? '众议院披露只有金额区间、没有股数，不标相对上期的增减。'
-                  : detail.previousPeriod
-                    ? <>对比上期 <time dateTime={detail.previousPeriod.reportPeriod}>{detail.previousPeriod.reportPeriod}</time>。增减按股数，不按市值。</>
+                {detail.previousPeriod
+                  ? <>对比上期 <time dateTime={detail.previousPeriod.reportPeriod}>{detail.previousPeriod.reportPeriod}</time>。{house ? '增减按申报区间中点，不按股数。' : '增减按股数，不按市值。'}</>
+                  : house
+                    ? '暂无上期可对比。有上一期时，增减按申报区间中点，不按股数。'
                     : '暂无上期可对比。'}
               </p>
             </div>
-            <PositionTable rows={detail.positions} showWeight showChange={!house} />
-            {!house && detail.closed.length > 0 && (
+            <PositionTable rows={detail.positions} showWeight byShares={!house} />
+            {detail.closed.length > 0 && (
               <section className="flex flex-col gap-3">
                 <h2 className="m-0 font-serif-sc text-[16px] font-semibold text-ink">清仓</h2>
-                <PositionTable rows={detail.closed} showWeight={false} showChange />
+                <PositionTable rows={detail.closed} showWeight={false} byShares={!house} />
               </section>
             )}
           </>
@@ -170,7 +170,7 @@ export default function WhaleDetailPage() {
       </main>
 
       <footer className={`mt-5 border-t border-rule pb-7 pt-4 text-[11px] leading-[1.6] text-ink-faint md:mt-6 md:pt-5 md:text-[12px] ${GUTTER}`}>
-        {detail.valueNote}{house ? '' : ' 加仓、新建仓为红，减仓、清仓为绿。'}
+        {detail.valueNote} 加仓、新建仓为红，减仓、清仓为绿。
       </footer>
     </div>
   )

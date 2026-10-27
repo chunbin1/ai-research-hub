@@ -1,4 +1,6 @@
-// 相邻两期的增减。比较股数，不比较市值：价格涨了但股数没变，标成「不变」。
+// 相邻两期的增减。
+// 默认比较股数，不比较市值：价格涨了但股数没变，标成「不变」。
+// midpoint 比较 valueUsd。众议院披露里这是区间中点；上市股票没有股数，按股数会一律标成不变。
 // previous === null 表示库里没有上一份申报，不能把本期全部标成新建仓。
 
 export type ChangeKind = 'new' | 'increased' | 'decreased' | 'unchanged' | 'closed'
@@ -27,9 +29,18 @@ function lineKey(row: Pick<DiffLine, 'cusip' | 'putCall' | 'shareType'>): string
   return `${row.cusip}|${row.putCall}|${row.shareType}`
 }
 
+export type DiffBasis = 'shares' | 'midpoint'
+
+function basisChange(current: number, previous: number): ChangeKind {
+  if (current > previous) return 'increased'
+  if (current < previous) return 'decreased'
+  return 'unchanged'
+}
+
 export function diffPositions(
   current: DiffLine[],
   previous: DiffLine[] | null,
+  basis: DiffBasis = 'shares',
 ): { hasPrevious: boolean; positions: DiffPosition[]; closed: DiffPosition[] } {
   if (previous === null) {
     return {
@@ -61,7 +72,9 @@ export function diffPositions(
       }
     }
     const shareDelta = row.shares - prev.shares
-    const change: ChangeKind = shareDelta > 0 ? 'increased' : shareDelta < 0 ? 'decreased' : 'unchanged'
+    const change = basis === 'midpoint'
+      ? basisChange(row.valueUsd, prev.valueUsd)
+      : basisChange(row.shares, prev.shares)
     return {
       ...row,
       prevShares: prev.shares,

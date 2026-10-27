@@ -44,6 +44,33 @@ test('相对上期标出新建、加仓、减仓、不变和清仓', () => {
   assert.equal(diff.closed[0]?.shareDelta, -4)
 })
 
+test('默认仍按股数，股数同为 0 时市值涨了也标成不变', () => {
+  const diff = diffPositions([line('AAPL', 0, 15_000_000)], [line('AAPL', 0, 3_000_000)])
+  assert.equal(diff.positions[0]?.change, 'unchanged')
+  assert.equal(diff.positions[0]?.valueDeltaUsd, 12_000_000)
+})
+
+test('midpoint 按区间中点判增减，股数为 0 不会一律标成不变', () => {
+  const held = (cusip: string, shares: number, valueUsd: number): DiffLine => ({
+    ...line(cusip, shares, valueUsd),
+    valueLabel: '1–2',
+  })
+  const diff = diffPositions(
+    [held('AAPL', 0, 15_000_000), held('MSFT', 0, 3_000_000), held('GOOGL', 70, 3_000_000)],
+    [held('AAPL', 0, 3_000_000), held('MSFT', 0, 3_000_000), held('GOOGL', 40, 3_000_000), held('AMZN', 0, 750_000)],
+    'midpoint',
+  )
+  const byCusip = new Map(diff.positions.map(row => [row.cusip, row]))
+  assert.equal(byCusip.get('AAPL')?.change, 'increased')
+  assert.equal(byCusip.get('AAPL')?.shareDelta, 0)
+  assert.equal(byCusip.get('AAPL')?.valueDeltaUsd, 12_000_000)
+  assert.equal(byCusip.get('MSFT')?.change, 'unchanged')
+  assert.equal(byCusip.get('GOOGL')?.change, 'unchanged')
+  assert.equal(byCusip.get('GOOGL')?.shareDelta, 30)
+  assert.equal(diff.closed[0]?.cusip, 'AMZN')
+  assert.equal(diff.closed[0]?.change, 'closed')
+})
+
 test('上一期是空表时，本期全部算新建仓', () => {
   const diff = diffPositions([line('A', 1, 1)], [])
   assert.equal(diff.hasPrevious, true)

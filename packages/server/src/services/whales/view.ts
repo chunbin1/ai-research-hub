@@ -11,7 +11,7 @@ export const VALUE_NOTE =
   '市值为美元。2023-01-03 及之后提交的 13F，SEC 要求 value 按美元填报；更早的申报按千美元换算（×1000）后入库。'
 
 export const HOUSE_VALUE_NOTE =
-  '金额是美国众议院年度财务披露的申报区间，不是精确市值。表内上市股票和期权多记在配偶名下。占比和名单合计按区间中点估算。'
+  '金额是美国众议院年度财务披露的申报区间，不是精确市值。表内上市股票和期权多记在配偶名下。占比和名单合计按区间中点估算。有上一期时，增减也按区间中点，不按股数。'
 
 export const MIXED_VALUE_NOTE =
   '名单同时有 SEC Form 13F 和美国众议院年度财务披露。13F 市值为美元（2023-01-03 及之后按美元填报，更早按千美元换算后入库）。众议院金额是申报区间，不是精确市值，合计按区间中点估算。'
@@ -204,7 +204,7 @@ export function getWhaleDetail(slug: string): WhaleDetail | null {
   const index = buildTickerIndex(loadTickers())
   const current = listPositions(latest.id)
   const prevRows = previous ? listPositions(previous.id) : null
-  const diff = diffPositions(current, prevRows)
+  const diff = diffPositions(current, prevRows, inst.source === 'house-fd' ? 'midpoint' : 'shares')
   const total = diff.positions.reduce((sum, row) => sum + row.valueUsd, 0)
   const tickerOf = (issuerName: string) => index.get(normalizeIssuerName(issuerName)) ?? null
   const positions = [...diff.positions]

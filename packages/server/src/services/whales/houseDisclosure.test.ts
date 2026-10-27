@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import Database from 'better-sqlite3'
 import { parseHouseAnnualIndex, parseHouseHoldings } from './houseDisclosure.ts'
-import { initWhaleTables } from './store.ts'
+import { initWhaleTables, replaceFiling } from './store.ts'
 import { getWhaleDetail } from './view.ts'
 import { syncWhales } from './sync.ts'
 
@@ -93,8 +93,43 @@ test('同步把佩洛西写成区间持仓，相同文档不重复下载', async
   assert.equal(detail?.period?.form, '年度披露')
   assert.equal(detail?.period?.reportPeriod, '2025-12-31')
   assert.ok(detail?.valueNote.includes('申报区间'))
+  assert.ok(detail?.valueNote.includes('区间中点'))
   assert.equal(detail?.positions.find(row => row.cusip === 'AAPL' && row.putCall === '')?.valueLabel, '5,000,001–25,000,000')
   assert.equal(detail?.previousPeriod, null)
+  const currentApple = detail?.positions.find(row => row.cusip === 'AAPL' && row.putCall === '')
+  const currentGoogl = detail?.positions.find(row => row.cusip === 'GOOGL' && row.putCall === '')
+  assert.ok(currentApple && currentGoogl)
+  replaceFiling({
+    slug: 'pelosi',
+    accession: '10000000',
+    form: '年度披露',
+    reportPeriod: '2024-12-31',
+    filedAt: '2025-05-15',
+    sourceUrl: 'https://disclosures-clerk.house.gov/public_disc/financial-pdfs/2024/10000000.pdf',
+    valueUnit: 'dollars',
+    fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [
+      {
+        cusip: 'AAPL', putCall: '', shareType: '', issuerName: 'Apple Inc. (AAPL)', titleOfClass: 'COM',
+        shares: 0, valueReported: currentApple.valueUsd - 1_000_000, valueUsd: currentApple.valueUsd - 1_000_000,
+        valueLabel: '1,000,001–5,000,000',
+      },
+      {
+        cusip: 'GOOGL', putCall: '', shareType: '', issuerName: currentGoogl.issuerName, titleOfClass: 'COM',
+        shares: 0, valueReported: currentGoogl.valueUsd, valueUsd: currentGoogl.valueUsd,
+        valueLabel: currentGoogl.valueLabel,
+      },
+    ],
+  })
+  const compared = getWhaleDetail('pelosi')
+  assert.equal(compared?.previousPeriod?.reportPeriod, '2024-12-31')
+  const apple = compared?.positions.find(row => row.cusip === 'AAPL' && row.putCall === '')
+  const googl = compared?.positions.find(row => row.cusip === 'GOOGL' && row.putCall === '')
+  assert.equal(apple?.change, 'increased')
+  assert.equal(apple?.shares, 0)
+  assert.equal(apple?.shareDelta, 0)
+  assert.ok((apple?.valueDeltaUsd ?? 0) > 0)
+  assert.equal(googl?.change, 'unchanged')
 
   downloads.length = 0
   const second = await syncWhales({
