@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
-import { initWhaleTables } from './store.ts'
+import { getMeta, getSync, initWhaleTables } from './store.ts'
 import { getWhaleDetail, listWhaleSummaries } from './view.ts'
 import { resolveSecUserAgent } from './enabled.ts'
 import { syncWhales } from './sync.ts'
@@ -100,7 +100,7 @@ test('夹具同步出增减，第二轮相同 accession 不再下 XML', async ()
         return indexHtml('/Archives/edgar/data/1067983/000119312526000002/info.xml')
       }
       if (url.endsWith('0001193125-26-000001-index.htm')) {
-        return indexHtml('/Archives/edgar/data/1067983/000119312526000001/info.xml')
+        return indexHtml('info.xml')
       }
       if (url.endsWith('/000119312526000002/info.xml')) return CURRENT
       if (url.endsWith('/000119312526000001/info.xml')) return PREVIOUS
@@ -112,7 +112,9 @@ test('夹具同步出增减，第二轮相同 accession 不再下 XML', async ()
   assert.equal(first.failed, 0)
   assert.equal(first.ok, 1)
   assert.equal(first.empty, 5)
-  assert.ok(calls.some(url => url.endsWith('/info.xml')))
+  assert.ok(calls.includes(
+    'https://www.sec.gov/Archives/edgar/data/1067983/000119312526000001/info.xml',
+  ))
 
   const detail = getWhaleDetail('berkshire')
   assert.ok(detail)
@@ -141,4 +143,44 @@ test('夹具同步出增减，第二轮相同 accession 不再下 XML', async ()
   assert.equal(second.failed, 0)
   assert.equal(calls.some(url => url.includes('info.xml') || url.includes('company_tickers')), false)
   assert.ok(calls.length < before)
+})
+
+test('信息表指向非 SEC 主机时记入该机构错误，且不去请求', async () => {
+  initWhaleTables(new Database(':memory:'))
+  const calls: string[] = []
+  const transport = {
+    async getText(url: string) {
+      calls.push(url)
+      if (url.includes('company_tickers.json')) return '{}'
+      if (url.includes('CIK0001067983')) {
+        return JSON.stringify({
+          filings: {
+            recent: {
+              form: ['13F-HR'],
+              accessionNumber: ['0001193125-26-000002'],
+              filingDate: ['2026-08-14'],
+              reportDate: ['2026-06-30'],
+            },
+          },
+        })
+      }
+      if (url.includes('/submissions/')) {
+        return JSON.stringify({ filings: { recent: {} } })
+      }
+      if (url.endsWith('-index.htm')) return indexHtml('https://evil.example/info.xml')
+      throw new Error(`意外的 URL ${url}`)
+    },
+  }
+  const result = await syncWhales({
+    transport,
+    userAgent: 'test-agent',
+    now: () => new Date('2026-10-27T00:00:00.000Z'),
+  })
+  assert.equal(result.failed, 1)
+  assert.equal(result.ok, 0)
+  assert.equal(result.empty, 5)
+  assert.equal(calls.some(url => url.includes('evil.example')), false)
+  assert.match(getSync('berkshire').lastError ?? '', /拒绝非 SEC/)
+  assert.equal(getSync('himalaya').lastError, null)
+  assert.equal(getMeta().lastSyncAt, '2026-10-27T00:00:00.000Z')
 })

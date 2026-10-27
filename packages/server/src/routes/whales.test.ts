@@ -59,6 +59,7 @@ test('详情含相对上期的增减，未知机构 404', async () => {
   const created = body.positions.find((row: { cusip: string }) => row.cusip === '594918104')
   assert.equal(apple.change, 'increased')
   assert.equal(apple.shareDelta, 5)
+  assert.equal(apple.shareType, 'SH')
   assert.equal(created.change, 'new')
   assert.equal(body.closed[0].change, 'closed')
   assert.equal(body.closed[0].cusip, '191216100')

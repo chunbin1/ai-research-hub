@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { formatWeight } from '../lib/holdingsView'
 import {
   changeClassName, changeLabel, formatShareDelta, formatShares, formatUsd, putCallLabel, securityTitle,
+  shareTypeLabel,
   type WhaleDetail, type WhalePosition,
 } from '../lib/whaleView'
 
@@ -16,11 +17,13 @@ function ChangeCell({ row }: { row: WhalePosition }) {
 
 function SecurityCell({ row }: { row: WhalePosition }) {
   const option = putCallLabel(row.putCall)
+  const amount = shareTypeLabel(row.shareType)
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <span className="text-[15px] font-medium text-ink">
         {securityTitle(row)}
         {option && <span className="ml-2 text-[12px] font-normal text-ink-mute">{option}</span>}
+        {amount && <span className="ml-2 text-[12px] font-normal text-ink-mute">{amount}</span>}
       </span>
       <span className="truncate text-[12px] text-ink-faint">
         {row.ticker ? `${row.issuerName} · ` : ''}

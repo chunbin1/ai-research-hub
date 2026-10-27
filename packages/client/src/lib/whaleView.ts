@@ -102,6 +102,14 @@ export function putCallLabel(putCall: string): string | null {
   return null
 }
 
+/** SH 是股数，不额外标注。PRN 是本金，要和同 CUSIP 的股数行分开。 */
+export function shareTypeLabel(shareType: string): string | null {
+  const type = shareType.trim().toUpperCase()
+  if (type === '' || type === 'SH') return null
+  if (type === 'PRN') return '本金'
+  return type
+}
+
 export function securityTitle(row: { ticker: string | null; issuerName: string }): string {
   return row.ticker || row.issuerName || '—'
 }

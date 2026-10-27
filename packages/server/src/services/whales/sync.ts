@@ -83,7 +83,7 @@ async function syncInstitution(
     const indexUrl = filingIndexUrl(inst.cik, filing.accessionNumber)
     const href = informationTableXmlPath(await transport.getText(indexUrl))
     if (!href) throw new Error(`找不到信息表 ${filing.accessionNumber}`)
-    const xml = await transport.getText(absoluteArchiveUrl(href))
+    const xml = await transport.getText(absoluteArchiveUrl(href, indexUrl))
     const unit = valueUnitForFilingDate(filing.filingDate)
     replaceFiling({
       slug: inst.slug,

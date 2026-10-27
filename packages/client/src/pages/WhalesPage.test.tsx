@@ -79,6 +79,11 @@ const DETAIL = {
       putCall: '', shareType: 'SH', shares: 8, valueUsd: 80, weight: 0,
       change: 'decreased', prevShares: 10, prevValueUsd: 90, shareDelta: -2, valueDeltaUsd: -10,
     },
+    {
+      cusip: '037833100', ticker: 'AAPL', issuerName: 'APPLE INC', titleOfClass: 'NOTE',
+      putCall: 'Put', shareType: 'PRN', shares: 1_000_000, valueUsd: 1000, weight: 0.1,
+      change: 'unchanged', prevShares: 1_000_000, prevValueUsd: 1000, shareDelta: null, valueDeltaUsd: 0,
+    },
   ],
   closed: [
     {
@@ -127,6 +132,9 @@ test('详情同时列出持仓和四类增减', async () => {
   expect(screen.getByText('2026-03-31')).toBeTruthy()
   expect(screen.getByText('MICROSOFT CORP')).toBeTruthy()
   expect(screen.getByText('594918104')).toBeTruthy()
+  expect(screen.getByText('本金')).toBeTruthy()
+  expect(screen.getByText('认沽')).toBeTruthy()
+  expect(screen.getAllByText('本金')).toHaveLength(1)
 
   const increased = screen.getByText(`${changeLabel('increased')} ${formatShareDelta(100)}`)
   const created = screen.getByText(`${changeLabel('new')} ${formatShareDelta(50)}`)

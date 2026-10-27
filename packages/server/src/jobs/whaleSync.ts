@@ -7,7 +7,7 @@ import { getMeta } from '../services/whales/store.js'
 import { syncWhales } from '../services/whales/sync.js'
 
 export const WHALE_CRON_EXPR = '0 6 * * 1-5'
-/** 启动补拉的闸门：距上次成功拉取不足这么久就跳过 */
+/** 启动补拉的闸门：距上次同步尝试不足这么久就跳过（失败也会写入 lastSyncAt） */
 export const WHALE_BACKFILL_GATE_MS = 12 * 60 * 60 * 1000
 const BACKFILL_DELAY_MS = 45_000
 

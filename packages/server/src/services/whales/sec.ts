@@ -17,10 +17,29 @@ export function filingIndexUrl(cik: string, accession: string): string {
   return `https://www.sec.gov/Archives/edgar/data/${numeric}/${compact}/${accession}-index.htm`
 }
 
-export function absoluteArchiveUrl(href: string): string {
-  if (href.startsWith('https://') || href.startsWith('http://')) return href
-  if (href.startsWith('/')) return `https://www.sec.gov${href}`
-  return `https://www.sec.gov/${href}`
+/** 信息表链接只允许打到 SEC。相对路径按 filing index 所在目录解析。 */
+const SEC_ARCHIVE_HOSTS = new Set(['www.sec.gov', 'data.sec.gov'])
+
+export function absoluteArchiveUrl(href: string, indexUrl: string): string {
+  const trimmed = href.trim()
+  if (!trimmed) throw new Error('拒绝非 SEC 档案地址（空链接）')
+  let resolved: URL
+  try {
+    resolved = new URL(trimmed, indexUrl)
+  } catch {
+    throw new Error('拒绝非 SEC 档案地址（无法解析）')
+  }
+  if (resolved.username || resolved.password) {
+    throw new Error('拒绝非 SEC 档案地址（含凭据）')
+  }
+  if (resolved.protocol !== 'https:' && resolved.protocol !== 'http:') {
+    throw new Error(`拒绝非 SEC 档案地址（${resolved.protocol || '未知协议'}）`)
+  }
+  const host = resolved.hostname.toLowerCase().replace(/\.$/, '')
+  if (!SEC_ARCHIVE_HOSTS.has(host)) {
+    throw new Error(`拒绝非 SEC 档案地址（${host || '无主机'}）`)
+  }
+  return resolved.href
 }
 
 export function createSecLimiter(minIntervalMs = MIN_INTERVAL_MS): () => Promise<void> {
@@ -34,18 +53,29 @@ export function createSecLimiter(minIntervalMs = MIN_INTERVAL_MS): () => Promise
   }
 }
 
+export const SEC_FETCH_TIMEOUT_MS = 30_000
+
 export async function secGetText(
   url: string,
-  opts: { userAgent: string; wait: () => Promise<void> },
+  opts: { userAgent: string; wait: () => Promise<void>; timeoutMs?: number },
 ): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? SEC_FETCH_TIMEOUT_MS
   for (let attempt = 0; attempt < 2; attempt++) {
     await opts.wait()
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': opts.userAgent,
-        Accept: 'application/json, text/html, application/xml, text/xml;q=0.9, */*;q=0.8',
-      },
-    })
+    let response: Response
+    try {
+      response = await fetch(url, {
+        headers: {
+          'User-Agent': opts.userAgent,
+          Accept: 'application/json, text/html, application/xml, text/xml;q=0.9, */*;q=0.8',
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+    } catch (err) {
+      const name = err && typeof err === 'object' && 'name' in err ? String(err.name) : ''
+      if (name === 'TimeoutError' || name === 'AbortError') throw new Error(`SEC 超时 ${url}`)
+      throw err
+    }
     if ((response.status === 429 || response.status === 503) && attempt === 0) {
       await new Promise(resolve => setTimeout(resolve, 1000))
       continue
