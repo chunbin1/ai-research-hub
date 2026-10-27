@@ -40,7 +40,7 @@ function PositionTable({ rows, showWeight }: { rows: WhalePosition[]; showWeight
         <thead>
           <tr className="border-b border-rule text-[12px] tracking-[0.02em] text-ink-mute">
             <th scope="col" className="py-3 pr-3 font-normal">标的</th>
-            <th scope="col" className="py-3 pr-3 text-right font-normal">股数</th>
+            <th scope="col" className="py-3 pr-3 text-right font-normal">数量</th>
             <th scope="col" className="py-3 pr-3 text-right font-normal">市值（美元）</th>
             {showWeight && <th scope="col" className="py-3 pr-3 text-right font-normal">占比</th>}
             <th scope="col" className="py-3 text-right font-normal">相对上期</th>
