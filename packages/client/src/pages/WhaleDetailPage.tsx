@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { BackLink } from '../components/BackLink'
 import { formatWeight } from '../lib/holdingsView'
 import {
   changeClassName, changeLabel, formatShareDelta, formatShares, formatUsd, putCallLabel, securityTitle,
@@ -8,6 +9,21 @@ import {
 } from '../lib/whaleView'
 
 const GUTTER = 'px-[18px] md:px-7 lg:px-10'
+
+/** 和阅读页工具栏「全部报告」同一套：11px 回退图标、次文字、悬停浅底，右侧细分隔线。 */
+function BackToList() {
+  return (
+    <div className="flex w-fit min-w-0 items-center gap-2.5 self-start">
+      <BackLink
+        to="/whales"
+        className="-ml-1 inline-flex flex-none items-center rounded py-1 pl-1 pr-2 text-[13px] text-ink-soft hover:bg-[#F0EEE8] hover:text-navy"
+      >
+        名家持仓
+      </BackLink>
+      <span className="h-3.5 w-px flex-none bg-edge" aria-hidden />
+    </div>
+  )
+}
 
 function ChangeCell({ row, byShares }: { row: WhalePosition; byShares: boolean }) {
   if (!row.change) return <span className="text-ink-mute">—</span>
@@ -117,8 +133,8 @@ export default function WhaleDetailPage() {
   if (error || !detail) {
     return (
       <div className={`mx-auto w-full max-w-[1440px] py-8 text-[13px] text-danger ${GUTTER}`}>
-        <p className="m-0">{error ?? '持仓加载失败'}</p>
-        <p className="mt-3"><Link to="/whales" className="text-navy">返回名家持仓</Link></p>
+        <BackToList />
+        <p className="m-0 mt-3">{error ?? '持仓加载失败'}</p>
       </div>
     )
   }
@@ -129,7 +145,7 @@ export default function WhaleDetailPage() {
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
       <div className={`flex flex-col gap-2 border-b border-rule pb-4 pt-3.5 md:border-b-0 md:pb-6 md:pt-8 ${GUTTER}`}>
-        <Link to="/whales" className="text-[13px] text-navy">← 名家持仓</Link>
+        <BackToList />
         <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">{institution.manager}</h1>
         <p className="m-0 max-w-[720px] text-[12px] leading-[1.65] text-ink-mute md:text-[13px]">
           {institution.nameZh} · {institution.nameEn}
