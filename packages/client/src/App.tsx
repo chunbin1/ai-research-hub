@@ -1,15 +1,15 @@
-import { lazy } from 'react'
+import { lazy, type ComponentType } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import { SiteLayout } from './components/SiteLayout'
 import { useWindowDropGuard } from './hooks/useFileDrop'
 
 /**
- * 首页之外的路由全部按需加载。
+ * 首页之外的路由全部按需加载,并且各自带上 antd。
  *
- * 之前整站打成一个 1.36MB(gzip 432KB)的 chunk:进首页也要先下完、解析完
- * react-markdown / 信号页 / 评估页 / trace 页才画得出第一屏 —— 白屏久,
- * 内容「砰」一下出现。拆开后首页的初始 JS 是 660KB(gzip 216KB),砍掉一半。
+ * 首页首屏不 import antd / react-markdown。这两块加上 react-dom 曾经占掉主包
+ * 的大部分:国内网络下要先下完才能画出列表。现在首页只下 react、路由和页面自己的代码;
+ * antd、markdown 各自独立成 chunk,第一次打开阅读页 / 信号页 / 弹层时再取。
  *
  * 路由切换不会闪白:react-router v7 默认用 startTransition 做导航,
  * 旧页面会一直留在屏幕上直到新 chunk 到位。只有**直接打开**某个非首页路由时
@@ -18,16 +18,37 @@ import { useWindowDropGuard } from './hooks/useFileDrop'
  * 所有页面都挂在 SiteLayout 下,共用同一条顶栏。
  */
 
-const ReaderPage = lazy(() => import('./pages/ReaderPage'))
-const VersionDiffPage = lazy(() => import('./pages/VersionDiffPage'))
-const SignalsPage = lazy(() => import('./pages/SignalsPage'))
+function lazyWithAntd(loader: () => Promise<{ default: ComponentType }>) {
+  return lazy(async () => {
+    const [{ AntdProvider }, mod] = await Promise.all([
+      import('./antd/AntdProvider'),
+      loader(),
+    ])
+    const Page = mod.default
+    function RoutedPage() {
+      return (
+        <AntdProvider>
+          <Page />
+        </AntdProvider>
+      )
+    }
+    return { default: RoutedPage }
+  })
+}
+
+const ReaderPage = lazyWithAntd(() => import('./pages/ReaderPage'))
+const VersionDiffPage = lazyWithAntd(() => import('./pages/VersionDiffPage'))
+const SignalsPage = lazyWithAntd(() => import('./pages/SignalsPage'))
+// 持仓页不引用 antd,单独懒加载,避免打开它时把 antd 拉下来。
 const HoldingsPage = lazy(() => import('./pages/HoldingsPage'))
-const TracesPage = lazy(() => import('./components/TracesPage').then(m => ({ default: m.TracesPage })))
-const TraceDetailPage = lazy(() => import('./components/TraceDetailPage').then(m => ({ default: m.TraceDetailPage })))
-const EvalDashboard = lazy(() => import('./pages/EvalDashboard'))
-const EvalDetailPage = lazy(() => import('./pages/EvalDetailPage'))
-const SettingsPage = lazy(() => import('./pages/SettingsPage'))
-const AdminPage = lazy(() => import('./pages/AdminPage'))
+const WhalesPage = lazy(() => import('./pages/WhalesPage'))
+const WhaleDetailPage = lazy(() => import('./pages/WhaleDetailPage'))
+const TracesPage = lazyWithAntd(() => import('./components/TracesPage').then(m => ({ default: m.TracesPage })))
+const TraceDetailPage = lazyWithAntd(() => import('./components/TraceDetailPage').then(m => ({ default: m.TraceDetailPage })))
+const EvalDashboard = lazyWithAntd(() => import('./pages/EvalDashboard'))
+const EvalDetailPage = lazyWithAntd(() => import('./pages/EvalDetailPage'))
+const SettingsPage = lazyWithAntd(() => import('./pages/SettingsPage'))
+const AdminPage = lazyWithAntd(() => import('./pages/AdminPage'))
 
 export default function App() {
   // 文件没拖到拖拽区就松手时,别让浏览器直接打开它、把整页换掉
@@ -40,6 +61,8 @@ export default function App() {
         <Route path="/reports/:id/diff" element={<VersionDiffPage />} />
         <Route path="/signals" element={<SignalsPage />} />
         <Route path="/holdings" element={<HoldingsPage />} />
+        <Route path="/whales" element={<WhalesPage />} />
+        <Route path="/whales/:slug" element={<WhaleDetailPage />} />
         <Route path="/traces" element={<TracesPage />} />
         <Route path="/traces/:id" element={<TraceDetailPage />} />
         <Route path="/eval" element={<EvalDashboard />} />

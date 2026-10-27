@@ -67,16 +67,18 @@ export default function HoldingsPage() {
               </tr>
             </thead>
             <tbody>
+              {/* 右对齐的金额和股数用界面无衬线的等宽数字。宋体数字是比例宽度，
+                  没有 tnum，tabular-nums 对不齐。标题和日期仍走宋体。 */}
               {snapshot.holdings.map(row => (
                 <tr key={row.symbol} className="border-b border-row-rule">
                   <td className="py-4 pr-3"><SymbolCell row={row} /></td>
-                  <td className="py-4 pr-3 text-right font-numeral text-[16px] text-ink">{formatShares(row.shares)}</td>
-                  <td className="py-4 pr-3 text-right font-numeral text-[16px] text-ink">{formatMoney(row.marketValue)}</td>
-                  <td className="py-4 pr-3 text-right font-numeral text-[16px] text-ink">{formatMoney(row.cost)}</td>
-                  <td className="py-4 pr-3 text-right font-numeral text-[16px] font-semibold">
+                  <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">{formatShares(row.shares)}</td>
+                  <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">{formatMoney(row.marketValue)}</td>
+                  <td className="py-4 pr-3 text-right font-sans-sc text-[16px] tabular-nums text-ink">{formatMoney(row.cost)}</td>
+                  <td className="py-4 pr-3 text-right font-sans-sc text-[16px] font-semibold tabular-nums">
                     <span className={pnlClassName(row.pnl)}>{formatPnl(row.pnl)}</span>
                   </td>
-                  <td className="py-4 text-right font-numeral text-[16px] text-ink">{formatWeight(row.weight)}</td>
+                  <td className="py-4 text-right font-sans-sc text-[16px] tabular-nums text-ink">{formatWeight(row.weight)}</td>
                 </tr>
               ))}
             </tbody>

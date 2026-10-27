@@ -29,6 +29,7 @@ export async function registerOpenApi(app: FastifyInstance): Promise<void> {
         { name: 'holdings', description: '实盘持仓。读公开；上传用 API Key，全量覆盖。' },
         { name: 'documents', description: '研报。列表和正文公开读。' },
         { name: 'signals', description: 'SuperTrend 信号看板。读公开。' },
+        { name: 'whales', description: 'SEC 13F 名家持仓。读公开，与实盘持仓无关。' },
         { name: 'chat', description: '针对单篇研报的问答。健康检查公开，提问需要登录。' },
         { name: 'auth', description: '登录状态与可用的登录方式。不返回任何密钥。' },
         { name: 'seo', description: '给 nginx / 爬虫用的 robots、sitemap 和 head 片段。' },

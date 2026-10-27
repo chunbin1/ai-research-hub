@@ -23,7 +23,9 @@ import { initEvalTables, markStaleRunsFailed } from './services/evalStore.js'
 import { initWatchlistTable } from './services/watchlistStore.js'
 import { initSignalTables } from './services/signalStore.js'
 import { initHoldingsTables } from './services/holdingsStore.js'
+import { initWhaleTables } from './services/whales/store.js'
 import { startDailyScan } from './jobs/dailyScan.js'
+import { startWhaleSync } from './jobs/whaleSync.js'
 import { registerHttpRoutes } from './http.js'
 
 const app = Fastify({
@@ -51,6 +53,7 @@ initEvalTables(db)
 initWatchlistTable(db)
 initSignalTables(db)
 initHoldingsTables(db)
+initWhaleTables(db)
 
 // 一次性:把 import:raw 写错的上传时间校正回 id 里的时刻。放在版本补登记之前,
 // 这样补登记出来的 v1 直接抄到对的时间。
@@ -99,6 +102,10 @@ try {
 // 放在 try/catch 外面:那个 catch 会 process.exit(1)。listen 一旦成功,
 // 后台任务注册失败也不该把已经在监听的服务器带下去。
 startDailyScan({
+  info: (m) => app.log.info(m),
+  error: (m) => app.log.error(m),
+})
+startWhaleSync({
   info: (m) => app.log.info(m),
   error: (m) => app.log.error(m),
 })

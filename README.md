@@ -104,6 +104,20 @@ curl -X PUT http://localhost:3001/api/holdings \
 
 也接受 `X-Holdings-Key`。`holdings: []` 清空。密钥来自 `HOLDINGS_API_KEY`;不配则上传返回 503。只在 HTTPS 上使用,不要把密钥打进日志。同一份快照里的 `marketValue`、`cost`、`pnl` 须先折算到同一计价币种再上传:服务端不识别币种,仓位占比按市值原值合计。`holdings` 最多 500 条,`symbol` 最长 64 个字符,`name` 最长 200 个字符。字段与页面说明见 [设计文档](docs/superpowers/specs/2026-10-15-holdings-page-design.md)。
 
+## 名家持仓
+
+`/whales` 展示机构向美国 SEC 申报的 Form 13F，以及佩洛西向美国众议院申报的年度财务披露。和上面的实盘持仓不是同一份数据。13F 详情是最新一期持仓，以及相对上一报告期的新建仓、加仓、减仓、清仓。众议院披露的金额是区间，不是精确市值。没有申报的机构仍在列表里，标「暂无数据」。
+
+工作日 06:00 UTC 拉一次 `data.sec.gov` 的申报清单；信息表 XML 在 `www.sec.gov/Archives`。同一份 accession 不会重复下载。市值统一按美元展示：2023-01-03 及之后提交的 13F，SEC 要求 `value` 已是美元；更早的申报入库时 ×1000。
+
+```
+WHALES=off                 # 关闭路由和定时拉取
+SEC_USER_AGENT=            # 可选，完整 User-Agent，优先于下一行
+WHALES_CONTACT_EMAIL=      # 没有上一行时，用来拼 User-Agent
+```
+
+两个联系方式都不填时跳过拉取，已入库的数据仍可看。说明见 [设计文档](docs/superpowers/specs/2026-10-27-whales-13f-design.md)。
+
 接口文档在服务起来之后打开 `/api/docs`（本机即 `http://localhost:3001/api/docs`）。规范原文是同页下的 `/api/docs/json` 和 `/api/docs/yaml`。页面不预填密钥；Try it out 里要自己贴。导出一份文件给第三方：
 
 ```bash
