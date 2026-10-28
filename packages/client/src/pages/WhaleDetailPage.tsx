@@ -10,17 +10,16 @@ import {
 
 const GUTTER = 'px-[18px] md:px-7 lg:px-10'
 
-/** 和阅读页工具栏「全部报告」同一套：11px 回退图标、次文字、悬停浅底，右侧细分隔线。 */
+/** 和阅读页工具栏「全部报告」同一套：11px 回退图标、次文字、悬停浅底。详情页右侧没有后续控件，不加分隔线。 */
 function BackToList() {
   return (
-    <div className="flex w-fit min-w-0 items-center gap-2.5 self-start">
+    <div className="w-fit min-w-0 self-start">
       <BackLink
         to="/whales"
         className="-ml-1 inline-flex flex-none items-center rounded py-1 pl-1 pr-2 text-[13px] text-ink-soft hover:bg-[#F0EEE8] hover:text-navy"
       >
         名家持仓
       </BackLink>
-      <span className="h-3.5 w-px flex-none bg-edge" aria-hidden />
     </div>
   )
 }
