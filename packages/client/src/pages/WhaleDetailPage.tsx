@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { BackLink } from '../components/BackLink'
 import { formatWeight } from '../lib/holdingsView'
@@ -90,10 +90,21 @@ function PositionTable({ rows, showWeight, byShares, showChange }: { rows: Whale
   )
 }
 
-function periodError(code: string | undefined): string {
+function loadErrorMessage(code: string | undefined): string {
   if (code === 'whales_disabled') return '名家持仓已关闭'
+  if (code === 'invalid_input') return '报告期格式不对'
   if (code === 'period_not_found') return '没有这一报告期'
-  return '没有这家机构'
+  if (code === 'not_found') return '没有这家机构'
+  return '持仓加载失败'
+}
+
+function recoveredPeriodMessage(code: 'invalid_input' | 'period_not_found'): string {
+  if (code === 'invalid_input') return '报告期格式不对，已回到最新一期'
+  return '没有这一报告期，已回到最新一期'
+}
+
+function isAbort(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
 }
 
 export default function WhaleDetailPage() {
@@ -103,45 +114,92 @@ export default function WhaleDetailPage() {
   const [detail, setDetail] = useState<WhaleDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  // 非法期或缺期会清掉 query 再拉最新一期。清 query 会重跑 effect，用 ref 把提示留到这次成功加载。
+  const recoveryNotice = useRef<{ slug: string; message: string } | null>(null)
 
   useEffect(() => {
-    let cancelled = false
+    // 回退最新一期时刚清掉 query。同一条数据已经在手里，不要再打一次请求，
+    // 否则会闪一下「加载中」，StrictMode 再跑一遍 effect 还会把提示清掉。
+    if (periodQuery === '' && recoveryNotice.current?.slug === slug) {
+      setNotice(recoveryNotice.current.message)
+      setError(null)
+      setLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
     setLoading(true)
     setError(null)
     const query = periodQuery ? `?period=${encodeURIComponent(periodQuery)}` : ''
-    void fetch(`/api/whales/${encodeURIComponent(slug)}${query}`)
-      .then(async response => {
-        if (cancelled) return
-        if (response.status === 404) {
-          const body = await response.json().catch(() => null) as { error?: string } | null
-          setDetail(null)
-          setError(periodError(body?.error))
-          setLoading(false)
-          return
-        }
+
+    void (async () => {
+      try {
+        const response = await fetch(`/api/whales/${encodeURIComponent(slug)}${query}`, { signal: controller.signal })
+        if (controller.signal.aborted) return
         if (!response.ok) {
+          const body = await response.json().catch(() => null) as { error?: string } | null
+          if (controller.signal.aborted) return
+          const code = body?.error
+          if ((code === 'invalid_input' || code === 'period_not_found') && periodQuery) {
+            const fallback = await fetch(`/api/whales/${encodeURIComponent(slug)}`, { signal: controller.signal })
+            if (controller.signal.aborted) return
+            if (fallback.ok) {
+              const data = await fallback.json() as WhaleDetail
+              if (controller.signal.aborted) return
+              const message = recoveredPeriodMessage(code)
+              recoveryNotice.current = { slug, message }
+              setDetail(data)
+              setNotice(message)
+              setError(null)
+              setLoading(false)
+              setSearchParams(prev => {
+                const params = new URLSearchParams(prev)
+                params.delete('period')
+                return params
+              }, { replace: true })
+              return
+            }
+            const fallbackBody = await fallback.json().catch(() => null) as { error?: string } | null
+            if (controller.signal.aborted) return
+            recoveryNotice.current = null
+            setDetail(null)
+            setNotice(null)
+            setError(loadErrorMessage(fallbackBody?.error ?? code))
+            setLoading(false)
+            return
+          }
+          recoveryNotice.current = null
           setDetail(null)
-          setError('持仓加载失败')
+          setNotice(null)
+          setError(loadErrorMessage(code))
           setLoading(false)
           return
         }
-        setDetail(await response.json() as WhaleDetail)
+        const data = await response.json() as WhaleDetail
+        if (controller.signal.aborted) return
+        setDetail(data)
+        if (recoveryNotice.current?.slug === slug && periodQuery === '') setNotice(recoveryNotice.current.message)
+        else setNotice(null)
+        recoveryNotice.current = null
         setLoading(false)
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDetail(null)
-          setError('持仓加载失败')
-          setLoading(false)
-        }
-      })
-    return () => { cancelled = true }
-  }, [slug, periodQuery])
+      } catch (err) {
+        if (controller.signal.aborted || isAbort(err)) return
+        recoveryNotice.current = null
+        setDetail(null)
+        setNotice(null)
+        setError('持仓加载失败')
+        setLoading(false)
+      }
+    })()
+
+    return () => controller.abort()
+  }, [slug, periodQuery, setSearchParams])
 
   function choosePeriod(next: string) {
-    const latest = detail?.periods?.[0]?.reportPeriod
+    const latestPeriod = detail?.periods[0]?.reportPeriod
     const params = new URLSearchParams(searchParams)
-    if (!latest || next === latest) params.delete('period')
+    if (!latestPeriod || next === latestPeriod) params.delete('period')
     else params.set('period', next)
     setSearchParams(params, { replace: true })
   }
@@ -166,6 +224,7 @@ export default function WhaleDetailPage() {
       <div className={`flex flex-col gap-2 border-b border-rule pb-4 pt-3.5 md:border-b-0 md:pb-6 md:pt-8 ${GUTTER}`}>
         <BackToList />
         <h1 className="m-0 font-serif-sc text-[17px] font-semibold text-ink md:text-[26px]">{institution.manager}</h1>
+        {notice && <p role="status" className="m-0 text-[13px] text-danger">{notice}</p>}
         <p className="m-0 max-w-[720px] text-[12px] leading-[1.65] text-ink-mute md:text-[13px]">
           {institution.nameZh} · {institution.nameEn}
           {institution.source === 'house-fd' ? '' : ` · CIK ${institution.cik}`}
@@ -179,16 +238,17 @@ export default function WhaleDetailPage() {
           <>
             <div className="flex flex-col gap-1 pt-1 text-[13px] text-ink-soft">
               <p className="m-0 flex flex-wrap items-center gap-x-1">
-                {(detail.periods?.length ?? 0) > 1 ? (
+                {detail.periods.length > 1 ? (
                   <label className="inline-flex items-center gap-1.5">
                     报告期
                     <select
                       aria-label="报告期"
                       value={periodQuery || period.reportPeriod}
+                      disabled={loading}
                       onChange={event => choosePeriod(event.target.value)}
-                      className="h-8 cursor-pointer rounded border border-edge bg-white pl-2 pr-1 text-[13px] text-ink hover:border-navy"
+                      className="h-8 cursor-pointer rounded border border-edge bg-white pl-2 pr-1 text-[13px] text-ink hover:border-navy disabled:cursor-not-allowed"
                     >
-                      {detail.periods?.map(row => (
+                      {detail.periods.map(row => (
                         <option key={row.reportPeriod} value={row.reportPeriod}>{row.reportPeriod}</option>
                       ))}
                     </select>
@@ -211,6 +271,7 @@ export default function WhaleDetailPage() {
                     : '暂无上期可对比。'}
               </p>
             </div>
+            {loading && <p className="m-0 text-[13px] text-ink-mute">加载中</p>}
             <PositionTable rows={detail.positions} showWeight byShares={!house} showChange={detail.previousPeriod !== null} />
             {detail.closed.length > 0 && (
               <section className="flex flex-col gap-3">

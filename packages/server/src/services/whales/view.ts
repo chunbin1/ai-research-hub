@@ -181,7 +181,7 @@ export function getWhaleDetail(slug: string, reportPeriod?: string): WhaleDetail
   const filings = listFilings(slug)
   const selectedIndex = reportPeriod ? filings.findIndex(row => row.reportPeriod === reportPeriod) : 0
   if (reportPeriod && selectedIndex < 0) return null
-  const latest = filings[selectedIndex] ?? null
+  const selected = filings[selectedIndex] ?? null
   const previous = filings[selectedIndex + 1] ?? null
   const periods = filings.map(row => ({ reportPeriod: row.reportPeriod, filedAt: row.filedAt }))
   const institution = {
@@ -191,11 +191,11 @@ export function getWhaleDetail(slug: string, reportPeriod?: string): WhaleDetail
     nameEn: inst.nameEn,
     cik: inst.cik,
     source: inst.source,
-    dataStatus: latest ? 'ready' as const : 'empty' as const,
+    dataStatus: selected ? 'ready' as const : 'empty' as const,
     syncError: sync.lastError,
   }
   const valueNote = inst.source === 'house-fd' ? HOUSE_VALUE_NOTE : VALUE_NOTE
-  if (!latest) {
+  if (!selected) {
     return {
       institution,
       valueNote,
@@ -207,7 +207,7 @@ export function getWhaleDetail(slug: string, reportPeriod?: string): WhaleDetail
     }
   }
   const index = buildTickerIndex(loadTickers())
-  const current = listPositions(latest.id)
+  const current = listPositions(selected.id)
   const prevRows = previous ? listPositions(previous.id) : null
   const diff = diffPositions(current, prevRows, inst.source === 'house-fd' ? 'midpoint' : 'shares')
   const total = diff.positions.reduce((sum, row) => sum + row.valueUsd, 0)
@@ -223,12 +223,12 @@ export function getWhaleDetail(slug: string, reportPeriod?: string): WhaleDetail
     valueNote,
     periods,
     period: {
-      reportPeriod: latest.reportPeriod,
-      filedAt: latest.filedAt,
-      form: latest.form,
-      accession: latest.accession,
-      sourceUrl: latest.sourceUrl,
-      valueUnit: latest.valueUnit,
+      reportPeriod: selected.reportPeriod,
+      filedAt: selected.filedAt,
+      form: selected.form,
+      accession: selected.accession,
+      sourceUrl: selected.sourceUrl,
+      valueUnit: selected.valueUnit,
     },
     previousPeriod: previous ? { reportPeriod: previous.reportPeriod, filedAt: previous.filedAt } : null,
     positions,

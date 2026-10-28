@@ -1,8 +1,8 @@
 import { StrictMode } from 'react'
 import { test, expect, vi, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import WhalesPage from './WhalesPage'
 import WhaleDetailPage from './WhaleDetailPage'
 import { SiteHeader } from '../components/SiteHeader'
@@ -58,6 +58,7 @@ const DETAIL = {
     syncError: null,
   },
   valueNote: '市值为美元。2023-01-03 之后按美元填报。',
+  periods: [{ reportPeriod: '2026-06-30', filedAt: '2026-08-14' }],
   period: {
     reportPeriod: '2026-06-30',
     filedAt: '2026-08-14',
@@ -476,7 +477,159 @@ test('详情可以切换报告期，页面不提供成本和浮盈', async () =>
   expect(await screen.findByText('KO')).toBeTruthy()
   expect(screen.getByText(/COCA COLA CO/)).toBeTruthy()
   expect(screen.getByText('2026-05-15')).toBeTruthy()
-  expect(fetchMock).toHaveBeenCalledWith('/api/whales/berkshire?period=2026-03-31')
+  expect(fetchMock.mock.calls.some(call => call[0] === '/api/whales/berkshire?period=2026-03-31')).toBe(true)
+})
+
+const TWO_PERIODS = [
+  { reportPeriod: '2026-06-30', filedAt: '2026-08-14' },
+  { reportPeriod: '2026-03-31', filedAt: '2026-05-15' },
+]
+
+function SearchProbe() {
+  const { search } = useLocation()
+  return <div data-testid="search">{search}</div>
+}
+
+function renderWhaleDetail(entry: string) {
+  render(
+    <MemoryRouter initialEntries={[entry]}>
+      <Routes>
+        <Route path="/whales/:slug" element={<><WhaleDetailPage /><SearchProbe /></>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+test('非法 period 提示格式不对，并回到最新一期', async () => {
+  const latest = { ...DETAIL, periods: TWO_PERIODS }
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (String(url).includes('period=')) return jsonResponse({ error: 'invalid_input' }, 400)
+    return jsonResponse(latest)
+  }))
+  render(
+    <StrictMode>
+      <MemoryRouter initialEntries={['/whales/berkshire?period=nope']}>
+        <Routes>
+          <Route path="/whales/:slug" element={<><WhaleDetailPage /><SearchProbe /></>} />
+        </Routes>
+      </MemoryRouter>
+    </StrictMode>,
+  )
+  expect(await screen.findByText('报告期格式不对，已回到最新一期')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '巴菲特' })).toBeTruthy()
+  expect((screen.getByRole('combobox', { name: '报告期' }) as HTMLSelectElement).value).toBe('2026-06-30')
+  expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0)
+  await waitFor(() => expect(screen.getByTestId('search').textContent).toBe(''))
+})
+
+test('不存在的报告期保留机构和选择器，并回到最新一期', async () => {
+  const latest = { ...DETAIL, periods: TWO_PERIODS }
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (String(url).includes('period=')) return jsonResponse({ error: 'period_not_found' }, 404)
+    return jsonResponse(latest)
+  }))
+  renderWhaleDetail('/whales/berkshire?period=1999-01-01')
+  expect(await screen.findByText('没有这一报告期，已回到最新一期')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: '巴菲特' })).toBeTruthy()
+  expect(screen.getByRole('combobox', { name: '报告期' })).toBeTruthy()
+  expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0)
+  await waitFor(() => expect(screen.getByTestId('search').textContent).toBe(''))
+})
+
+test('未知机构不会被当成缺报告期回退', async () => {
+  const fetchMock = vi.fn(async () => jsonResponse({ error: 'not_found' }, 404))
+  vi.stubGlobal('fetch', fetchMock)
+  renderWhaleDetail('/whales/missing')
+  expect(await screen.findByText('没有这家机构')).toBeTruthy()
+  expect(screen.queryByRole('heading', { name: '巴菲特' })).toBeNull()
+  expect(screen.queryByRole('combobox', { name: '报告期' })).toBeNull()
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+})
+
+test('切换报告期加载中禁用选择器，并提示加载中', async () => {
+  const older = {
+    ...DETAIL,
+    periods: TWO_PERIODS,
+    period: { ...DETAIL.period, reportPeriod: '2026-03-31', filedAt: '2026-05-15' },
+    positions: [{
+      cusip: 'OLDPERIOD', ticker: 'OLD', issuerName: 'STALE PERIOD INC', titleOfClass: 'COM',
+      putCall: '', shareType: 'SH', shares: 1, valueUsd: 1, weight: 1,
+      change: null, prevShares: null, prevValueUsd: null, shareDelta: null, valueDeltaUsd: null,
+    }],
+    closed: [],
+  }
+  const releases: Array<() => void> = []
+  vi.stubGlobal('fetch', vi.fn((url: string) => {
+    let release!: () => void
+    const body = String(url).includes('period=2026-03-31') ? older : { ...DETAIL, periods: TWO_PERIODS }
+    const jsonPromise = new Promise<unknown>(resolve => { release = () => resolve(body) })
+    releases.push(release)
+    return Promise.resolve({ ok: true, status: 200, json: () => jsonPromise } as Response)
+  }))
+  const user = userEvent.setup()
+  renderWhaleDetail('/whales/berkshire')
+  await waitFor(() => expect(releases.length).toBe(1))
+  await act(async () => { releases[0]!() })
+  const select = await screen.findByRole('combobox', { name: '报告期' }) as HTMLSelectElement
+  await user.selectOptions(select, '2026-03-31')
+  await waitFor(() => expect(select.disabled).toBe(true))
+  expect(screen.getByText('加载中')).toBeTruthy()
+  expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0)
+  await act(async () => { releases[1]!() })
+  expect(await screen.findByText('OLD')).toBeTruthy()
+  expect(select.disabled).toBe(false)
+})
+
+test('快速切换报告期时，晚到的旧响应不能盖回持仓', async () => {
+  const older = {
+    ...DETAIL,
+    periods: TWO_PERIODS,
+    period: { ...DETAIL.period, reportPeriod: '2026-03-31', filedAt: '2026-05-15' },
+    positions: [{
+      cusip: 'OLDPERIOD', ticker: 'OLD', issuerName: 'STALE PERIOD INC', titleOfClass: 'COM',
+      putCall: '', shareType: 'SH', shares: 1, valueUsd: 1, weight: 1,
+      change: null, prevShares: null, prevValueUsd: null, shareDelta: null, valueDeltaUsd: null,
+    }],
+    closed: [],
+  }
+  const releases: Array<() => void> = []
+  vi.stubGlobal('fetch', vi.fn((url: string) => {
+    let release!: () => void
+    const body = String(url).includes('period=2026-03-31') ? older : { ...DETAIL, periods: TWO_PERIODS }
+    const jsonPromise = new Promise<unknown>(resolve => { release = () => resolve(body) })
+    releases.push(release)
+    return Promise.resolve({ ok: true, status: 200, json: () => jsonPromise } as Response)
+  }))
+  function PeriodButtons() {
+    const [, setSearchParams] = useSearchParams()
+    return (
+      <>
+        <button type="button" onClick={() => setSearchParams({ period: '2026-03-31' })}>切到旧期</button>
+        <button type="button" onClick={() => setSearchParams({})}>切到最新</button>
+      </>
+    )
+  }
+  render(
+    <MemoryRouter initialEntries={['/whales/berkshire']}>
+      <Routes>
+        <Route path="/whales/:slug" element={<><WhaleDetailPage /><PeriodButtons /></>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  await waitFor(() => expect(releases.length).toBe(1))
+  await act(async () => { releases[0]!() })
+  expect((await screen.findAllByText('AAPL')).length).toBeGreaterThan(0)
+  fireEvent.click(screen.getByRole('button', { name: '切到旧期' }))
+  await waitFor(() => expect(releases.length).toBe(2))
+  // fetch 已 resolve，让 .then 走进 await response.json()，再切走，旧 json 才晚到。
+  await act(async () => { await Promise.resolve() })
+  fireEvent.click(screen.getByRole('button', { name: '切到最新' }))
+  await waitFor(() => expect(releases.length).toBe(3))
+  await act(async () => { releases[2]!() })
+  await act(async () => { releases[1]!() })
+  await act(async () => { await Promise.resolve() })
+  expect(screen.queryByText('OLD')).toBeNull()
+  expect(screen.getAllByText('AAPL').length).toBeGreaterThan(0)
 })
 
 test('众议院详情按区间中点说明增减，股数差为 0 时不带 +0', async () => {
