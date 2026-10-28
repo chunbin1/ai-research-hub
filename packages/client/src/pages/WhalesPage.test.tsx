@@ -434,6 +434,51 @@ test('详情同时列出持仓和四类增减', async () => {
   expect(screen.getByRole('heading', { name: '清仓' })).toBeTruthy()
 })
 
+test('详情可以切换报告期，页面不提供成本和浮盈', async () => {
+  const older = {
+    ...DETAIL,
+    period: { ...DETAIL.period, reportPeriod: '2026-03-31', filedAt: '2026-05-15' },
+    previousPeriod: { reportPeriod: '2025-12-31', filedAt: '2026-02-14' },
+    positions: [{
+      cusip: '191216100', ticker: 'KO', issuerName: 'COCA COLA CO', titleOfClass: 'COM',
+      putCall: '', shareType: 'SH', shares: 4, valueUsd: 40, weight: 1,
+      change: 'unchanged', prevShares: 4, prevValueUsd: 40, shareDelta: 0, valueDeltaUsd: 0,
+    }],
+    closed: [],
+  }
+  const latest = {
+    ...DETAIL,
+    periods: [
+      { reportPeriod: '2026-06-30', filedAt: '2026-08-14' },
+      { reportPeriod: '2026-03-31', filedAt: '2026-05-15' },
+    ],
+  }
+  const fetchMock = vi.fn(async (url: string) => {
+    if (String(url).includes('period=2026-03-31')) return jsonResponse({ ...older, periods: latest.periods })
+    return jsonResponse(latest)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const user = userEvent.setup()
+  render(
+    <MemoryRouter initialEntries={['/whales/berkshire']}>
+      <Routes>
+        <Route path="/whales/:slug" element={<WhaleDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  const select = await screen.findByRole('combobox', { name: '报告期' })
+  expect((select as HTMLSelectElement).value).toBe('2026-06-30')
+  expect(screen.getByText(/没有买入成本/)).toBeTruthy()
+  expect(screen.getByText(/浮盈/)).toBeTruthy()
+  expect(screen.queryByRole('columnheader', { name: '成本' })).toBeNull()
+  expect(screen.queryByRole('columnheader', { name: '浮盈' })).toBeNull()
+  await user.selectOptions(select, '2026-03-31')
+  expect(await screen.findByText('KO')).toBeTruthy()
+  expect(screen.getByText(/COCA COLA CO/)).toBeTruthy()
+  expect(screen.getByText('2026-05-15')).toBeTruthy()
+  expect(fetchMock).toHaveBeenCalledWith('/api/whales/berkshire?period=2026-03-31')
+})
+
 test('众议院详情按区间中点说明增减，股数差为 0 时不带 +0', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
     ...DETAIL,

@@ -5,7 +5,7 @@ import { requireAdmin } from './auth.js'
 import { isWhalesEnabled } from '../services/whales/enabled.js'
 import { normalizeCik, normalizeSlug, slugFromNames } from '../services/whales/identity.js'
 import { syncOneWhale, type OneSync } from '../services/whales/sync.js'
-import { deleteInstitution, insertInstitution, markSync, WhaleWriteError } from '../services/whales/store.js'
+import { deleteInstitution, getInstitution, insertInstitution, markSync, WhaleWriteError } from '../services/whales/store.js'
 import { getWhaleDetail, listWhaleSummaries } from '../services/whales/view.js'
 
 export interface WhaleRouteOptions {
@@ -77,13 +77,23 @@ export const whaleRoutes: FastifyPluginAsync<WhaleRouteOptions> = async (app, op
     return reply.status(201).send({ institution, sync: 'pending' })
   })
 
-  app.get<{ Params: { slug: string } }>('/whales/:slug', describeRoute(
+  app.get<{ Params: { slug: string }; Querystring: { period?: string } }>('/whales/:slug', describeRoute(
     ['whales'],
     '一家机构的 13F 持仓',
-    '公开读。positions 是最新报告期，closed 是相对上一期清掉的仓。没有上一期时 change 为 null。未知 slug 返回 404 { error: "not_found" }。',
+    '公开读。默认 positions 是最新报告期。query period=YYYY-MM-DD 时改为该期，并和库里更早的相邻一期对比。periods 列出已入库的报告期，新的在前。closed 是相对上一期清掉的仓。没有上一期时 change 为 null。未知 slug 返回 404 { error: "not_found" }。period 格式不对返回 400 { error: "invalid_input" }。机构在、这一期不在返回 404 { error: "period_not_found" }。',
   ), async (request, reply) => {
-    const detail = getWhaleDetail(request.params.slug)
-    if (!detail) return reply.status(404).send({ error: 'not_found' })
+    const period = request.query.period
+    if (period !== undefined && period !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(period)) {
+      return reply.status(400).send({ error: 'invalid_input', message: '报告期须为 YYYY-MM-DD' })
+    }
+    const selected = period ? period : undefined
+    const detail = getWhaleDetail(request.params.slug, selected)
+    if (!detail) {
+      if (selected && getInstitution(request.params.slug)) {
+        return reply.status(404).send({ error: 'period_not_found' })
+      }
+      return reply.status(404).send({ error: 'not_found' })
+    }
     return detail
   })
 

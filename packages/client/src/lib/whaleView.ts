@@ -54,6 +54,7 @@ export interface WhaleDetail {
     syncError: string | null
   }
   valueNote: string
+  periods?: { reportPeriod: string; filedAt: string }[]
   period: {
     reportPeriod: string
     filedAt: string

@@ -105,6 +105,73 @@ test('详情含相对上期的增减，未知机构 404', async () => {
   assert.equal(scion.dataStatus, 'empty')
 })
 
+test('详情可以切换已入库的报告期', async () => {
+  const app = await appWithDb()
+  const line = (cusip: string, name: string, shares: number, value: number) => ({
+    cusip, putCall: '' as const, shareType: 'SH', issuerName: name, titleOfClass: 'COM',
+    shares, valueReported: value, valueUsd: value,
+  })
+  replaceFiling({
+    slug: 'berkshire', accession: '0001193125-26-000000', form: '13F-HR',
+    reportPeriod: '2025-12-31', filedAt: '2026-02-14', sourceUrl: 'https://www.sec.gov/old',
+    valueUnit: 'dollars', fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [line('191216100', 'COCA COLA CO', 4, 40)],
+  })
+  replaceFiling({
+    slug: 'berkshire', accession: '0001193125-26-000001', form: '13F-HR',
+    reportPeriod: '2026-03-31', filedAt: '2026-05-15', sourceUrl: 'https://www.sec.gov/prev',
+    valueUnit: 'dollars', fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [line('037833100', 'APPLE INC', 10, 100), line('191216100', 'COCA COLA CO', 4, 40)],
+  })
+  replaceFiling({
+    slug: 'berkshire', accession: '0001193125-26-000002', form: '13F-HR',
+    reportPeriod: '2026-06-30', filedAt: '2026-08-14', sourceUrl: 'https://www.sec.gov/latest',
+    valueUnit: 'dollars', fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [line('037833100', 'APPLE INC', 15, 200)],
+  })
+
+  const latest = (await app.inject({ method: 'GET', url: '/api/whales/berkshire' })).json()
+  assert.deepEqual(latest.periods.map((row: { reportPeriod: string }) => row.reportPeriod), [
+    '2026-06-30', '2026-03-31', '2025-12-31',
+  ])
+  assert.equal(latest.period.reportPeriod, '2026-06-30')
+
+  const mid = await app.inject({ method: 'GET', url: '/api/whales/berkshire?period=2026-03-31' })
+  assert.equal(mid.statusCode, 200)
+  const midBody = mid.json()
+  assert.equal(midBody.period.reportPeriod, '2026-03-31')
+  assert.equal(midBody.period.filedAt, '2026-05-15')
+  assert.equal(midBody.previousPeriod.reportPeriod, '2025-12-31')
+  const apple = midBody.positions.find((row: { cusip: string }) => row.cusip === '037833100')
+  assert.equal(apple.shares, 10)
+  assert.equal(apple.valueUsd, 100)
+  assert.equal(apple.change, 'new')
+  assert.equal(midBody.closed.length, 0)
+
+  const oldest = (await app.inject({ method: 'GET', url: '/api/whales/berkshire?period=2025-12-31' })).json()
+  assert.equal(oldest.period.reportPeriod, '2025-12-31')
+  assert.equal(oldest.previousPeriod, null)
+  assert.equal(oldest.positions[0].cusip, '191216100')
+  assert.equal(oldest.positions[0].change, null)
+  assert.equal(oldest.closed.length, 0)
+
+  const missingPeriod = await app.inject({ method: 'GET', url: '/api/whales/berkshire?period=1999-01-01' })
+  assert.equal(missingPeriod.statusCode, 404)
+  assert.deepEqual(missingPeriod.json(), { error: 'period_not_found' })
+
+  const bad = await app.inject({ method: 'GET', url: '/api/whales/berkshire?period=nope' })
+  assert.equal(bad.statusCode, 400)
+  assert.equal(bad.json().error, 'invalid_input')
+
+  const unknown = await app.inject({ method: 'GET', url: '/api/whales/nope?period=2026-03-31' })
+  assert.equal(unknown.statusCode, 404)
+  assert.deepEqual(unknown.json(), { error: 'not_found' })
+
+  const empty = (await app.inject({ method: 'GET', url: '/api/whales/scion' })).json()
+  assert.deepEqual(empty.periods, [])
+  assert.equal(empty.period, null)
+})
+
 test('WHALES=off 时列表也 404', async () => {
   const app = await appWithDb()
   const saved = process.env.WHALES

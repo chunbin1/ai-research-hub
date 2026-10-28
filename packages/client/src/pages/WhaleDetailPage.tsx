@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { BackLink } from '../components/BackLink'
 import { formatWeight } from '../lib/holdingsView'
 import {
@@ -90,8 +90,16 @@ function PositionTable({ rows, showWeight, byShares, showChange }: { rows: Whale
   )
 }
 
+function periodError(code: string | undefined): string {
+  if (code === 'whales_disabled') return '名家持仓已关闭'
+  if (code === 'period_not_found') return '没有这一报告期'
+  return '没有这家机构'
+}
+
 export default function WhaleDetailPage() {
   const { slug = '' } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const periodQuery = searchParams.get('period') ?? ''
   const [detail, setDetail] = useState<WhaleDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -100,17 +108,19 @@ export default function WhaleDetailPage() {
     let cancelled = false
     setLoading(true)
     setError(null)
-    setDetail(null)
-    void fetch(`/api/whales/${encodeURIComponent(slug)}`)
+    const query = periodQuery ? `?period=${encodeURIComponent(periodQuery)}` : ''
+    void fetch(`/api/whales/${encodeURIComponent(slug)}${query}`)
       .then(async response => {
         if (cancelled) return
         if (response.status === 404) {
           const body = await response.json().catch(() => null) as { error?: string } | null
-          setError(body?.error === 'whales_disabled' ? '名家持仓已关闭' : '没有这家机构')
+          setDetail(null)
+          setError(periodError(body?.error))
           setLoading(false)
           return
         }
         if (!response.ok) {
+          setDetail(null)
           setError('持仓加载失败')
           setLoading(false)
           return
@@ -120,14 +130,23 @@ export default function WhaleDetailPage() {
       })
       .catch(() => {
         if (!cancelled) {
+          setDetail(null)
           setError('持仓加载失败')
           setLoading(false)
         }
       })
     return () => { cancelled = true }
-  }, [slug])
+  }, [slug, periodQuery])
 
-  if (loading) {
+  function choosePeriod(next: string) {
+    const latest = detail?.periods?.[0]?.reportPeriod
+    const params = new URLSearchParams(searchParams)
+    if (!latest || next === latest) params.delete('period')
+    else params.set('period', next)
+    setSearchParams(params, { replace: true })
+  }
+
+  if (loading && (!detail || detail.institution.slug !== slug)) {
     return <div className={`mx-auto w-full max-w-[1440px] py-8 text-[13px] text-ink-mute ${GUTTER}`}>加载中…</div>
   }
   if (error || !detail) {
@@ -159,8 +178,24 @@ export default function WhaleDetailPage() {
         ) : (
           <>
             <div className="flex flex-col gap-1 pt-1 text-[13px] text-ink-soft">
-              <p className="m-0">
-                报告期 <time dateTime={period.reportPeriod}>{period.reportPeriod}</time>
+              <p className="m-0 flex flex-wrap items-center gap-x-1">
+                {(detail.periods?.length ?? 0) > 1 ? (
+                  <label className="inline-flex items-center gap-1.5">
+                    报告期
+                    <select
+                      aria-label="报告期"
+                      value={periodQuery || period.reportPeriod}
+                      onChange={event => choosePeriod(event.target.value)}
+                      className="h-8 cursor-pointer rounded border border-edge bg-white pl-2 pr-1 text-[13px] text-ink hover:border-navy"
+                    >
+                      {detail.periods?.map(row => (
+                        <option key={row.reportPeriod} value={row.reportPeriod}>{row.reportPeriod}</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <>报告期 <time dateTime={period.reportPeriod}>{period.reportPeriod}</time></>
+                )}
                 {' · '}申报日 <time dateTime={period.filedAt}>{period.filedAt}</time>
                 {' · '}{period.form}
                 {' · '}
@@ -188,7 +223,7 @@ export default function WhaleDetailPage() {
       </main>
 
       <footer className={`mt-5 border-t border-rule pb-7 pt-4 text-[11px] leading-[1.6] text-ink-faint md:mt-6 md:pt-5 md:text-[12px] ${GUTTER}`}>
-        {detail.valueNote} 加仓、新建仓为红，减仓、清仓为绿。
+        {detail.valueNote} 申报没有买入成本，这里不算浮盈。加仓、新建仓为红，减仓、清仓为绿。
       </footer>
     </div>
   )
