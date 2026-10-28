@@ -25,9 +25,9 @@
 - 不接 OpenFIGI、Yahoo 或其它行情源来补 ticker、补价格
 - 不把 13F 写进 `holdings_*` 表，也不进信号自选股
 - 不做「立刻同步全部」按钮。管理员添加机构时会拉这一家；全量仍走定时任务
-- 不做报告期切换器。页面只展示最新一期，并和库里相邻的上一期对比
+- 不算买入成本，也不算相对成本的浮盈。13F 和众议院披露都没有成本；页脚写明这一点
 - 不展示投票权、`otherManager`、投资裁量拆分。同一证券的多行在入库前合并
-- 不把历史每一期都摊到页面上。库里保留最近 8 个报告期，供对比和日后扩展
+- 不把历史每一期摊成多张表。库里保留最近 8 个报告期。详情用一个报告期选择器切换，一次只看选中的那一期
 
 ## 与 holdings / signals 的边界
 
@@ -165,7 +165,7 @@ SEC Release 34-95148：2023-01-03 及之后**提交**的 13F，`value` 改为四
 
 ## 增减
 
-不建增减表。读详情时取该机构报告期最新的两份 filing，用同一个三元组做键：
+不建增减表。读详情时取选中的报告期，以及库里紧挨着的更早一期，用同一个三元组做键。不传 `period` 时选中最新一期：
 
 | 情况 | `change` |
 |---|---|
@@ -202,9 +202,11 @@ SEC Release 34-95148：2023-01-03 及之后**提交**的 13F，`value` 改为四
 
 未知 slug：404 `{ "error": "not_found" }`。
 
-已知 slug 但没有申报：`period`、`previousPeriod` 为 `null`，`positions` 和 `closed` 为空数组。机构信息仍返回。
+`?period=YYYY-MM-DD` 选已入库的某一期。格式不对：400 `{ "error": "invalid_input" }`。机构在、这一期不在：404 `{ "error": "period_not_found" }`。省略 `period` 时用最新一期。
 
-有申报时 `period` 带 `reportPeriod`、`filedAt`、`form`、`accession`、`sourceUrl`、`valueUnit`。`previousPeriod` 只有报告期和申报日。`valueNote` 是给页面用的口径说明。
+已知 slug 但没有申报：`period`、`previousPeriod` 为 `null`，`periods` 为空数组，`positions` 和 `closed` 为空数组。机构信息仍返回。
+
+有申报时 `period` 带 `reportPeriod`、`filedAt`、`form`、`accession`、`sourceUrl`、`valueUnit`。`periods` 是已入库报告期，新的在前，每项有 `reportPeriod` 和 `filedAt`。`previousPeriod` 是选中期的上一期，只有报告期和申报日。`valueNote` 是给页面用的口径说明。
 
 `positions` 按 `valueUsd` 降序。每行：`cusip`、`ticker`、`issuerName`、`titleOfClass`、`putCall`、`shareType`、`shares`、`valueUsd`、`weight`、`change`、`prevShares`、`prevValueUsd`、`shareDelta`、`valueDeltaUsd`。没有上期时，`change` 和 `prev*`、`shareDelta`、`valueDeltaUsd` 为 `null`。
 
@@ -254,13 +256,13 @@ slug 或 CIK 与现有行冲突：409，`error` 为 `slug_taken` 或 `cik_taken`
 ### 详情 `/whales/:slug`
 
 - 标题用管理人，副标题是中文机构名、英文名和 CIK
-- 有数据：报告期、申报日、`form`、指向 `sourceUrl` 的「SEC 原文」
+- 有数据：报告期、申报日、`form`、指向 `sourceUrl` 的「SEC 原文」。已入库报告期多于一期时，报告期是一个选择器，地址栏用 `?period=` 记住选中项；选最新一期时不带这个参数
 - 有上一期：写明对比的报告期。表的「相对上期」列用中文标签。加仓和新建仓用 `text-long`，减仓和清仓用 `text-short`，不变用中性色。股数差额带正负号
 - 没有上一期：表仍在，相对上期这一列写「—」，页上说明暂无上期可对比
 - 清仓单独一小节，不混进本期持仓
 - 没有申报：不渲染空表，正文写「暂无数据」
 - 未知 slug：接口 404，页面写「没有这家机构」
-- 页脚标明市值是美元，并复述 2023-01-03 前后的换算规则。期权行在名称旁标「认购」或「认沽」
+- 页脚标明市值是美元，并复述 2023-01-03 前后的换算规则，同时写明申报没有买入成本、这里不算浮盈。期权行在名称旁标「认购」或「认沽」
 
 ## SEO
 

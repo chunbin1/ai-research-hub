@@ -160,6 +160,7 @@ export interface WhaleDetail {
     syncError: string | null
   }
   valueNote: string
+  periods: { reportPeriod: string; filedAt: string }[]
   period: {
     reportPeriod: string
     filedAt: string
@@ -173,13 +174,16 @@ export interface WhaleDetail {
   closed: WhalePositionView[]
 }
 
-export function getWhaleDetail(slug: string): WhaleDetail | null {
+export function getWhaleDetail(slug: string, reportPeriod?: string): WhaleDetail | null {
   const inst = getInstitution(slug)
   if (!inst) return null
   const sync = getSync(slug)
   const filings = listFilings(slug)
-  const latest = filings[0] ?? null
-  const previous = filings[1] ?? null
+  const selectedIndex = reportPeriod ? filings.findIndex(row => row.reportPeriod === reportPeriod) : 0
+  if (reportPeriod && selectedIndex < 0) return null
+  const selected = filings[selectedIndex] ?? null
+  const previous = filings[selectedIndex + 1] ?? null
+  const periods = filings.map(row => ({ reportPeriod: row.reportPeriod, filedAt: row.filedAt }))
   const institution = {
     slug: inst.slug,
     manager: inst.manager,
@@ -187,14 +191,15 @@ export function getWhaleDetail(slug: string): WhaleDetail | null {
     nameEn: inst.nameEn,
     cik: inst.cik,
     source: inst.source,
-    dataStatus: latest ? 'ready' as const : 'empty' as const,
+    dataStatus: selected ? 'ready' as const : 'empty' as const,
     syncError: sync.lastError,
   }
   const valueNote = inst.source === 'house-fd' ? HOUSE_VALUE_NOTE : VALUE_NOTE
-  if (!latest) {
+  if (!selected) {
     return {
       institution,
       valueNote,
+      periods,
       period: null,
       previousPeriod: null,
       positions: [],
@@ -202,7 +207,7 @@ export function getWhaleDetail(slug: string): WhaleDetail | null {
     }
   }
   const index = buildTickerIndex(loadTickers())
-  const current = listPositions(latest.id)
+  const current = listPositions(selected.id)
   const prevRows = previous ? listPositions(previous.id) : null
   const diff = diffPositions(current, prevRows, inst.source === 'house-fd' ? 'midpoint' : 'shares')
   const total = diff.positions.reduce((sum, row) => sum + row.valueUsd, 0)
@@ -216,13 +221,14 @@ export function getWhaleDetail(slug: string): WhaleDetail | null {
   return {
     institution,
     valueNote,
+    periods,
     period: {
-      reportPeriod: latest.reportPeriod,
-      filedAt: latest.filedAt,
-      form: latest.form,
-      accession: latest.accession,
-      sourceUrl: latest.sourceUrl,
-      valueUnit: latest.valueUnit,
+      reportPeriod: selected.reportPeriod,
+      filedAt: selected.filedAt,
+      form: selected.form,
+      accession: selected.accession,
+      sourceUrl: selected.sourceUrl,
+      valueUnit: selected.valueUnit,
     },
     previousPeriod: previous ? { reportPeriod: previous.reportPeriod, filedAt: previous.filedAt } : null,
     positions,
