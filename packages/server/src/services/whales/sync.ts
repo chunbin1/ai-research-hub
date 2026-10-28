@@ -2,8 +2,8 @@
 // 没有 User-Agent 时不请求 SEC：SEC 会拒，而且空跑不该把启动补拉的闸门写上。
 // skipped 仍只表示「13F 跳过」。众议院披露不依赖 SEC UA；只要本轮实际跑过机构（含仅 house-fd），就写 lastSyncAt。
 import {
-  aggregatePositions, filingsFromSubmissions, informationTableXmlPath, parseInformationTable,
-  selectReportPeriods,
+  aggregatePositions, filingsFromSubmissions, groupReportPeriods, informationTableXmlPath, mergeAggregated,
+  parseAmendmentType, parseInformationTable, primaryDocXmlPath, type AggregatedPosition, type FilingRef,
 } from './parser.js'
 import { resolveSecUserAgent } from './enabled.js'
 import {
@@ -28,7 +28,8 @@ export interface SyncCounts {
   skipped: boolean
 }
 
-export const WHALE_PERIODS = 8
+// 估算成本要从建仓那一期算起，所以多留历史。filings.recent 对种子机构大约覆盖十年 13F。
+export const WHALE_PERIODS = 40
 const TICKER_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 export async function syncWhales(opts: {
@@ -149,15 +150,15 @@ async function syncInstitution(
   fetchedAt: string,
 ): Promise<'ok' | 'empty'> {
   const doc = JSON.parse(await transport.getText(submissionsUrl(inst.cik))) as unknown
-  const selected = selectReportPeriods(filingsFromSubmissions(doc), periods)
-  if (selected.length === 0) return 'empty'
-  for (const filing of selected) {
+  const groups = groupReportPeriods(filingsFromSubmissions(doc), periods)
+  if (groups.length === 0) return 'empty'
+  for (const { candidates } of groups) {
+    const filing = candidates[0]!
     const existing = getFiling(inst.slug, filing.reportDate)
-    if (existing?.accession === filing.accessionNumber) continue
-    const indexUrl = filingIndexUrl(inst.cik, filing.accessionNumber)
-    const href = informationTableXmlPath(await transport.getText(indexUrl))
-    if (!href) throw new Error(`找不到信息表 ${filing.accessionNumber}`)
-    const xml = await transport.getText(absoluteArchiveUrl(href, indexUrl))
+    // 修正案要知道类型才算拉全。加 amendment_type 之前入库的修正案（null）重拉一次。
+    const amended = filing.form.endsWith('/A')
+    if (existing?.accession === filing.accessionNumber && (!amended || existing.amendmentType !== null)) continue
+    const { amendmentType, positions } = await fetchPeriodPositions(inst.cik, candidates, transport)
     const unit = valueUnitForFilingDate(filing.filingDate)
     replaceFiling({
       slug: inst.slug,
@@ -165,11 +166,43 @@ async function syncInstitution(
       form: filing.form,
       reportPeriod: filing.reportDate,
       filedAt: filing.filingDate,
-      sourceUrl: indexUrl,
+      sourceUrl: filingIndexUrl(inst.cik, filing.accessionNumber),
       valueUnit: unit,
       fetchedAt,
-      positions: aggregatePositions(parseInformationTable(xml), unit),
+      amendmentType,
+      positions,
     })
   }
   return 'ok'
+}
+
+/**
+ * 一个报告期的持仓。从优先的那份往下看：NEW HOLDINGS 修正案只补报几行，
+ * 要继续往下找到原报或整份重报，再把补报的行加进去。
+ */
+async function fetchPeriodPositions(
+  cik: string,
+  candidates: FilingRef[],
+  transport: SecTransport,
+): Promise<{ amendmentType: string; positions: AggregatedPosition[] }> {
+  const parts: AggregatedPosition[][] = []
+  let winnerType: string | null = null
+  for (const filing of candidates) {
+    const indexUrl = filingIndexUrl(cik, filing.accessionNumber)
+    const indexHtml = await transport.getText(indexUrl)
+    let type = ''
+    if (filing.form.endsWith('/A')) {
+      const primary = primaryDocXmlPath(indexHtml)
+      type = primary
+        ? parseAmendmentType(await transport.getText(absoluteArchiveUrl(primary, indexUrl)))
+        : 'RESTATEMENT'
+    }
+    winnerType ??= type
+    const href = informationTableXmlPath(indexHtml)
+    if (!href) throw new Error(`找不到信息表 ${filing.accessionNumber}`)
+    const xml = await transport.getText(absoluteArchiveUrl(href, indexUrl))
+    parts.push(aggregatePositions(parseInformationTable(xml), valueUnitForFilingDate(filing.filingDate)))
+    if (type !== 'NEW HOLDINGS') break
+  }
+  return { amendmentType: winnerType ?? '', positions: mergeAggregated(parts) }
 }

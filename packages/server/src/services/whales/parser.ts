@@ -64,21 +64,54 @@ function prefer(a: FilingRef, b: FilingRef): FilingRef {
   return a.accessionNumber >= b.accessionNumber ? a : b
 }
 
+export interface ReportPeriodGroup {
+  reportDate: string
+  /** 同一报告期的全部 13F，优先者在前。第一份就是 selectReportPeriods 选中的那份。 */
+  candidates: FilingRef[]
+}
+
 /**
- * 每个报告期只留一份：申报日较新者胜，同一天修正案胜。
+ * 按报告期分组：申报日较新者在前，同一天修正案在前。
  * 结果按报告期从新到旧，最多 limit 期。
  */
-export function selectReportPeriods(filings: FilingRef[], limit: number): FilingRef[] {
-  const byPeriod = new Map<string, FilingRef>()
+export function groupReportPeriods(filings: FilingRef[], limit: number): ReportPeriodGroup[] {
+  const byPeriod = new Map<string, FilingRef[]>()
   for (const filing of filings) {
     if (!FORM_13F.has(filing.form)) continue
     if (!filing.reportDate || !filing.accessionNumber) continue
-    const prev = byPeriod.get(filing.reportDate)
-    byPeriod.set(filing.reportDate, prev ? prefer(prev, filing) : filing)
+    const list = byPeriod.get(filing.reportDate) ?? []
+    list.push(filing)
+    byPeriod.set(filing.reportDate, list)
   }
-  return [...byPeriod.values()]
+  return [...byPeriod.entries()]
+    .map(([reportDate, list]) => ({
+      reportDate,
+      candidates: [...list].sort((a, b) => (prefer(a, b) === a ? -1 : 1)),
+    }))
     .sort((a, b) => (a.reportDate < b.reportDate ? 1 : a.reportDate > b.reportDate ? -1 : 0))
     .slice(0, Math.max(0, limit))
+}
+
+/** 每个报告期只留一份：申报日较新者胜，同一天修正案胜。 */
+export function selectReportPeriods(filings: FilingRef[], limit: number): FilingRef[] {
+  return groupReportPeriods(filings, limit).map(group => group.candidates[0]!)
+}
+
+export type AmendmentType = 'RESTATEMENT' | 'NEW HOLDINGS'
+
+/** 索引页里的封面 primary_doc.xml。xsl 那份是给人看的 HTML，不要。 */
+export function primaryDocXmlPath(indexHtml: string): string | null {
+  const links = [...indexHtml.matchAll(/href="([^"]+\.xml)"/gi)].map(match => decodeXml(match[1] ?? ''))
+  return links.find(href => /primary_doc\.xml$/i.test(href) && !/xslForm13F/i.test(href)) ?? null
+}
+
+/**
+ * 修正案的类型。NEW HOLDINGS 只列补报的持仓（例如保密期满的仓位），要和原报合起来；
+ * RESTATEMENT 是整份重报。读不出来时当整份重报，和过去的行为一致。
+ */
+export function parseAmendmentType(primaryDocXml: string): AmendmentType {
+  const raw = (tagText(primaryDocXml, 'amendmentType') ?? '').replace(/\s+/g, ' ').trim().toUpperCase()
+  return raw === 'NEW HOLDINGS' ? 'NEW HOLDINGS' : 'RESTATEMENT'
 }
 
 function decodeXml(value: string): string {
@@ -163,6 +196,25 @@ export function aggregatePositions(rows: ParsedRow[], unit: ValueUnit): Aggregat
     existing.shares += row.shares
     existing.valueReported += row.value
     existing.valueUsd += toUsd(row.value, unit)
+  }
+  return [...grouped.values()]
+}
+
+/** 原报和 NEW HOLDINGS 修正案已各自换算成美元后，按同一键再加一次。 */
+export function mergeAggregated(parts: AggregatedPosition[][]): AggregatedPosition[] {
+  const grouped = new Map<string, AggregatedPosition>()
+  for (const rows of parts) {
+    for (const row of rows) {
+      const key = `${row.cusip}|${row.putCall}|${row.shareType}`
+      const existing = grouped.get(key)
+      if (!existing) {
+        grouped.set(key, { ...row })
+        continue
+      }
+      existing.shares += row.shares
+      existing.valueReported += row.valueReported
+      existing.valueUsd += row.valueUsd
+    }
   }
   return [...grouped.values()]
 }

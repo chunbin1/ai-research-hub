@@ -80,7 +80,7 @@ export const whaleRoutes: FastifyPluginAsync<WhaleRouteOptions> = async (app, op
   app.get<{ Params: { slug: string }; Querystring: { period?: string } }>('/whales/:slug', describeRoute(
     ['whales'],
     '一家机构的 13F 持仓',
-    '公开读。默认 positions 是最新报告期。query period=YYYY-MM-DD 时改为该期，并和库里更早的相邻一期对比。periods 列出已入库的报告期，新的在前。closed 是相对上一期清掉的仓。没有上一期时 change 为 null。未知 slug 返回 404 { error: "not_found" }。period 格式不对返回 400 { error: "invalid_input" }。机构在、这一期不在返回 404 { error: "period_not_found" }。',
+    '公开读。默认 positions 是最新报告期。query period=YYYY-MM-DD 时改为该期，并和库里更早的相邻一期对比。periods 列出已入库的报告期，新的在前。closed 是相对上一期清掉的仓。没有上一期时 change 为 null。positions[].cost 是按库内各期 13F 倒推的估算成本（期末价近似成交价，不是实际成本），期权、本金行和众议院披露为 null；costSummary 是这些仓位的合计。未知 slug 返回 404 { error: "not_found" }。period 格式不对返回 400 { error: "invalid_input" }。机构在、这一期不在返回 404 { error: "period_not_found" }。',
   ), async (request, reply) => {
     const period = request.query.period
     if (period !== undefined && period !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(period)) {

@@ -435,7 +435,7 @@ test('详情同时列出持仓和四类增减', async () => {
   expect(screen.getByRole('heading', { name: '清仓' })).toBeTruthy()
 })
 
-test('详情可以切换报告期，页面不提供成本和浮盈', async () => {
+test('详情可以切换报告期，接口没给估算成本时不出成本列', async () => {
   const older = {
     ...DETAIL,
     period: { ...DETAIL.period, reportPeriod: '2026-03-31', filedAt: '2026-05-15' },
@@ -733,4 +733,35 @@ test('功能开启时桌面和移动导航都有名家持仓', async () => {
     expect(link.getAttribute('href')).toBe('/whales')
     expect(link.getAttribute('aria-current')).toBe('page')
   }
+})
+
+test('详情给出估算成本、期末价和相对成本，起算的仓位标出起算期', async () => {
+  const withCost = {
+    ...DETAIL,
+    costNote: '13F 没有买入成本。估算成本按库内各期申报倒推。',
+    costSummary: { costUsd: 2400, valueUsd: 2500, gain: 2500 / 2400 - 1, coveredWeight: 0.9, partialWeight: 0.8 },
+    positions: [
+      { ...DETAIL.positions[0], cost: { costPerShare: 9.5, pricePerShare: 10, gain: 10 / 9.5 - 1, since: '2026-03-31', fromStart: false } },
+      { ...DETAIL.positions[1], cost: { costPerShare: 12, pricePerShare: 10, gain: 10 / 12 - 1, since: '2026-06-30', fromStart: true } },
+      { ...DETAIL.positions[3], cost: null },
+    ],
+  }
+  vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(withCost)))
+  render(
+    <MemoryRouter initialEntries={['/whales/berkshire']}>
+      <Routes>
+        <Route path="/whales/:slug" element={<WhaleDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  expect(await screen.findByRole('columnheader', { name: '估算成本' })).toBeTruthy()
+  expect(screen.getByRole('columnheader', { name: '期末价' })).toBeTruthy()
+  expect(screen.getByRole('columnheader', { name: '相对成本' })).toBeTruthy()
+  expect(screen.getByText('9.50')).toBeTruthy()
+  expect(screen.getByText('起算 2026-03-31')).toBeTruthy()
+  expect(screen.getByText('+5.3%').className).toContain('text-long')
+  expect(screen.getByText('-16.7%').className).toContain('text-short')
+  expect(screen.getByText(/估算成本合计/)).toBeTruthy()
+  expect(screen.getByText(/覆盖本期市值的 90.00%/)).toBeTruthy()
+  expect(screen.getByText(/估算成本按库内各期申报倒推/)).toBeTruthy()
 })

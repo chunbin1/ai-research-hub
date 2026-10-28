@@ -25,6 +25,8 @@ export interface WhaleFiling {
   sourceUrl: string
   valueUnit: ValueUnit
   fetchedAt: string
+  /** '' 为原报；修正案为 RESTATEMENT 或 NEW HOLDINGS（已并入原报）。null 是加这一列之前入库的旧行。 */
+  amendmentType: string | null
 }
 
 export interface SyncState {
@@ -42,6 +44,8 @@ export interface ReplaceFilingInput {
   sourceUrl: string
   valueUnit: ValueUnit
   fetchedAt: string
+  /** 省略当原报 ''。 */
+  amendmentType?: string
   positions: AggregatedPosition[]
 }
 
@@ -104,6 +108,7 @@ export function initWhaleTables(db: DB): void {
   // 表已存在时 CREATE TABLE 不会补列。先补列，再收掉重复 CIK，再建唯一索引。
   addColumn(db, 'whale_institutions', 'source', `TEXT NOT NULL DEFAULT 'sec-13f'`)
   addColumn(db, 'whale_positions', 'value_label', 'TEXT')
+  addColumn(db, 'whale_filings', 'amendment_type', 'TEXT')
   collapseDuplicateCiks(db)
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_whale_institutions_cik ON whale_institutions (cik)')
   const holderOf = db.prepare(`
@@ -273,6 +278,7 @@ interface FilingRow {
   source_url: string
   value_unit: ValueUnit
   fetched_at: string
+  amendment_type: string | null
 }
 
 function toFiling(row: FilingRow): WhaleFiling {
@@ -286,12 +292,13 @@ function toFiling(row: FilingRow): WhaleFiling {
     sourceUrl: row.source_url,
     valueUnit: row.value_unit,
     fetchedAt: row.fetched_at,
+    amendmentType: row.amendment_type,
   }
 }
 
 export function listFilings(slug: string): WhaleFiling[] {
   const rows = db().prepare(`
-    SELECT id, slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at
+    SELECT id, slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at, amendment_type
     FROM whale_filings
     WHERE slug = ?
     ORDER BY report_period DESC
@@ -301,7 +308,7 @@ export function listFilings(slug: string): WhaleFiling[] {
 
 export function getFiling(slug: string, reportPeriod: string): WhaleFiling | null {
   const row = db().prepare(`
-    SELECT id, slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at
+    SELECT id, slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at, amendment_type
     FROM whale_filings
     WHERE slug = ? AND report_period = ?
   `).get(slug, reportPeriod) as FilingRow | undefined
@@ -345,8 +352,9 @@ export function replaceFiling(input: ReplaceFilingInput): void {
   const deletePositions = database.prepare('DELETE FROM whale_positions WHERE filing_id = ?')
   const deleteFiling = database.prepare('DELETE FROM whale_filings WHERE id = ?')
   const insertFiling = database.prepare(`
-    INSERT INTO whale_filings (slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO whale_filings (
+      slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at, amendment_type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const insertPosition = database.prepare(`
     INSERT INTO whale_positions (
@@ -368,6 +376,7 @@ export function replaceFiling(input: ReplaceFilingInput): void {
       input.sourceUrl,
       input.valueUnit,
       input.fetchedAt,
+      input.amendmentType ?? '',
     )
     const filingId = Number(info.lastInsertRowid)
     for (const row of input.positions) {
