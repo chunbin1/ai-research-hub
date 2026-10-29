@@ -754,8 +754,8 @@ test('详情给出估算成本、期末价和相对成本，起算的仓位标�
       </Routes>
     </MemoryRouter>,
   )
-  expect(await screen.findByRole('columnheader', { name: '估算成本' })).toBeTruthy()
-  expect(screen.getByRole('columnheader', { name: '期末价' })).toBeTruthy()
+  expect(await screen.findByRole('columnheader', { name: '估算成本（美元）' })).toBeTruthy()
+  expect(screen.getByRole('columnheader', { name: '期末价（美元）' })).toBeTruthy()
   expect(screen.getByRole('columnheader', { name: '相对成本' })).toBeTruthy()
   expect(screen.getByText('9.50')).toBeTruthy()
   expect(screen.getByText('起算 2026-03-31')).toBeTruthy()

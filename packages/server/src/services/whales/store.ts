@@ -327,13 +327,8 @@ interface PositionRow {
   value_label: string | null
 }
 
-export function listPositions(filingId: number): AggregatedPosition[] {
-  const rows = db().prepare(`
-    SELECT cusip, put_call, share_type, issuer_name, title_of_class, shares, value_usd, value_reported, value_label
-    FROM whale_positions
-    WHERE filing_id = ?
-  `).all(filingId) as PositionRow[]
-  return rows.map(row => ({
+function toPosition(row: PositionRow): AggregatedPosition {
+  return {
     cusip: row.cusip,
     putCall: row.put_call,
     shareType: row.share_type,
@@ -343,7 +338,34 @@ export function listPositions(filingId: number): AggregatedPosition[] {
     valueUsd: row.value_usd,
     valueReported: row.value_reported,
     valueLabel: row.value_label,
-  }))
+  }
+}
+
+export function listPositions(filingId: number): AggregatedPosition[] {
+  const rows = db().prepare(`
+    SELECT cusip, put_call, share_type, issuer_name, title_of_class, shares, value_usd, value_reported, value_label
+    FROM whale_positions
+    WHERE filing_id = ?
+  `).all(filingId) as PositionRow[]
+  return rows.map(toPosition)
+}
+
+/** 一家机构在 reportPeriod（含）及更早各期的持仓，一次查出，按 filing_id 分组。估算成本要走完整段历史。 */
+export function listPositionsThrough(slug: string, reportPeriod: string): Map<number, AggregatedPosition[]> {
+  const rows = db().prepare(`
+    SELECT p.filing_id, p.cusip, p.put_call, p.share_type, p.issuer_name, p.title_of_class,
+           p.shares, p.value_usd, p.value_reported, p.value_label
+    FROM whale_positions p
+    JOIN whale_filings f ON f.id = p.filing_id
+    WHERE f.slug = ? AND f.report_period <= ?
+  `).all(slug, reportPeriod) as (PositionRow & { filing_id: number })[]
+  const byFiling = new Map<number, AggregatedPosition[]>()
+  for (const row of rows) {
+    const list = byFiling.get(row.filing_id) ?? []
+    list.push(toPosition(row))
+    byFiling.set(row.filing_id, list)
+  }
+  return byFiling
 }
 
 export function replaceFiling(input: ReplaceFilingInput): void {

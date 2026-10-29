@@ -200,7 +200,10 @@ export function aggregatePositions(rows: ParsedRow[], unit: ValueUnit): Aggregat
   return [...grouped.values()]
 }
 
-/** 原报和 NEW HOLDINGS 修正案已各自换算成美元后，按同一键再加一次。 */
+/**
+ * 原报和 NEW HOLDINGS 修正案已各自换算成美元后，按同一键再加一次。
+ * 两份跨 2023-01-03 时 valueReported 的单位不同，相加没有意义；只有 valueUsd 可信。
+ */
 export function mergeAggregated(parts: AggregatedPosition[][]): AggregatedPosition[] {
   const grouped = new Map<string, AggregatedPosition>()
   for (const rows of parts) {

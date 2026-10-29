@@ -187,6 +187,7 @@ async function fetchPeriodPositions(
 ): Promise<{ amendmentType: string; positions: AggregatedPosition[] }> {
   const parts: AggregatedPosition[][] = []
   let winnerType: string | null = null
+  let foundBase = false
   for (const filing of candidates) {
     const indexUrl = filingIndexUrl(cik, filing.accessionNumber)
     const indexHtml = await transport.getText(indexUrl)
@@ -202,7 +203,14 @@ async function fetchPeriodPositions(
     if (!href) throw new Error(`找不到信息表 ${filing.accessionNumber}`)
     const xml = await transport.getText(absoluteArchiveUrl(href, indexUrl))
     parts.push(aggregatePositions(parseInformationTable(xml), valueUnitForFilingDate(filing.filingDate)))
-    if (type !== 'NEW HOLDINGS') break
+    if (type !== 'NEW HOLDINGS') {
+      foundBase = true
+      break
+    }
+  }
+  if (!foundBase) {
+    // 原报不在 filings.recent 里：只能先存补报的几行，这一期是残缺的。
+    console.warn(`[whales] ${cik} 报告期 ${candidates[0]?.reportDate} 只找到 NEW HOLDINGS 修正案，没有原报，持仓不完整`)
   }
   return { amendmentType: winnerType ?? '', positions: mergeAggregated(parts) }
 }

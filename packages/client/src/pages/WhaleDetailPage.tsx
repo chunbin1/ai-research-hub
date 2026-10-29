@@ -102,8 +102,8 @@ function PositionTable({ rows, showWeight, byShares, showChange, showCost }: {
             {showWeight && <th scope="col" className="py-3 pr-3 text-right font-normal">占比</th>}
             {showCost && (
               <>
-                <th scope="col" className="py-3 pr-3 text-right font-normal">期末价</th>
-                <th scope="col" className="py-3 pr-3 text-right font-normal">估算成本</th>
+                <th scope="col" className="py-3 pr-3 text-right font-normal">期末价（美元）</th>
+                <th scope="col" className="py-3 pr-3 text-right font-normal">估算成本（美元）</th>
                 <th scope="col" className="py-3 pr-3 text-right font-normal">相对成本</th>
               </>
             )}
