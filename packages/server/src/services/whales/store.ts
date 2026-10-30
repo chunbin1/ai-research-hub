@@ -25,6 +25,8 @@ export interface WhaleFiling {
   sourceUrl: string
   valueUnit: ValueUnit
   fetchedAt: string
+  /** '' 为原报；修正案为 RESTATEMENT 或 NEW HOLDINGS（已并入原报）。null 是加这一列之前入库的旧行。 */
+  amendmentType: string | null
 }
 
 export interface SyncState {
@@ -42,6 +44,8 @@ export interface ReplaceFilingInput {
   sourceUrl: string
   valueUnit: ValueUnit
   fetchedAt: string
+  /** 省略当原报 ''。 */
+  amendmentType?: string
   positions: AggregatedPosition[]
 }
 
@@ -104,6 +108,7 @@ export function initWhaleTables(db: DB): void {
   // 表已存在时 CREATE TABLE 不会补列。先补列，再收掉重复 CIK，再建唯一索引。
   addColumn(db, 'whale_institutions', 'source', `TEXT NOT NULL DEFAULT 'sec-13f'`)
   addColumn(db, 'whale_positions', 'value_label', 'TEXT')
+  addColumn(db, 'whale_filings', 'amendment_type', 'TEXT')
   collapseDuplicateCiks(db)
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_whale_institutions_cik ON whale_institutions (cik)')
   const holderOf = db.prepare(`
@@ -273,6 +278,7 @@ interface FilingRow {
   source_url: string
   value_unit: ValueUnit
   fetched_at: string
+  amendment_type: string | null
 }
 
 function toFiling(row: FilingRow): WhaleFiling {
@@ -286,12 +292,13 @@ function toFiling(row: FilingRow): WhaleFiling {
     sourceUrl: row.source_url,
     valueUnit: row.value_unit,
     fetchedAt: row.fetched_at,
+    amendmentType: row.amendment_type,
   }
 }
 
 export function listFilings(slug: string): WhaleFiling[] {
   const rows = db().prepare(`
-    SELECT id, slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at
+    SELECT id, slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at, amendment_type
     FROM whale_filings
     WHERE slug = ?
     ORDER BY report_period DESC
@@ -301,7 +308,7 @@ export function listFilings(slug: string): WhaleFiling[] {
 
 export function getFiling(slug: string, reportPeriod: string): WhaleFiling | null {
   const row = db().prepare(`
-    SELECT id, slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at
+    SELECT id, slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at, amendment_type
     FROM whale_filings
     WHERE slug = ? AND report_period = ?
   `).get(slug, reportPeriod) as FilingRow | undefined
@@ -320,13 +327,8 @@ interface PositionRow {
   value_label: string | null
 }
 
-export function listPositions(filingId: number): AggregatedPosition[] {
-  const rows = db().prepare(`
-    SELECT cusip, put_call, share_type, issuer_name, title_of_class, shares, value_usd, value_reported, value_label
-    FROM whale_positions
-    WHERE filing_id = ?
-  `).all(filingId) as PositionRow[]
-  return rows.map(row => ({
+function toPosition(row: PositionRow): AggregatedPosition {
+  return {
     cusip: row.cusip,
     putCall: row.put_call,
     shareType: row.share_type,
@@ -336,7 +338,34 @@ export function listPositions(filingId: number): AggregatedPosition[] {
     valueUsd: row.value_usd,
     valueReported: row.value_reported,
     valueLabel: row.value_label,
-  }))
+  }
+}
+
+export function listPositions(filingId: number): AggregatedPosition[] {
+  const rows = db().prepare(`
+    SELECT cusip, put_call, share_type, issuer_name, title_of_class, shares, value_usd, value_reported, value_label
+    FROM whale_positions
+    WHERE filing_id = ?
+  `).all(filingId) as PositionRow[]
+  return rows.map(toPosition)
+}
+
+/** 一家机构在 reportPeriod（含）及更早各期的持仓，一次查出，按 filing_id 分组。估算成本要走完整段历史。 */
+export function listPositionsThrough(slug: string, reportPeriod: string): Map<number, AggregatedPosition[]> {
+  const rows = db().prepare(`
+    SELECT p.filing_id, p.cusip, p.put_call, p.share_type, p.issuer_name, p.title_of_class,
+           p.shares, p.value_usd, p.value_reported, p.value_label
+    FROM whale_positions p
+    JOIN whale_filings f ON f.id = p.filing_id
+    WHERE f.slug = ? AND f.report_period <= ?
+  `).all(slug, reportPeriod) as (PositionRow & { filing_id: number })[]
+  const byFiling = new Map<number, AggregatedPosition[]>()
+  for (const row of rows) {
+    const list = byFiling.get(row.filing_id) ?? []
+    list.push(toPosition(row))
+    byFiling.set(row.filing_id, list)
+  }
+  return byFiling
 }
 
 export function replaceFiling(input: ReplaceFilingInput): void {
@@ -345,8 +374,9 @@ export function replaceFiling(input: ReplaceFilingInput): void {
   const deletePositions = database.prepare('DELETE FROM whale_positions WHERE filing_id = ?')
   const deleteFiling = database.prepare('DELETE FROM whale_filings WHERE id = ?')
   const insertFiling = database.prepare(`
-    INSERT INTO whale_filings (slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO whale_filings (
+      slug, accession, form, report_period, filed_at, source_url, value_unit, fetched_at, amendment_type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const insertPosition = database.prepare(`
     INSERT INTO whale_positions (
@@ -368,6 +398,7 @@ export function replaceFiling(input: ReplaceFilingInput): void {
       input.sourceUrl,
       input.valueUnit,
       input.fetchedAt,
+      input.amendmentType ?? '',
     )
     const filingId = Number(info.lastInsertRowid)
     for (const row of input.positions) {

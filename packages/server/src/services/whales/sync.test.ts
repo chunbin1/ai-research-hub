@@ -217,3 +217,81 @@ test('信息表指向非 SEC 主机时记入该机构错误，且不去请求', 
   assert.equal(getSync('himalaya').lastError, null)
   assert.equal(getMeta().lastSyncAt, '2026-10-27T00:00:00.000Z')
 })
+
+test('NEW HOLDINGS 修正案并入原报，详情带估算成本；旧的修正案行会重拉一次', async () => {
+  const database = new Database(':memory:')
+  initWhaleTables(database)
+  const calls: string[] = []
+  const primary = (type: string) =>
+    `<edgarSubmission xmlns="http://www.sec.gov/edgar/thirteenffiler"><coverPage><isAmendment>true</isAmendment>`
+    + `<amendmentInfo><amendmentType>${type}</amendmentType></amendmentInfo></coverPage></edgarSubmission>`
+  const amendedIndex = (dir: string) => `<table>
+    <tr><td>13F-HR/A</td><a href="/Archives/edgar/data/1067983/${dir}/xslForm13F_X02/primary_doc.xml">primary_doc.html</a></tr>
+    <tr><td>13F-HR/A</td><a href="/Archives/edgar/data/1067983/${dir}/primary_doc.xml">primary_doc.xml</a></tr>
+    <tr><td>INFORMATION TABLE</td><a href="/Archives/edgar/data/1067983/${dir}/info.xml">info.xml</a></tr>
+  </table>`
+  const transport = {
+    async getText(url: string) {
+      calls.push(url)
+      if (url.includes('disclosures-clerk.house.gov')) {
+        return 'Prefix\tLast\tFirst\tSuffix\tFilingType\tStateDst\tYear\tFilingDate\tDocID\n'
+      }
+      if (url.includes('company_tickers.json')) return '{}'
+      if (url.includes('CIK0001067983')) {
+        return JSON.stringify({
+          filings: {
+            recent: {
+              form: ['13F-HR/A', '13F-HR', '13F-HR'],
+              accessionNumber: ['0001193125-26-000003', '0001193125-26-000002', '0001193125-26-000001'],
+              filingDate: ['2026-09-01', '2026-08-14', '2026-05-15'],
+              reportDate: ['2026-06-30', '2026-06-30', '2026-03-31'],
+            },
+          },
+        })
+      }
+      if (url.includes('/submissions/')) return submissions(['10-K'])
+      if (url.endsWith('0001193125-26-000003-index.htm')) return amendedIndex('000119312526000003')
+      if (url.endsWith('0001193125-26-000002-index.htm')) return indexHtml('info.xml')
+      if (url.endsWith('0001193125-26-000001-index.htm')) return indexHtml('info.xml')
+      if (url.endsWith('/000119312526000003/primary_doc.xml')) return primary('NEW HOLDINGS')
+      if (url.endsWith('/000119312526000003/info.xml')) return xml(holding('171232101', 'CHUBB LIMITED', 20, 5000))
+      if (url.endsWith('/000119312526000002/info.xml')) return CURRENT
+      if (url.endsWith('/000119312526000001/info.xml')) return PREVIOUS
+      throw new Error(`意外的 URL ${url}`)
+    },
+  }
+
+  const first = await syncWhales({ transport, userAgent: 'test-agent', now: () => new Date('2026-10-27T00:00:00.000Z') })
+  assert.equal(first.failed, 0)
+  const detail = getWhaleDetail('berkshire')
+  assert.ok(detail)
+  assert.equal(detail.period?.form, '13F-HR/A')
+  assert.equal(detail.period?.accession, '0001193125-26-000003')
+  // 原报两行 + 补报的 Chubb，不能只剩 Chubb
+  assert.deepEqual(detail.positions.map(row => row.cusip).sort(), ['037833100', '171232101', '594918104'])
+  const apple = detail.positions.find(row => row.cusip === '037833100')
+  // 上期 100 股 @9，本期加 100 股 @10：(900 + 1000) / 200 = 9.5
+  assert.equal(apple?.cost?.costPerShare, 9.5)
+  assert.equal(apple?.cost?.pricePerShare, 10)
+  assert.equal(apple?.cost?.since, '2026-03-31')
+  assert.equal(apple?.cost?.fromStart, false)
+  const microsoft = detail.positions.find(row => row.cusip === '594918104')
+  assert.equal(microsoft?.cost?.costPerShare, 10)
+  assert.equal(microsoft?.cost?.fromStart, true)
+  assert.equal(detail.closed[0]?.cost, null)
+  assert.ok(detail.costSummary)
+  assert.equal(detail.costSummary.coveredWeight, 1)
+  assert.ok(detail.costNote)
+
+  calls.length = 0
+  await syncWhales({ transport, userAgent: 'test-agent', now: () => new Date('2026-10-27T01:00:00.000Z') })
+  assert.equal(calls.some(url => url.includes('info.xml') || url.includes('primary_doc')), false)
+
+  // 加 amendment_type 之前入库的修正案：类型未知，重拉一次补全
+  database.prepare('UPDATE whale_filings SET amendment_type = NULL WHERE accession = ?').run('0001193125-26-000003')
+  calls.length = 0
+  await syncWhales({ transport, userAgent: 'test-agent', now: () => new Date('2026-10-27T02:00:00.000Z') })
+  assert.ok(calls.some(url => url.endsWith('/000119312526000003/primary_doc.xml')))
+  assert.equal(calls.some(url => url.endsWith('/000119312526000001/info.xml')), false)
+  assert.equal(getWhaleDetail('berkshire')?.positions.length, 3)
+})

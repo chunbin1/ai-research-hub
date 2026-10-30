@@ -2,8 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { toUsd, valueUnitForFilingDate } from './valueUnit.ts'
 import {
-  aggregatePositions, filingsFromSubmissions, informationTableXmlPath,
-  parseInformationTable, selectReportPeriods,
+  aggregatePositions, filingsFromSubmissions, groupReportPeriods, informationTableXmlPath, mergeAggregated,
+  parseAmendmentType, parseInformationTable, primaryDocXmlPath, selectReportPeriods,
 } from './parser.ts'
 
 test('2023-01-03 起 value 已是美元，更早的按千美元换算', () => {
@@ -95,4 +95,34 @@ test('信息表合并同一 CUSIP，Put 与正股分开，坏行丢掉', () => {
   assert.equal(put?.shares, 4)
   assert.equal(put?.valueUsd, 3)
   assert.equal(aggregatePositions(parseInformationTable(xml), 'thousands').find(row => row.putCall === '')?.valueUsd, 15_000)
+})
+
+test('同一报告期的全部 13F 按优先顺序排好，供 NEW HOLDINGS 修正案往下找原报', () => {
+  const groups = groupReportPeriods([
+    { form: '13F-HR', accessionNumber: 'a1', filingDate: '2026-08-14', reportDate: '2026-06-30' },
+    { form: '13F-HR/A', accessionNumber: 'a2', filingDate: '2026-09-01', reportDate: '2026-06-30' },
+    { form: '13F-HR', accessionNumber: 'b1', filingDate: '2026-05-15', reportDate: '2026-03-31' },
+    { form: '10-K', accessionNumber: 'x', filingDate: '2026-02-01', reportDate: '2025-12-31' },
+  ], 8)
+  assert.deepEqual(groups.map(group => group.reportDate), ['2026-06-30', '2026-03-31'])
+  assert.deepEqual(groups[0]?.candidates.map(row => row.accessionNumber), ['a2', 'a1'])
+})
+
+test('修正案类型读封面的 amendmentType，读不出来当整份重报', () => {
+  const index = `<tr><a href="/Archives/x/xslForm13F_X02/primary_doc.xml">h</a>`
+    + `<a href="/Archives/x/primary_doc.xml">x</a></tr>`
+  assert.equal(primaryDocXmlPath(index), '/Archives/x/primary_doc.xml')
+  assert.equal(primaryDocXmlPath('<tr><a href="/Archives/x/info.xml">x</a></tr>'), null)
+  assert.equal(parseAmendmentType('<ns1:amendmentInfo><ns1:amendmentType>NEW HOLDINGS</ns1:amendmentType></ns1:amendmentInfo>'), 'NEW HOLDINGS')
+  assert.equal(parseAmendmentType('<amendmentType>RESTATEMENT</amendmentType>'), 'RESTATEMENT')
+  assert.equal(parseAmendmentType('<coverPage></coverPage>'), 'RESTATEMENT')
+})
+
+test('原报和补报按同一键相加', () => {
+  const row = (cusip: string, shares: number) => ({
+    cusip, putCall: '' as const, shareType: 'SH', issuerName: cusip, titleOfClass: 'COM',
+    shares, valueReported: shares, valueUsd: shares * 10,
+  })
+  const merged = mergeAggregated([[row('A', 1), row('B', 2)], [row('B', 3), row('C', 4)]])
+  assert.deepEqual(merged.map(r => [r.cusip, r.shares, r.valueUsd]), [['A', 1, 10], ['B', 5, 50], ['C', 4, 40]])
 })

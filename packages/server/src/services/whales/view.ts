@@ -1,8 +1,9 @@
 // 列表和详情的读模型。增减在这里算，不落库。
+import { costKey, estimateCosts, type CostEstimate } from './cost.js'
 import { diffPositions, type DiffPosition } from './diff.js'
 import { parseUsdRangeLabel, formatUsdRange } from './houseDisclosure.js'
 import {
-  getInstitution, getSync, listFilings, listInstitutions, listPositions, loadTickers,
+  getInstitution, getSync, listFilings, listInstitutions, listPositions, listPositionsThrough, loadTickers,
 } from './store.js'
 import { buildTickerIndex, normalizeIssuerName } from './tickers.js'
 import type { ValueUnit } from './valueUnit.js'
@@ -12,6 +13,9 @@ export const VALUE_NOTE =
 
 export const HOUSE_VALUE_NOTE =
   '金额是美国众议院年度财务披露的申报区间，不是精确市值。表内上市股票和期权多记在配偶名下。占比和名单合计按区间中点估算。有上一期时，增减也按区间中点，不按股数。'
+
+export const COST_NOTE =
+  '13F 没有买入成本。估算成本按库内各期申报倒推：期末价 = 市值 ÷ 股数；每期加仓的股数按当期期末价计入，减仓不改每股成本（移动加权平均）；某期清仓后再买从头算；股数与价格同时按整数倍反向跳变视为拆股（整数倍加仓又恰逢价格反向同比例变动时会被误判成拆股）。库内若缺某一期，会当作这一期一直持有。标「起算」的仓位在库内最早一期就已持有，成本只从那一期期末价算起，实际成本可能低得多。期权和债券本金行不估算。这不是实际成交价。'
 
 export const MIXED_VALUE_NOTE =
   '名单同时有 SEC Form 13F 和美国众议院年度财务披露。13F 市值为美元（2023-01-03 及之后按美元填报，更早按千美元换算后入库）。众议院金额是申报区间，不是精确市值，合计按区间中点估算。'
@@ -32,6 +36,8 @@ export interface WhalePositionView {
   prevValueUsd: number | null
   shareDelta: number | null
   valueDeltaUsd: number | null
+  /** 估算成本。期权、本金行、清仓行和众议院披露为 null。 */
+  cost: CostEstimate | null
 }
 
 export interface WhaleSummary {
@@ -54,7 +60,12 @@ export interface WhaleSummary {
   } | null
 }
 
-function decorate(row: DiffPosition, ticker: string | null, weight: number | null): WhalePositionView {
+function decorate(
+  row: DiffPosition,
+  ticker: string | null,
+  weight: number | null,
+  cost: CostEstimate | null = null,
+): WhalePositionView {
   return {
     cusip: row.cusip,
     ticker: ticker ?? (/^[A-Z]{1,5}$/.test(row.cusip) ? row.cusip : null),
@@ -71,6 +82,7 @@ function decorate(row: DiffPosition, ticker: string | null, weight: number | nul
     prevValueUsd: row.prevValueUsd,
     shareDelta: row.shareDelta,
     valueDeltaUsd: row.valueDeltaUsd,
+    cost,
   }
 }
 
@@ -170,6 +182,17 @@ export interface WhaleDetail {
     valueUnit: ValueUnit
   } | null
   previousPeriod: { reportPeriod: string; filedAt: string } | null
+  /** 有估算成本的仓位合计。众议院披露、或本期没有可估算的行时为 null。 */
+  costSummary: {
+    costUsd: number
+    valueUsd: number
+    gain: number
+    /** 这些仓位占本期市值合计的比例。 */
+    coveredWeight: number
+    /** 其中多少市值的成本只是从库内最早一期起算。 */
+    partialWeight: number
+  } | null
+  costNote: string | null
   positions: WhalePositionView[]
   closed: WhalePositionView[]
 }
@@ -202,19 +225,35 @@ export function getWhaleDetail(slug: string, reportPeriod?: string): WhaleDetail
       periods,
       period: null,
       previousPeriod: null,
+      costSummary: null,
+      costNote: null,
       positions: [],
       closed: [],
     }
   }
   const index = buildTickerIndex(loadTickers())
-  const current = listPositions(selected.id)
-  const prevRows = previous ? listPositions(previous.id) : null
+  // 众议院披露只有金额区间，没有股数，不估算成本，只要本期和上期。
+  const history = inst.source === 'house-fd' ? null : listPositionsThrough(slug, selected.reportPeriod)
+  const current = history?.get(selected.id) ?? listPositions(selected.id)
+  const prevRows = previous ? history?.get(previous.id) ?? listPositions(previous.id) : null
   const diff = diffPositions(current, prevRows, inst.source === 'house-fd' ? 'midpoint' : 'shares')
   const total = diff.positions.reduce((sum, row) => sum + row.valueUsd, 0)
   const tickerOf = (issuerName: string) => index.get(normalizeIssuerName(issuerName)) ?? null
+  // 成本要从库里最早一期一路推到选中期。
+  const costs = history
+    ? estimateCosts(filings.slice(selectedIndex).reverse().map(filing => ({
+        reportPeriod: filing.reportPeriod,
+        positions: history.get(filing.id) ?? [],
+      })))
+    : new Map<string, CostEstimate>()
   const positions = [...diff.positions]
     .sort((a, b) => b.valueUsd - a.valueUsd)
-    .map(row => decorate(row, tickerOf(row.issuerName), total === 0 ? 0 : row.valueUsd / total))
+    .map(row => decorate(
+      row,
+      tickerOf(row.issuerName),
+      total === 0 ? 0 : row.valueUsd / total,
+      costs.get(costKey(row)) ?? null,
+    ))
   const closed = [...diff.closed]
     .sort((a, b) => (b.prevValueUsd ?? 0) - (a.prevValueUsd ?? 0))
     .map(row => decorate(row, tickerOf(row.issuerName), null))
@@ -231,7 +270,29 @@ export function getWhaleDetail(slug: string, reportPeriod?: string): WhaleDetail
       valueUnit: selected.valueUnit,
     },
     previousPeriod: previous ? { reportPeriod: previous.reportPeriod, filedAt: previous.filedAt } : null,
+    costSummary: summarizeCosts(positions, total),
+    costNote: inst.source === 'house-fd' ? null : COST_NOTE,
     positions,
     closed,
+  }
+}
+
+function summarizeCosts(rows: WhalePositionView[], total: number): WhaleDetail['costSummary'] {
+  let costUsd = 0
+  let valueUsd = 0
+  let partialUsd = 0
+  for (const row of rows) {
+    if (!row.cost) continue
+    costUsd += row.cost.costPerShare * row.shares
+    valueUsd += row.valueUsd
+    if (!row.cost.fromStart) partialUsd += row.valueUsd
+  }
+  if (costUsd <= 0) return null
+  return {
+    costUsd,
+    valueUsd,
+    gain: valueUsd / costUsd - 1,
+    coveredWeight: total === 0 ? 0 : valueUsd / total,
+    partialWeight: valueUsd === 0 ? 0 : partialUsd / valueUsd,
   }
 }
