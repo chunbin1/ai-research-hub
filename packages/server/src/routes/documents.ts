@@ -7,28 +7,15 @@ import {
   saveDocument, getAllDocuments, getDocument, deleteDocument, setDocumentKind,
   readVersionMarkdown, readRawMarkdown, deleteRawMarkdown,
 } from '../services/documentStore.js'
-import { upsertChunks, deleteByDocId, isDocVectorAvailable, stampLegacy } from '../services/documentVector.js'
+import { deleteByDocId } from '../services/documentVector.js'
 import { deleteChunkFts } from '../services/chunkFts.js'
 import { deleteIndexState } from '../services/indexState.js'
 import { listVersions, latestVersion, deleteVersions } from '../services/versionStore.js'
-import { createVersion, SameContentError, type VersionDeps } from '../services/documentVersion.js'
+import { SameContentError } from '../services/documentVersion.js'
 import { inferKind, isReportKind, type ReportKind } from '../services/reportKind.js'
-import { findSimilarReports, topicScores } from '../services/similarReports.js'
-import { embeddingModel, embedBatch, isEmbeddingAvailable } from '../services/embeddings.js'
 import { getDb } from '../services/db.js'
-import { syncWatchlistFromMarkdown } from '../services/signals/watchlistSync.js'
+import { findSimilarUploads, publishVersion, NOTE_MAX } from '../services/publishReport.js'
 import { requireAdmin } from './auth.js'
-
-const NOTE_MAX = 200
-
-function versionDeps(): VersionDeps {
-  return {
-    vectorsAvailable: isDocVectorAvailable(),
-    stampLegacy,
-    writeVectors: upsertChunks,
-    embedModel: embeddingModel(),
-  }
-}
 
 /** 读上传的 markdown。出错时已经回了 4xx,返回 null。 */
 async function readUpload(
@@ -113,7 +100,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       size_bytes: Buffer.byteLength(up.md, 'utf8'),
       chunk_count: chunks.length,
     })
-    await addVersion(doc.id, up)
+    await publishVersion(doc.id, up.md, { note: up.note, fallbackName: up.baseName }, app.log)
     return { document: getDocument(doc.id) }
   })
 
@@ -130,26 +117,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     const suggestedKind = inferKind(title)
     // 只在同类之间查重。上传方类型:管理员在弹窗里选的 > 按标题推断的建议 > 未知(不过滤)
     const kind = up.kind ?? suggestedKind ?? undefined
-    const docs = getAllDocuments()
-    const existing = docs.map(d => ({
-      id: d.id,
-      title: d.filename,
-      kind: d.kind,
-      // 迁移不出版本记录的老文档只有 raw 原文
-      markdown: readVersionMarkdown(d.id, d.latest_version) ?? readRawMarkdown(d.id),
-    }))
-    let topic: number[] | undefined
-    if (isEmbeddingAvailable() && existing.length > 0) {
-      try {
-        topic = await topicScores(up.md, existing, embedBatch, embeddingModel())
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        app.log.warn(`[documents] 查重算主题相近度失败,只按标题和正文排: ${msg}`)
-      }
-    }
-    const byId = new Map(docs.map(d => [d.id, d]))
-    const candidates = findSimilarReports({ title, markdown: up.md, kind }, existing, topic)
-      .map(({ id, ...scores }) => ({ document: byId.get(id)!, ...scores }))
+    const candidates = await findSimilarUploads({ title, markdown: up.md, kind }, app.log)
     return { title, suggestedKind, candidates }
   })
 
@@ -172,7 +140,7 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
     if (!up) return
 
     try {
-      const created = await addVersion(doc.id, { ...up, baseName: doc.filename })
+      const created = await publishVersion(doc.id, up.md, { note: up.note, fallbackName: doc.filename }, app.log)
       return { document: getDocument(doc.id), version: created.version }
     } catch (err) {
       if (err instanceof SameContentError) {
@@ -181,24 +149,6 @@ export const documentRoutes: FastifyPluginAsync = async (app) => {
       throw err
     }
   })
-
-  async function addVersion(docId: string, up: { md: string; baseName: string; note: string | null }) {
-    const created = await createVersion(getDb(), docId, up.md, { note: up.note, fallbackName: up.baseName }, versionDeps())
-    created.vectors?.catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err)
-      app.log.warn(`[documents] ${docId} v${created.version.version} 向量写入失败: ${msg}`)
-    })
-
-    // 从标题抽标的进自选股。抽取失败不该让上传失败 —— 上传的主职责是存报告。
-    try {
-      const symbols = syncWatchlistFromMarkdown(docId, up.md)
-      if (symbols.length) app.log.info(`[watchlist] ${docId} 抽到 ${symbols.join(', ')}`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      app.log.warn(`[watchlist] ${docId} 抽取失败: ${msg}`)
-    }
-    return created
-  }
 
   app.delete<{ Params: { id: string } }>('/documents/:id', async (request, reply) => {
     if (!requireAdmin(request, reply)) return
