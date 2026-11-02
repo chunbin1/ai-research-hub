@@ -38,10 +38,11 @@ pnpm dev:client   # http://localhost:5173
 - [x] 站点默认模型切换:管理员在 /admin 改公共额度用的模型,保存前自动验证,改完即时生效不重启
 - [x] 股票信号追踪:研报标题自动抽标的,每日收盘后算日线/周线 SuperTrend,`/signals` 看板
 - [x] 实盘持仓:第三方用 API Key 全量上传快照,有数据时 `/holdings` 展示标的、股数、市值、成本、浮动盈亏和仓位占比
-- [x] 在 Claude / Codex / Grok 里问:站点挂一个只读 MCP 服务器(`/api/mcp`,Streamable HTTP,无状态),
-  工具有列出研报、看目录、按章节读正文(超长自动分页)、股票信号;登录用户在「问这篇报告」面板里
-  点「去 Claude / Codex / Grok 里问」,复制一段带研报 id 的提问文案,粘到已添加连接器的 AI 里接着问。
-  接口与公开的 `GET /documents`、`GET /signals` 同权限,不鉴权;不做全库检索,模型先看目录再按章节读。流程图见 [docs/mcp-flow.svg](docs/mcp-flow.svg)
+- [x] 在 Claude / Codex / Grok 里问:站点挂一个 MCP 服务器(`/api/mcp`,Streamable HTTP,无状态)。
+  不带密钥时工具是只读的:列出研报、看目录、按章节读正文(超长自动分页)、股票信号。
+  配了 `MCP_UPLOAD_KEY` 并且连接时带上 `Authorization: Bearer <key>` 的客户端还会看到 `upload_report`,用来上传一篇新的 markdown 研报。
+  登录用户在「问这篇报告」面板里点「去 Claude / Codex / Grok 里问」,复制一段带研报 id 的提问文案,粘到已添加连接器的 AI 里接着问。
+  读接口与公开的 `GET /documents`、`GET /signals` 同权限,不鉴权;不做全库检索,模型先看目录再按章节读。流程图见 [docs/mcp-flow.svg](docs/mcp-flow.svg)
 - [x] 搜索引擎收录:`/robots.txt`、`/sitemap.xml`(新研报自动进)由后端按 `APP_URL` 生成;研报页的标题 / 正文摘要 /
   canonical 由 client 的 nginx 用 SSI 向 `/api/seo/head/<路径>` 取来拼进 index.html,爬虫不跑 JS 也看得到。
   只有首页、`/signals`、研报页可收录,其余页面 `noindex`。Search Console 的一次性设置见 [docs/DEPLOY.md](docs/DEPLOY.md)
@@ -103,6 +104,16 @@ curl -X PUT http://localhost:3001/api/holdings \
 ```
 
 也接受 `X-Holdings-Key`。`holdings: []` 清空。密钥来自 `HOLDINGS_API_KEY`;不配则上传返回 503。只在 HTTPS 上使用,不要把密钥打进日志。同一份快照里的 `marketValue`、`cost`、`pnl` 须先折算到同一计价币种再上传:服务端不识别币种,仓位占比按市值原值合计。`holdings` 最多 500 条,`symbol` 最长 64 个字符,`name` 最长 200 个字符。字段与页面说明见 [设计文档](docs/superpowers/specs/2026-10-15-holdings-page-design.md)。
+
+## 用本地 AI 上传研报
+
+`MCP_UPLOAD_KEY` 不配时,`/api/mcp` 只有只读工具。配上之后,请求头带对 `Authorization: Bearer <key>` 的那一次连接才会多出 `upload_report`。密钥不对或没带头时,工具列表和以前一样。不要把密钥放进查询串、前端页面或日志。
+
+```bash
+claude mcp add --transport http research-hub "$APP_URL/api/mcp" --header "Authorization: Bearer $MCP_UPLOAD_KEY"
+```
+
+模型把整篇 markdown 放进参数 `markdown`(不读服务器磁盘上的文件)。没有一级标题时要同时给 `title`。和网页上传一样会先在同类研报里查重:有疑似旧篇时不落库,返回候选的 id、标题和阅读页链接;确认是另一篇后再带 `confirmNew=true`。这个工具只新建研报,不给已有篇加版本,也不删除、不改类型。正文上限 100 万字。
 
 ## 名家持仓
 

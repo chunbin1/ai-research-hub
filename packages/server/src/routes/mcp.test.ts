@@ -13,6 +13,7 @@ process.env.DB_PATH = ':memory:'
 process.env.AUTH_DISABLED = 'true'
 process.env.APP_URL = 'https://arh.example'
 delete process.env.SIGNALS
+delete process.env.MCP_UPLOAD_KEY
 
 const { initDb } = await import('../services/db.ts')
 const { initDocumentTable } = await import('../services/documentStore.ts')
@@ -144,6 +145,17 @@ test('找不到研报 / 版本 / 章节时返回 isError,并告诉模型下一�
   const c = await call('read_report', { id: docId, section: '不存在' })
   assert.ok(c.isError)
   assert.match(c.text, /get_report_outline/)
+})
+
+test('没配上传密钥时没有 upload_report,调用它是未知工具', async () => {
+  const { result } = await rpc('tools/list')
+  assert.ok(!result.tools.some((t: { name: string }) => t.name === 'upload_report'))
+  const res = await call('upload_report', { markdown: '# 新研报\n\n正文。\n' })
+  assert.ok(res.isError)
+  assert.match(res.text, /upload_report/)
+  assert.match(res.text, /not found/)
+  const list = JSON.parse((await call('list_reports')).text) as { title: string }[]
+  assert.ok(!list.some(r => r.title === '新研报'))
 })
 
 test('GET /mcp 返回 405(无状态模式没有推送流)', async () => {

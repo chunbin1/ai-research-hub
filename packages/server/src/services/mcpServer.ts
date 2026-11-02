@@ -1,22 +1,38 @@
 // packages/server/src/services/mcpServer.ts
 //
-// 给外部 AI(Claude / Codex / Grok)用的 MCP 工具。只读,暴露面和公开的
-// GET /documents、GET /signals 一样,所以不鉴权。
+// 给外部 AI(Claude / Codex / Grok)用的 MCP 工具。
+// 读工具和公开的 GET /documents、GET /signals 一样,不鉴权。
+// 上传工具只在这次请求带对了 MCP_UPLOAD_KEY 时注册(见 routes/mcp.ts)。
 //
 // 不做全库检索:模型先 get_report_outline 看目录,再按章节 read_report。
 // 研报动辄三五万字,整篇塞进上下文又慢又贵,按章节读是这里唯一的「检索」。
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { getAllDocuments, getDocument, readRawMarkdown, readVersionMarkdown } from './documentStore.js'
+import { getAllDocuments, getDocument, readRawMarkdown, readVersionMarkdown, saveDocument } from './documentStore.js'
 import { listVersions, latestVersion } from './versionStore.js'
-import { outlineOf, INTRO_SLUG } from './markdownParser.js'
+import { outlineOf, parseMarkdown, INTRO_SLUG } from './markdownParser.js'
 import { signalBoard } from './signals/board.js'
 import { isSignalsEnabled } from './signals/scanner.js'
 import { getDb } from './db.js'
+import { inferKind, type ReportKind } from './reportKind.js'
+import { findSimilarUploads, publishVersion, NOTE_MAX, type PublishLog } from './publishReport.js'
 import type { Document, DocumentVersion } from '../types.js'
 
 /** 单次 read_report 最多返回的字数。中文约一字一 token,Claude Code 默认单次工具输出上限 25k token。 */
 export const PAGE_CHARS = 20000
+
+/** upload_report 接受的正文上限。更长的在工具里拒绝,不落库。 */
+export const MARKDOWN_MAX_CHARS = 1_000_000
+
+const READ_INSTRUCTIONS =
+  '研报站的只读接口。典型用法:list_reports 找到研报 id → get_report_outline 看目录 → ' +
+  'read_report 按 section 读相关章节。回答时引用章节,并附上返回结果里的 url,方便用户跳回原文。'
+
+const WRITE_INSTRUCTIONS =
+  READ_INSTRUCTIONS +
+  ' 本次连接可以上传:upload_report 写入一篇新的 markdown 研报。' +
+  '库里有疑似旧篇时不会落库,结果里有候选 id 和链接;用户确认这是另一篇之后,再带 confirmNew=true 调用。' +
+  '不要用它覆盖已有研报。'
 
 const KIND_LABEL = { industry: '行业', company: '公司' } as const
 
@@ -56,14 +72,19 @@ const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] })
 const json = (o: unknown) => text(JSON.stringify(o, null, 2))
 const fail = (s: string) => ({ ...text(s), isError: true })
 
-export function buildMcpServer(): McpServer {
+const silentLog: PublishLog = { info() {}, warn() {} }
+
+export interface McpServerOptions {
+  /** 这次请求带对了 MCP_UPLOAD_KEY。为 true 才注册 upload_report。 */
+  write?: boolean
+  log?: PublishLog
+}
+
+export function buildMcpServer(opts: McpServerOptions = {}): McpServer {
+  const log = opts.log ?? silentLog
   const server = new McpServer(
     { name: 'ai-research-hub', version: '0.1.0' },
-    {
-      instructions:
-        '研报站的只读接口。典型用法:list_reports 找到研报 id → get_report_outline 看目录 → ' +
-        'read_report 按 section 读相关章节。回答时引用章节,并附上返回结果里的 url,方便用户跳回原文。',
-    },
+    { instructions: opts.write ? WRITE_INSTRUCTIONS : READ_INSTRUCTIONS },
   )
 
   server.registerTool('list_reports', {
@@ -146,6 +167,8 @@ export function buildMcpServer(): McpServer {
     return text(`${head}\n\n---\n\n${page}`)
   })
 
+  if (opts.write) registerUpload(server, log)
+
   if (isSignalsEnabled()) {
     server.registerTool('get_signals', {
       title: '股票信号',
@@ -167,4 +190,87 @@ export function buildMcpServer(): McpServer {
   }
 
   return server
+}
+
+function similarReasons(c: { titleMatch: 'same' | 'similar' | null; contentMatch: boolean }): string[] {
+  const reasons: string[] = []
+  if (c.titleMatch === 'same') reasons.push('标题相同')
+  else if (c.titleMatch === 'similar') reasons.push('标题相近')
+  if (c.contentMatch) reasons.push('正文重合')
+  if (reasons.length === 0) reasons.push('主题相近')
+  return reasons
+}
+
+function registerUpload(server: McpServer, log: PublishLog): void {
+  server.registerTool('upload_report', {
+    title: '上传新研报',
+    description:
+      '上传一篇新的 markdown 研报,不是给已有研报加版本,也不能删除或改类型。' +
+      '正文放在 markdown。没有一级标题时必须传 title,作为展示名;有一级标题时以标题为准。' +
+      'kind 不传则按标题推断,推断不出算行业研报。' +
+      '库里有疑似同一篇时不会写入,并返回候选 id、标题、链接和相似原因;确认是另一篇后再带 confirmNew=true。' +
+      `正文最多 ${MARKDOWN_MAX_CHARS} 字,版本说明超过 ${NOTE_MAX} 字会被截断。`,
+    inputSchema: {
+      markdown: z.string().describe('完整 markdown 正文'),
+      title: z.string().optional().describe('正文没有一级标题时的展示名'),
+      kind: z.enum(['industry', 'company']).optional().describe('行业研报 industry,或公司研报 company;不传则按标题推断'),
+      note: z.string().optional().describe(`版本说明,超过 ${NOTE_MAX} 字会被截断`),
+      confirmNew: z.boolean().optional().describe('库里有疑似旧篇时,确认仍要新建一篇。默认 false,此时不落库'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ markdown, title, kind, note, confirmNew = false }) => {
+    if (markdown.length > MARKDOWN_MAX_CHARS) {
+      return fail(`正文超过 ${MARKDOWN_MAX_CHARS} 字,没有写入。`)
+    }
+    if (!markdown.trim()) return fail('正文是空的,没有写入。')
+
+    const { displayName, chunks } = parseMarkdown(markdown)
+    const filename = displayName || (title ?? '').trim()
+    if (!filename) return fail('正文没有一级标题,请传 title。没有写入。')
+
+    const resolvedKind: ReportKind = kind ?? inferKind(filename) ?? 'industry'
+    const trimmedNote = (note ?? '').trim().slice(0, NOTE_MAX) || null
+
+    if (!confirmNew) {
+      const candidates = await findSimilarUploads(
+        { title: filename, markdown, kind: resolvedKind },
+        log,
+      )
+      if (candidates.length > 0) {
+        return json({
+          saved: false,
+          reason: 'similar',
+          title: filename,
+          kind: KIND_LABEL[resolvedKind],
+          message: '库里有疑似同一篇,这次没有写入。确认是另一篇后再传 confirmNew=true。',
+          candidates: candidates.map(c => ({
+            id: c.document.id,
+            title: c.document.filename,
+            url: reportUrl(c.document.id),
+            reasons: similarReasons(c),
+            titleScore: c.titleScore,
+            contentScore: c.contentScore,
+          })),
+        })
+      }
+    }
+
+    const doc = saveDocument({
+      filename,
+      kind: resolvedKind,
+      size_bytes: Buffer.byteLength(markdown, 'utf8'),
+      chunk_count: chunks.length,
+    })
+    const created = await publishVersion(doc.id, markdown, { note: trimmedNote, fallbackName: filename }, log)
+    const saved = getDocument(doc.id)
+    return json({
+      saved: true,
+      id: doc.id,
+      title: saved?.filename ?? filename,
+      kind: KIND_LABEL[saved?.kind ?? resolvedKind],
+      version: created.version.version,
+      note: created.version.note,
+      url: reportUrl(doc.id),
+    })
+  })
 }
