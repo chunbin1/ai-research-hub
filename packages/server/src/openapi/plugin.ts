@@ -10,6 +10,7 @@ const DESCRIPTION = [
   '公开读接口不需要登录，和页面上能看到的数据同一档。',
   '实盘持仓的上传需要 API Key，放在 Header：`Authorization: Bearer <key>` 或 `X-Holdings-Key: <key>`。',
   '密钥来自服务端环境变量 `HOLDINGS_API_KEY`，文档和示例里不会填写真实值。',
+  'MCP 的读工具不需要密钥。上传新研报需要环境变量 `MCP_UPLOAD_KEY`，放在 Header：`Authorization: Bearer <key>`。没配、没带或不对时，这次连接上看不到上传工具。',
   '只在 HTTPS 上使用。不要把密钥放进查询串，也不要打进访问日志、错误日志或请求体日志。',
   '写研报、扫描信号、评估等接口走登录 Cookie，且多数仅管理员可用。',
 ].join('\n\n')
@@ -33,7 +34,7 @@ export async function registerOpenApi(app: FastifyInstance): Promise<void> {
         { name: 'chat', description: '针对单篇研报的问答。健康检查公开，提问需要登录。' },
         { name: 'auth', description: '登录状态与可用的登录方式。不返回任何密钥。' },
         { name: 'seo', description: '给 nginx / 爬虫用的 robots、sitemap 和 head 片段。' },
-        { name: 'mcp', description: '只读 MCP（Streamable HTTP），供外部 AI 客户端连接。' },
+        { name: 'mcp', description: 'MCP（Streamable HTTP），供外部 AI 客户端连接。读公开；带对 MCP_UPLOAD_KEY 的连接可以上传新研报。' },
         { name: 'meta', description: '进程健康检查。' },
       ],
       components: {
