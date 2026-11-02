@@ -15,6 +15,7 @@ import { isSignalsEnabled } from './signals/scanner.js'
 import { normalizeSymbol } from './market/symbol.js'
 import { isWhalesEnabled } from './whales/enabled.js'
 import { holdingsForTickers } from './whales/bySymbol.js'
+import { normalizeSlug } from './whales/identity.js'
 import { getInstitution } from './whales/store.js'
 import { getWhaleDetail, listWhaleSummaries } from './whales/view.js'
 import { getDb } from './db.js'
@@ -59,6 +60,27 @@ function load(id: string, version?: number): Loaded {
 
 function whaleUrl(slug: string): string {
   return `${siteUrl()}/whales/${encodeURIComponent(slug)}`
+}
+
+/** 只传 slug 时的默认行数。大组合按市值截断，避免一次塞满外部模型的上下文。 */
+const HOLDING_PAGE = 40
+
+function slicePage<T>(rows: T[], offset: number, limit: number): {
+  rows: T[]
+  total: number
+  offset: number
+  limit: number
+  truncated: boolean
+} {
+  const start = Math.max(0, offset)
+  const size = Math.min(100, Math.max(1, limit))
+  return {
+    rows: rows.slice(start, start + size),
+    total: rows.length,
+    offset: start,
+    limit: size,
+    truncated: start + size < rows.length,
+  }
 }
 
 /** 裸代码 normalizeSymbol 会丢掉，这里保留大写。港股和带交易所前缀的仍走归一化。 */
@@ -227,20 +249,32 @@ export function buildMcpServer(): McpServer {
       title: '名家持仓',
       description:
         '已追踪机构的最新 13F 或众议院披露。传 symbol 看各家是否持有这一只（含本期清仓）；' +
-        '传 slug 看这一家最新一期的全部持仓（含估算成本）；都不传则只返回机构名单。与本站实盘持仓无关。',
+        `传 slug 看这一家最新一期持仓（含估算成本），默认按市值返回前 ${HOLDING_PAGE} 行，用 limit 和 offset 翻页；` +
+        '都不传则只返回机构名单。slug 不区分大小写。与本站实盘持仓无关。',
       inputSchema: {
         symbol: z.string().optional().describe('股票代码，如 AAPL、ALB、0700.HK；大小写不敏感'),
-        slug: z.string().optional().describe('机构短名，如 berkshire、scion。不传 symbol 时返回该机构最新一期全部持仓'),
+        slug: z.string().optional().describe('机构短名，如 berkshire、Berkshire、scion。不传 symbol 时返回该机构最新一期持仓'),
+        limit: z.number().int().min(1).max(100).optional().describe(`只传 slug 时每类最多返回多少行，默认 ${HOLDING_PAGE}，按市值从高到低`),
+        offset: z.number().int().min(0).optional().describe('只传 slug 时跳过前多少行'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async ({ symbol, slug }) => {
-      const trimmedSlug = slug?.trim()
-      if (trimmedSlug && !getInstitution(trimmedSlug)) {
-        return fail(`没有机构 ${trimmedSlug}。不传参数可以看名单和短名。`)
+    }, async ({ symbol, slug, limit, offset }) => {
+      const normalizedSlug = slug?.trim() ? normalizeSlug(slug) : null
+      if (slug?.trim() && !normalizedSlug) {
+        return fail(`没有机构 ${slug.trim()}。短名只能用字母、数字和连字符。`)
       }
-      if (trimmedSlug && !symbol?.trim()) {
-        const detail = getWhaleDetail(trimmedSlug)
-        if (!detail) return fail(`没有机构 ${trimmedSlug}。不传参数可以看名单和短名。`)
+      if (normalizedSlug && !getInstitution(normalizedSlug)) {
+        return fail(`没有机构 ${normalizedSlug}。不传参数可以看名单和短名。`)
+      }
+      if (normalizedSlug && !symbol?.trim()) {
+        const detail = getWhaleDetail(normalizedSlug)
+        if (!detail) return fail(`没有机构 ${normalizedSlug}。不传参数可以看名单和短名。`)
+        const positions = slicePage(detail.positions.map(positionBrief), offset ?? 0, limit ?? HOLDING_PAGE)
+        const closed = slicePage(
+          detail.closed.map(row => ({ ...positionBrief(row), closed: true })),
+          offset ?? 0,
+          limit ?? HOLDING_PAGE,
+        )
         return json({
           url: whaleUrl(detail.institution.slug),
           institution: detail.institution,
@@ -255,14 +289,20 @@ export function buildMcpServer(): McpServer {
           previousPeriod: detail.previousPeriod,
           valueNote: detail.valueNote,
           costNote: detail.costNote,
-          positions: detail.positions.map(positionBrief),
-          closed: detail.closed.map(row => ({ ...positionBrief(row), closed: true })),
+          positions: positions.rows,
+          positionCount: positions.total,
+          positionsTruncated: positions.truncated,
+          closed: closed.rows,
+          closedCount: closed.total,
+          closedTruncated: closed.truncated,
+          offset: positions.offset,
+          limit: positions.limit,
         })
       }
       if (symbol?.trim()) {
         const ticker = lookupTicker(symbol)
         const holdings = holdingsForTickers([ticker])
-          .filter(row => !trimmedSlug || row.slug === trimmedSlug)
+          .filter(row => !normalizedSlug || row.slug === normalizedSlug)
           .map(row => ({ ...row, url: whaleUrl(row.slug) }))
         return json({
           symbol: ticker,

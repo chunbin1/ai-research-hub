@@ -31,12 +31,14 @@ type Side = NonNullable<ReturnType<typeof signalBoard>[number]['daily']>
 function sideText(label: string, side: Side | null, closeRaw: number | null, flips?: number): string {
   if (!side) return `${label}：没有信号`
   const dir = side.trend === 1 ? '多头' : '空头'
-  const close = closeRaw ?? side.closeAdj
+  const usesRaw = closeRaw != null
+  const close = usesRaw ? closeRaw : side.closeAdj
   const flip = side.flipDate
     ? `最近翻转 ${side.flipDate}（价格 ${num(side.flipPrice)}）`
     : '日志里没有翻转'
   const whip = flips == null ? '' : `，近 90 天翻转 ${flips} 次`
-  return `${label}：${dir}，截至 ${side.barDate}，收盘 ${num(close)}，止损线 ${num(side.stopLine)}，距止损 ${Math.abs(side.distPct).toFixed(1)}%（按复权价），${flip}${whip}`
+  const closeNote = usesRaw ? '未复权' : '复权'
+  return `${label}：${dir}，截至 ${side.barDate}，收盘（${closeNote}）${num(close)}，止损线 ${num(side.stopLine)}，距止损 ${Math.abs(side.distPct).toFixed(1)}%（复权），${flip}${whip}`
 }
 
 function signalText(symbol: string, rows: ReturnType<typeof signalBoard>): string {
@@ -54,14 +56,38 @@ function signalText(symbol: string, rows: ReturnType<typeof signalBoard>): strin
   ].join('\n')
 }
 
+function isOption(hit: WhaleSymbolHolding): boolean {
+  return hit.putCall === 'Call' || hit.putCall === 'Put'
+}
+
+/** 众议院普通股经常只有金额区间、股数为 0。这时写「持有 0 股」会误导模型。 */
+function omitsShareCount(hit: WhaleSymbolHolding): boolean {
+  return hit.shares === 0 && (hit.source === 'house-fd' || !!hit.valueLabel)
+}
+
+function shareUnit(hit: WhaleSymbolHolding): string {
+  return isOption(hit) ? '份合约' : '股'
+}
+
 function changeText(hit: WhaleSymbolHolding): string {
   if (hit.change == null) return '没有上一期可比'
+  if (hit.source === 'house-fd') {
+    if (hit.change === 'new') return '本期新建仓'
+    if (hit.change === 'closed') return '本期已清仓'
+    if (hit.change === 'unchanged') return '较上期金额区间不变'
+    const verb = hit.change === 'increased' ? '增加' : '减少'
+    if (hit.prevValueUsd == null) return `较上期金额${verb}`
+    return `较上期金额${verb}，上期约 ${usd(hit.prevValueUsd)}`
+  }
   if (hit.change === 'new') return '本期新建仓'
-  if (hit.change === 'unchanged') return '较上期股数不变'
-  if (hit.change === 'closed') return `上期 ${shares(hit.prevShares ?? 0)} 股，本期已清仓`
+  if (hit.change === 'unchanged') return `较上期${isOption(hit) ? '合约数' : '股数'}不变`
+  if (hit.change === 'closed') {
+    if (omitsShareCount(hit)) return '本期已清仓'
+    return `上期 ${shares(hit.prevShares ?? 0)} ${shareUnit(hit)}，本期已清仓`
+  }
   const from = hit.prevShares == null ? '' : `${shares(hit.prevShares)} → `
   const verb = hit.change === 'increased' ? '加仓' : '减仓'
-  return `较上期${verb}，股数 ${from}${shares(hit.shares)}`
+  return `较上期${verb}，${isOption(hit) ? '合约数' : '股数'} ${from}${shares(hit.shares)}`
 }
 
 function securityPrefix(hit: WhaleSymbolHolding): string {
@@ -71,12 +97,19 @@ function securityPrefix(hit: WhaleSymbolHolding): string {
   return ''
 }
 
+function valueText(hit: WhaleSymbolHolding): string {
+  if (hit.valueLabel) return `金额区间 ${hit.valueLabel}`
+  const amount = hit.closed ? hit.prevValueUsd ?? 0 : hit.valueUsd
+  return `市值 ${usd(amount)}`
+}
+
 function holdingText(hit: WhaleSymbolHolding): string {
-  const value = hit.valueLabel ?? (hit.closed ? usd(hit.prevValueUsd ?? 0) : usd(hit.valueUsd))
   const weight = hit.weight == null ? '' : `，占组合 ${(hit.weight * 100).toFixed(1)}%`
   const position = hit.closed
-    ? `上期市值 ${value}`
-    : `持有 ${shares(hit.shares)} 股，市值 ${value}${weight}`
+    ? `上期${valueText(hit)}`
+    : omitsShareCount(hit)
+      ? `${valueText(hit)}${weight}`
+      : `持有 ${shares(hit.shares)} ${shareUnit(hit)}，${valueText(hit)}${weight}`
   const url = `${siteOrigin()}/whales/${encodeURIComponent(hit.slug)}`
   return `名家：${hit.manager}（${hit.nameZh}），报告期 ${hit.reportPeriod}，${securityPrefix(hit)}${position}，${changeText(hit)}。${url}`
 }
@@ -103,7 +136,8 @@ export function marketAppendixForMarkdown(markdown: string): string {
   if (!signalsOn) lines.push('信号未开启。')
   if (!whalesOn) lines.push('名家持仓未开启。')
   const holdings = whalesOn ? holdingsForTickers(symbols) : []
-  const rows = signalsOn ? signalBoard() : []
+  // 与 MCP get_signals 一样跳过已删除的自选股。列表本身已经不返回墓碑，这里再滤一次。
+  const rows = signalsOn ? signalBoard().filter(row => row.enabled) : []
   for (const symbol of symbols) {
     lines.push('', symbol)
     if (signalsOn) lines.push(signalText(symbol, rows))

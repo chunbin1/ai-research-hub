@@ -231,4 +231,9 @@ test('get_whale_holdings 按代码返回持仓和清仓,未知机构报错', asy
 
   const list = JSON.parse((await call('get_whale_holdings')).text)
   assert.ok(list.institutions.some((row: { slug: string }) => row.slug === 'berkshire'))
+
+  const titled = JSON.parse((await call('get_whale_holdings', { slug: 'Berkshire', limit: 1 })).text)
+  assert.equal(titled.institution.slug, 'berkshire')
+  assert.equal(titled.positions.length, 1)
+  assert.equal(titled.limit, 1)
 })

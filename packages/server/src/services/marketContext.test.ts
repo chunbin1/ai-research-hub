@@ -53,12 +53,38 @@ test('标题里的代码带上信号和名家持仓,正文里的代码不带', (
   assert.match(text, /ALB/)
   assert.doesNotMatch(text, /SQM/)
   assert.match(text, /日线：多头/)
-  assert.match(text, /收盘 98/)
+  assert.match(text, /收盘（未复权）98/)
   assert.match(text, /距止损 10\.0%/)
   assert.match(text, /巴菲特/)
   assert.match(text, /加仓/)
   assert.match(text, /https:\/\/arh\.example\/whales\/berkshire/)
   assert.match(text, /https:\/\/arh\.example\/signals/)
+})
+
+test('众议院披露不写 0 股，增减按金额而不是股数', () => {
+  replaceTickers([{ ticker: 'AAPL', title: 'Apple Inc', cik: '0000320193' }], '2026-10-27T00:00:00.000Z')
+  const line = (value: number, label: string) => ({
+    cusip: 'AAPL', putCall: '' as const, shareType: 'SH', issuerName: 'Apple Inc. (AAPL)',
+    titleOfClass: 'COM', shares: 0, valueReported: value, valueUsd: value, valueLabel: label,
+  })
+  replaceFiling({
+    slug: 'pelosi', accession: 'house-1', form: 'HOUSE-FD',
+    reportPeriod: '2024-12-31', filedAt: '2025-05-15', sourceUrl: 'https://disclosures-clerk.house.gov/a',
+    valueUnit: 'dollars', fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [line(1_000_000, '500,001–1,000,000')],
+  })
+  replaceFiling({
+    slug: 'pelosi', accession: 'house-2', form: 'HOUSE-FD',
+    reportPeriod: '2025-12-31', filedAt: '2026-05-15', sourceUrl: 'https://disclosures-clerk.house.gov/b',
+    valueUnit: 'dollars', fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [line(3_000_000, '1,000,001–5,000,000')],
+  })
+  const text = marketAppendixForMarkdown('# 苹果\n\n## Apple（NYSE: AAPL）\n\n正文。\n')
+  assert.match(text, /佩洛西/)
+  assert.match(text, /金额区间 1,000,001–5,000,000/)
+  assert.match(text, /较上期金额增加/)
+  assert.doesNotMatch(text, /持有 0/)
+  assert.doesNotMatch(text, /股数/)
 })
 
 test('标题里没有代码时说明没有可对照的数据', () => {
