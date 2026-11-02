@@ -25,6 +25,9 @@ type Choice = 'new' | string
  *
  * 新建一篇时要选研报类型(行业 / 公司),预填服务端按标题推断的建议值,管理员可改。
  * 查重只在同类之间比,所以改选类型会用新类型重查一次。作为新版本上传时类型继承原文档,不选。
+ *
+ * 文件名经常是 slug,真正入库、也拿去和库里比对的是文内一级标题。选「新建 / 新版本」
+ * 之前把这个标题显示出来,才对得上「是不是同一篇」。
  */
 export function UploadReportModal({ open, onClose, onUploaded }: {
   open: boolean
@@ -32,6 +35,8 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
   onUploaded: () => void
 }) {
   const [file, setFile] = useState<File | null>(null)
+  /** 将要入库的标题:文内一级标题,没有就退回去掉扩展名的文件名 */
+  const [title, setTitle] = useState('')
   const [check, setCheck] = useState<Check>({ status: 'idle' })
   const [choice, setChoice] = useState<Choice | null>(null)
   const [note, setNote] = useState('')
@@ -51,6 +56,7 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
   function reset() {
     checkSeq.current++
     setFile(null)
+    setTitle('')
     setCheck({ status: 'idle' })
     setChoice(null)
     setNote('')
@@ -64,12 +70,18 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
     setChoice(null)
     setError('')
     setKindKnown(false)
+    setTitle('')
     const seq = ++checkSeq.current
     setCheck({ status: 'checking' })
+    // 先用本地读到的标题顶上,查重回来再用服务端的(和入库是同一条规则)盖掉
+    void readUploadTitle(f).then(t => {
+      if (seq === checkSeq.current) setTitle(current => current || t)
+    })
     try {
       // 第一次不带类型:让服务端按标题推断,并把推断结果带回来预填
-      const { candidates, suggestedKind } = await api.checkSimilar(f)
+      const { candidates, suggestedKind, title: parsed } = await api.checkSimilar(f)
       if (seq !== checkSeq.current) return
+      if (parsed) setTitle(parsed)
       setKind(suggestedKind ?? 'industry')
       setKindKnown(true)
       setCheck({ status: 'done', candidates })
@@ -86,8 +98,10 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
     const seq = ++checkSeq.current
     setCheck({ status: 'checking' })
     try {
-      const { candidates } = await api.checkSimilar(file, next)
-      if (seq === checkSeq.current) setCheck({ status: 'done', candidates })
+      const { candidates, title: parsed } = await api.checkSimilar(file, next)
+      if (seq !== checkSeq.current) return
+      if (parsed) setTitle(parsed)
+      setCheck({ status: 'done', candidates })
     } catch {
       if (seq === checkSeq.current) setCheck({ status: 'failed' })
     }
@@ -130,6 +144,15 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
         disabled={busy}
         onFile={f => void pick(f)}
       />
+
+      {title && (
+        <div className="mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <span className="text-[13px] text-[#555]">标题</span>
+          <span className="min-w-0 font-serif-sc text-[16px] font-semibold leading-[1.5] text-ink [text-wrap:pretty]">
+            {title}
+          </span>
+        </div>
+      )}
 
       {file && kindKnown && !targetDoc && (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5">
@@ -207,6 +230,21 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
     </UploadDialog>
     </AntdProvider>
   )
+}
+
+/**
+ * 和入库同一条规则(服务端 parseMarkdown 的 displayName):文内第一个一级标题。
+ * 没有标题就退回去掉扩展名的文件名。读失败也退回文件名,免得查重失败时什么都不显示。
+ */
+async function readUploadTitle(file: File): Promise<string> {
+  const fallback = file.name.replace(/\.(md|markdown|txt)$/i, '')
+  try {
+    const h1 = /^#\s+(.+?)\s*#*\s*$/m.exec(await file.text())
+    const heading = h1?.[1].trim() ?? ''
+    return heading || fallback
+  } catch {
+    return fallback
+  }
 }
 
 /**
