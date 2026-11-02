@@ -18,7 +18,7 @@ export const mcpRoutes: FastifyPluginAsync = async (app) => {
   app.post('/mcp', describeRoute(
     ['mcp'],
     'MCP（只读）',
-    'Streamable HTTP。工具全是只读查询，无会话。响应由协议层直接写回。GET 与 DELETE 返回 405。',
+    'Streamable HTTP。工具全是只读查询，无会话。含研报、自选股信号 get_signals、名家持仓 get_whale_holdings；后两个在对应功能关闭时不注册。响应由协议层直接写回。GET 与 DELETE 返回 405。',
   ), async (request, reply) => {
     const server = buildMcpServer()
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
