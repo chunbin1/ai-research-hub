@@ -17,7 +17,9 @@ export function askPrompt(opts: { docId: string; title: string; version?: number
   return [
     `请用「${CONNECTOR_NAME}」连接器读研报《${opts.title}》(id: ${opts.docId}${ver}):`,
     '先用 get_report_outline 看目录,再用 read_report 只读和问题相关的章节。',
-    '回答时注明引用的章节,并附上工具返回的原文链接。',
+    '若连接器里有 get_signals,问题涉及趋势、止损或买卖点时用它,可按研报里的代码过滤。',
+    '若连接器里有 get_whale_holdings,问题涉及巴菲特等名家是否持有时用它,按代码或机构短名过滤。',
+    '研报结论注明章节并附原文链接。信号和名家持仓分开注明来源,不要说成研报里的结论。',
     '',
     '我的问题:',
   ].join('\n')

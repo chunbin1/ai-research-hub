@@ -12,6 +12,12 @@ import { listVersions, latestVersion } from './versionStore.js'
 import { outlineOf, INTRO_SLUG } from './markdownParser.js'
 import { signalBoard } from './signals/board.js'
 import { isSignalsEnabled } from './signals/scanner.js'
+import { normalizeSymbol } from './market/symbol.js'
+import { isWhalesEnabled } from './whales/enabled.js'
+import { holdingsForTickers } from './whales/bySymbol.js'
+import { normalizeSlug } from './whales/identity.js'
+import { getInstitution } from './whales/store.js'
+import { getWhaleDetail, listWhaleSummaries } from './whales/view.js'
 import { getDb } from './db.js'
 import type { Document, DocumentVersion } from '../types.js'
 
@@ -52,6 +58,77 @@ function load(id: string, version?: number): Loaded {
   return { ok: true, doc, md: readVersionMarkdown(doc.id, v) ?? '', version: v, latest, versions }
 }
 
+function whaleUrl(slug: string): string {
+  return `${siteUrl()}/whales/${encodeURIComponent(slug)}`
+}
+
+/** 只传 slug 时的默认行数。大组合按市值截断，避免一次塞满外部模型的上下文。 */
+const HOLDING_PAGE = 40
+
+function slicePage<T>(rows: T[], offset: number, limit: number): {
+  rows: T[]
+  total: number
+  offset: number
+  limit: number
+  truncated: boolean
+} {
+  const start = Math.max(0, offset)
+  const size = Math.min(100, Math.max(1, limit))
+  return {
+    rows: rows.slice(start, start + size),
+    total: rows.length,
+    offset: start,
+    limit: size,
+    truncated: start + size < rows.length,
+  }
+}
+
+/** 裸代码 normalizeSymbol 会丢掉，这里保留大写。港股和带交易所前缀的仍走归一化。 */
+function lookupTicker(raw: string): string {
+  return normalizeSymbol(raw)?.symbol ?? raw.trim().toUpperCase()
+}
+
+function positionBrief(row: {
+  ticker: string | null
+  issuerName: string
+  cusip: string
+  putCall: '' | 'Put' | 'Call'
+  shareType: string
+  shares: number
+  valueUsd: number
+  valueLabel: string | null
+  weight: number | null
+  change: string | null
+  shareDelta: number | null
+  prevShares: number | null
+  prevValueUsd: number | null
+  cost: { costPerShare: number; gain: number; since: string; fromStart: boolean } | null
+}) {
+  return {
+    ticker: row.ticker,
+    issuerName: row.issuerName,
+    cusip: row.cusip,
+    putCall: row.putCall,
+    shareType: row.shareType,
+    shares: row.shares,
+    valueUsd: row.valueUsd,
+    valueLabel: row.valueLabel,
+    weight: row.weight,
+    change: row.change,
+    shareDelta: row.shareDelta,
+    prevShares: row.prevShares,
+    prevValueUsd: row.prevValueUsd,
+    cost: row.cost
+      ? {
+          costPerShare: row.cost.costPerShare,
+          gain: row.cost.gain,
+          since: row.cost.since,
+          fromStart: row.cost.fromStart,
+        }
+      : null,
+  }
+}
+
 const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] })
 const json = (o: unknown) => text(JSON.stringify(o, null, 2))
 const fail = (s: string) => ({ ...text(s), isError: true })
@@ -62,7 +139,8 @@ export function buildMcpServer(): McpServer {
     {
       instructions:
         '研报站的只读接口。典型用法:list_reports 找到研报 id → get_report_outline 看目录 → ' +
-        'read_report 按 section 读相关章节。回答时引用章节,并附上返回结果里的 url,方便用户跳回原文。',
+        'read_report 按 section 读相关章节。问自选股趋势用 get_signals；问机构 13F 或众议院披露用 get_whale_holdings。' +
+        '回答时引用章节或数据来源,并附上返回结果里的 url。信号和名家持仓不是研报原文,不要说成报告里的结论。',
     },
   )
 
@@ -163,6 +241,81 @@ export function buildMcpServer(): McpServer {
         ...r,
         sourceDoc: r.sourceDoc ? { ...r.sourceDoc, url: reportUrl(r.sourceDoc.id) } : null,
       })))
+    })
+  }
+
+  if (isWhalesEnabled()) {
+    server.registerTool('get_whale_holdings', {
+      title: '名家持仓',
+      description:
+        '已追踪机构的最新 13F 或众议院披露。传 symbol 看各家是否持有这一只（含本期清仓）；' +
+        `传 slug 看这一家最新一期持仓（含估算成本），默认按市值返回前 ${HOLDING_PAGE} 行，用 limit 和 offset 翻页；` +
+        '都不传则只返回机构名单。slug 不区分大小写。与本站实盘持仓无关。',
+      inputSchema: {
+        symbol: z.string().optional().describe('股票代码，如 AAPL、ALB、0700.HK；大小写不敏感'),
+        slug: z.string().optional().describe('机构短名，如 berkshire、Berkshire、scion。不传 symbol 时返回该机构最新一期持仓'),
+        limit: z.number().int().min(1).max(100).optional().describe(`只传 slug 时每类最多返回多少行，默认 ${HOLDING_PAGE}，按市值从高到低`),
+        offset: z.number().int().min(0).optional().describe('只传 slug 时跳过前多少行'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    }, async ({ symbol, slug, limit, offset }) => {
+      const normalizedSlug = slug?.trim() ? normalizeSlug(slug) : null
+      if (slug?.trim() && !normalizedSlug) {
+        return fail(`没有机构 ${slug.trim()}。短名只能用字母、数字和连字符。`)
+      }
+      if (normalizedSlug && !getInstitution(normalizedSlug)) {
+        return fail(`没有机构 ${normalizedSlug}。不传参数可以看名单和短名。`)
+      }
+      if (normalizedSlug && !symbol?.trim()) {
+        const detail = getWhaleDetail(normalizedSlug)
+        if (!detail) return fail(`没有机构 ${normalizedSlug}。不传参数可以看名单和短名。`)
+        const positions = slicePage(detail.positions.map(positionBrief), offset ?? 0, limit ?? HOLDING_PAGE)
+        const closed = slicePage(
+          detail.closed.map(row => ({ ...positionBrief(row), closed: true })),
+          offset ?? 0,
+          limit ?? HOLDING_PAGE,
+        )
+        return json({
+          url: whaleUrl(detail.institution.slug),
+          institution: detail.institution,
+          period: detail.period
+            ? {
+                reportPeriod: detail.period.reportPeriod,
+                filedAt: detail.period.filedAt,
+                form: detail.period.form,
+                sourceUrl: detail.period.sourceUrl,
+              }
+            : null,
+          previousPeriod: detail.previousPeriod,
+          valueNote: detail.valueNote,
+          costNote: detail.costNote,
+          positions: positions.rows,
+          positionCount: positions.total,
+          positionsTruncated: positions.truncated,
+          closed: closed.rows,
+          closedCount: closed.total,
+          closedTruncated: closed.truncated,
+          offset: positions.offset,
+          limit: positions.limit,
+        })
+      }
+      if (symbol?.trim()) {
+        const ticker = lookupTicker(symbol)
+        const holdings = holdingsForTickers([ticker])
+          .filter(row => !normalizedSlug || row.slug === normalizedSlug)
+          .map(row => ({ ...row, url: whaleUrl(row.slug) }))
+        return json({
+          symbol: ticker,
+          note: '已追踪机构最新一期里这只代码的持仓，以及相对上一期清掉的仓。代码用 SEC 公司名表匹配，对不上的不会出现。这不是本站实盘。',
+          holdings,
+        })
+      }
+      const summary = listWhaleSummaries()
+      return json({
+        note: '不传 symbol 时只有名单。要看某一只股票传 symbol；要看一家的全部持仓传 slug。',
+        valueNote: summary.valueNote,
+        institutions: summary.institutions.map(row => ({ ...row, url: whaleUrl(row.slug) })),
+      })
     })
   }
 

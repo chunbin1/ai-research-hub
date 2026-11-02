@@ -13,6 +13,7 @@ process.env.DB_PATH = ':memory:'
 process.env.AUTH_DISABLED = 'true'
 process.env.APP_URL = 'https://arh.example'
 delete process.env.SIGNALS
+delete process.env.WHALES
 
 const { initDb } = await import('../services/db.ts')
 const { initDocumentTable } = await import('../services/documentStore.ts')
@@ -20,6 +21,7 @@ const { initChunkFtsTable } = await import('../services/chunkFts.ts')
 const { initIndexStateTable } = await import('../services/indexState.ts')
 const { initWatchlistTable } = await import('../services/watchlistStore.ts')
 const { initSignalTables } = await import('../services/signalStore.ts')
+const { initWhaleTables } = await import('../services/whales/store.ts')
 const { documentRoutes } = await import('./documents.ts')
 const { mcpRoutes } = await import('./mcp.ts')
 const { PAGE_CHARS } = await import('../services/mcpServer.ts')
@@ -30,6 +32,7 @@ initChunkFtsTable(db)
 initIndexStateTable(db)
 initWatchlistTable(db)
 initSignalTables(db)
+initWhaleTables(db)
 
 const app = fastify()
 await app.register(multipart)
@@ -89,10 +92,10 @@ test('initialize 握手成功,无状态模式不发会话 id', async () => {
   assert.equal(res.headers['mcp-session-id'], undefined)
 })
 
-test('tools/list 列出四个只读工具', async () => {
+test('tools/list 列出五个只读工具', async () => {
   const { result } = await rpc('tools/list')
   const names = result.tools.map((t: { name: string }) => t.name).sort()
-  assert.deepEqual(names, ['get_report_outline', 'get_signals', 'list_reports', 'read_report'])
+  assert.deepEqual(names, ['get_report_outline', 'get_signals', 'get_whale_holdings', 'list_reports', 'read_report'])
   assert.ok(result.tools.every((t: { annotations?: { readOnlyHint?: boolean } }) => t.annotations?.readOnlyHint))
 })
 
@@ -182,4 +185,55 @@ test('首个标题前的引言能单独读,链接指向篇首', async () => {
   assert.match(text, /单位亿元/)
   assert.doesNotMatch(text, /内容。/)
   assert.match(text, new RegExp(`链接:https://arh\\.example/reports/${id}\\n`))
+})
+
+test('get_whale_holdings 按代码返回持仓和清仓,未知机构报错', async () => {
+  const { replaceFiling, replaceTickers } = await import('../services/whales/store.ts')
+  const line = (cusip: string, name: string, shares: number, value: number) => ({
+    cusip, putCall: '' as const, shareType: 'SH', issuerName: name, titleOfClass: 'COM',
+    shares, valueReported: value, valueUsd: value,
+  })
+  replaceTickers([
+    { ticker: 'AAPL', title: 'Apple Inc', cik: '0000320193' },
+    { ticker: 'KO', title: 'Coca Cola Co', cik: '0000021344' },
+  ], '2026-10-27T00:00:00.000Z')
+  replaceFiling({
+    slug: 'berkshire', accession: '0001193125-26-000001', form: '13F-HR',
+    reportPeriod: '2026-03-31', filedAt: '2026-05-15', sourceUrl: 'https://www.sec.gov/prev',
+    valueUnit: 'dollars', fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [line('037833100', 'APPLE INC', 10, 100), line('191216100', 'COCA COLA CO', 4, 40)],
+  })
+  replaceFiling({
+    slug: 'berkshire', accession: '0001193125-26-000002', form: '13F-HR',
+    reportPeriod: '2026-06-30', filedAt: '2026-08-14', sourceUrl: 'https://www.sec.gov/latest',
+    valueUnit: 'dollars', fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [line('037833100', 'APPLE INC', 15, 200)],
+  })
+
+  const hit = JSON.parse((await call('get_whale_holdings', { symbol: 'aapl' })).text)
+  assert.equal(hit.symbol, 'AAPL')
+  assert.equal(hit.holdings.length, 1)
+  assert.equal(hit.holdings[0].manager, '巴菲特')
+  assert.equal(hit.holdings[0].change, 'increased')
+  assert.equal(hit.holdings[0].shares, 15)
+  assert.equal(hit.holdings[0].url, 'https://arh.example/whales/berkshire')
+
+  const closed = JSON.parse((await call('get_whale_holdings', { symbol: 'KO', slug: 'berkshire' })).text)
+  assert.equal(closed.holdings.length, 1)
+  assert.equal(closed.holdings[0].closed, true)
+
+  const none = JSON.parse((await call('get_whale_holdings', { symbol: 'TSLA' })).text)
+  assert.deepEqual(none.holdings, [])
+
+  const missing = await call('get_whale_holdings', { slug: 'no-such' })
+  assert.ok(missing.isError)
+  assert.match(missing.text, /没有机构/)
+
+  const list = JSON.parse((await call('get_whale_holdings')).text)
+  assert.ok(list.institutions.some((row: { slug: string }) => row.slug === 'berkshire'))
+
+  const titled = JSON.parse((await call('get_whale_holdings', { slug: 'Berkshire', limit: 1 })).text)
+  assert.equal(titled.institution.slug, 'berkshire')
+  assert.equal(titled.positions.length, 1)
+  assert.equal(titled.limit, 1)
 })
