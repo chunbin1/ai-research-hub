@@ -267,6 +267,15 @@ test('没有一级标题:显示出去掉扩展名的文件名', async () => {
   expect(await screen.findByText('Nautilus-research-20261102')).toBeTruthy()
 })
 
+test('查重成功且没有一级标题:显示服务端返回的标题', async () => {
+  mockCheckSimilar.mockResolvedValue({ title: 'Nautilus-research-20261102', suggestedKind: 'company', candidates: [] })
+  const { zone } = renderModal()
+  const f = new File(['正文里没有标题。\n'], 'Nautilus-research-20261102.md', { type: 'text/markdown' })
+  fireEvent.drop(zone, dt([f]))
+  expect(await screen.findByText('Nautilus-research-20261102')).toBeTruthy()
+  await waitFor(() => expect(mockCheckSimilar).toHaveBeenCalledWith(f))
+})
+
 test('查重失败:类型选择器照样给,默认行业研报', async () => {
   mockCheckSimilar.mockRejectedValue(new Error('查重失败'))
   const { zone } = renderModal()

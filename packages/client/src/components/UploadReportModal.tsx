@@ -233,8 +233,13 @@ export function UploadReportModal({ open, onClose, onUploaded }: {
 }
 
 /**
- * 和入库同一条规则(服务端 parseMarkdown 的 displayName):文内第一个一级标题。
- * 没有标题就退回去掉扩展名的文件名。读失败也退回文件名,免得查重失败时什么都不显示。
+ * 和入库同一条规则:文内第一个一级标题。没有标题就退回去掉扩展名的文件名。
+ * 读失败也退回文件名,免得查重失败时什么都不显示。
+ *
+ * 同步点:下面这条一级标题正则与 packages/server/src/services/markdownParser.ts
+ * 里 parseMarkdown 取 displayName 的那一行相同(含「不跳过围栏代码块」)。
+ * 去掉扩展名与 packages/server/src/routes/documents.ts 里 readUpload 的 baseName
+ * 剥离相同。改一边时搜另一边。
  */
 async function readUploadTitle(file: File): Promise<string> {
   const fallback = file.name.replace(/\.(md|markdown|txt)$/i, '')
