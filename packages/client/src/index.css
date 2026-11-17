@@ -123,6 +123,9 @@
   .report-body li::marker { color: var(--color-ink-faint); }
   .report-body code:not(pre code) { font-size: 0.88em; background: var(--color-aside);
                                     border-radius: 3px; padding: 1px 4px; }
+  /* KaTeX 默认 1.21em,正文行高 1.85 时行距会被公式撑开。跟正文字号对齐,长公式横滑。 */
+  .report-body .katex { font-size: 1.02em; line-height: 1.2; color: inherit; }
+  .report-body .katex-display { margin: 0.75em 0; overflow-x: auto; overflow-y: hidden; }
   /* 表格:设计稿的「上粗线 + 表头细线 + 行间淡线」,不画竖线。
      外包一层横向滚动容器(2–3 列的窄表在手机上偶尔也会撑宽)。 */
   .report-body .md-table-scroll { overflow-x: auto; margin: 18px 0; }

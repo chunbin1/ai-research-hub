@@ -61,7 +61,7 @@ function manualChunks(id: string): string | undefined {
   const p = id.replace(/\\/g, '/')
   if (!p.includes('/node_modules/')) return
   // react-markdown 的路径里带 react,必须先于 react 包名判断
-  if (/\/node_modules\/(react-markdown|remark-|rehype-|micromark|mdast|hast-|unist-|unified|vfile|property-information|decode-named-character-reference|character-entities|github-slugger|mdast-util-|hast-util-|unist-util-|micromark-)/.test(p)) {
+  if (/\/node_modules\/(react-markdown|remark-|rehype-|micromark|mdast|hast-|unist-|unified|vfile|property-information|decode-named-character-reference|character-entities|github-slugger|mdast-util-|hast-util-|unist-util-|micromark-|katex)/.test(p)) {
     return 'markdown'
   }
   if (p.includes('/node_modules/diff/')) return 'diff'
