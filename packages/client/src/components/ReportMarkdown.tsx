@@ -134,16 +134,19 @@ const remarkPlugins = [remarkGfm, remarkCjkFriendly, remarkMath]
 const rehypePlugins = [rehypeSlug, rehypeKatex]
 
 /**
- * `$...$` 里才是公式。金额也用 `$`(「$1,508亿×10=$1.51万亿」),remark-math 会从第一个
- * `$` 配到下一个,一段里出现第三个 `$` 时金额就被拆碎。这里只保留真正的公式,
- * 其余 `$` 转义成普通文字。
- * 公式:带 LaTeX 命令(`\ge`、`\%`、`\beta`),或单独一个变量名(`$r$`、`$ROIC$`)。
+ * `$...$` 是行内公式,`$$...$$` 是块级公式。金额也用 `$`
+ * (`$114.53`、`$1,508亿×10=$1.51万亿`)。remark-math 从左往右配 `$`,
+ * 金额的 `$` 若先被收成一对,后面的公式就只剩一个 `$`,整行都会被转义。
+ * 配不成公式的 `$` 才转义;已经写成 `\$` 的不再加反斜杠,`$$` 整段保留。
+ * 公式:带 LaTeX 命令(`\ge`、`\%`),变量名(`$r$`、`$r_f$`、`$ROIC$`),
+ * 或带运算符的短算式(`$r - g$`、`$P / E$`)。
  */
-const FORMULA_RE = /(?<!\$)\$(?!\$)((?:\\[\s\S]|[^$\n])+?)\$(?!\$)/g
-
 function isFormula(inner: string): boolean {
   if (inner.includes('\\')) return true
-  return /^[A-Za-z][A-Za-z0-9]*$/.test(inner)
+  if (/^[A-Za-z][A-Za-z0-9_]*$/.test(inner)) return true
+  if (inner.length > 40 || !/[A-Za-z]/.test(inner)) return false
+  if (!/[+\-−±*/=<>^]/.test(inner)) return false
+  return /^[A-Za-z0-9_+\-−±*/=<>^.,()[\]{}|%\s]+$/.test(inner)
 }
 
 /** 跳过行内代码,只改代码外面的文字。没有闭合反引号时整段仍当正文。 */
@@ -172,14 +175,49 @@ function replaceOutsideInlineCode(line: string, fn: (segment: string) => string)
   return out
 }
 
+/** 下一个不成对的 `$`。碰到 `$$` 说明这一对跨进了块级公式,不配。 */
+function findClosingDollar(segment: string, from: number): number {
+  for (let i = from; i < segment.length; i++) {
+    if (segment[i] === '\\') { i++; continue }
+    if (segment[i] !== '$') continue
+    if (segment.startsWith('$$', i)) return -1
+    return i
+  }
+  return -1
+}
+
 function protectMathDollars(segment: string): string {
-  const kept: string[] = []
-  const held = segment.replace(FORMULA_RE, (full, inner: string) => {
-    if (!isFormula(inner)) return full
-    kept.push(full)
-    return `\uE000${kept.length - 1}\uE001`
-  })
-  return held.replaceAll('$', '\\$').replace(/\uE000(\d+)\uE001/g, (_, id: string) => kept[Number(id)])
+  let out = ''
+  for (let i = 0; i < segment.length; i++) {
+    if (segment[i] === '\\' && segment[i + 1] === '$') {
+      out += '\\$'
+      i++
+      continue
+    }
+    if (segment.startsWith('$$', i)) {
+      const close = segment.indexOf('$$', i + 2)
+      if (close === -1) {
+        out += '$$'
+        i++
+        continue
+      }
+      out += segment.slice(i, close + 2)
+      i = close + 1
+      continue
+    }
+    if (segment[i] !== '$') {
+      out += segment[i]
+      continue
+    }
+    const close = findClosingDollar(segment, i + 1)
+    if (close !== -1 && isFormula(segment.slice(i + 1, close))) {
+      out += segment.slice(i, close + 1)
+      i = close
+      continue
+    }
+    out += '\\$'
+  }
+  return out
 }
 
 /** 围栏代码块里的 `$r$` 是代码,不是公式。规则与目录跳过代码块的方式一致。 */

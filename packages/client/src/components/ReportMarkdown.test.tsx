@@ -186,4 +186,46 @@ describe('ReportMarkdown — 公式', () => {
     expect(container.querySelector('pre')?.textContent).toContain('$r - g \\ge 5\\text{ pct}$')
     expect(container.querySelector('p code')?.textContent).toBe('$r$')
   })
+
+  it('同一行里金额在公式前面时,公式仍排版,金额仍是美元符', () => {
+    const md = '市值 $1.5B，折现率 $r$，总价 $200。\n\n| 金额 | 折现率 |\n| --- | --- |\n| $100 | $r$ |\n'
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    const visible = visibleText(container)
+    expect(container.querySelectorAll('.katex')).toHaveLength(2)
+    expect(visible).toContain('$1.5B')
+    expect(visible).toContain('$200')
+    expect(visible).toContain('$100')
+    expect(visible).not.toContain('\\')
+  })
+
+  it('无反斜杠的算式和下标也排成公式', () => {
+    const md = '分母 $r - g$ 与无风险利率 $r_f$。'
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    expect(container.querySelectorAll('.katex')).toHaveLength(2)
+    expect(visibleText(container)).not.toContain('$')
+  })
+
+  it('独立成行的 $$ 公式排成块级公式', () => {
+    const md = '$$\nr - g \\ge 5\\text{ pct}\n$$\n'
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    expect(container.querySelector('.katex-display')).not.toBeNull()
+    expect(visibleText(container)).not.toContain('$')
+    expect(visibleText(container)).toContain('≥')
+  })
+
+  it('段落里的 $$...$$ 仍按公式解析,不转义成美元符', () => {
+    const md = '同行 $$E=mc^2$$。\n'
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    expect(container.querySelector('.katex')).not.toBeNull()
+    expect(visibleText(container)).not.toContain('$')
+  })
+
+  it('原文里已经转义的 \\$ 不再多加一道反斜杠', () => {
+    const md = '成本为 \\$100。'
+    const { container } = render(<ReportMarkdown markdown={md} />)
+    const visible = visibleText(container)
+    expect(container.querySelector('.katex')).toBeNull()
+    expect(visible).toContain('$100')
+    expect(visible).not.toContain('\\')
+  })
 })
