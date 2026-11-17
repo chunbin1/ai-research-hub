@@ -4,7 +4,11 @@ import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkCjkFriendly from 'remark-cjk-friendly'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import rehypeSlug from 'rehype-slug'
+import 'katex/dist/katex.min.css'
+import { fenceTracker } from '../lib/codeFence'
 
 /**
  * 移动端表格改排卡片的列数门槛。2–3 列的表在 390px 宽的屏上还放得下,
@@ -122,13 +126,74 @@ const components: Components = { table: Table }
 /**
  * remark-cjk-friendly:CommonMark 的定界规则对中文不友好 ——「**智谱(Z.ai)**在」这种
  * 收尾 ** 前是全角标点、后面紧跟汉字的写法不算闭合,会原样露出星号。这个插件放宽了这条规则。
+ *
+ * 公式先于 slug:rehype-slug 读的是还没被 KaTeX 展开的源文本。展开之后 MathML 会把
+ * 同一个符号再写一遍,标题 id 就和目录对不上。
  */
-const remarkPlugins = [remarkGfm, remarkCjkFriendly]
+const remarkPlugins = [remarkGfm, remarkCjkFriendly, remarkMath]
+const rehypePlugins = [rehypeSlug, rehypeKatex]
+
+/**
+ * `$...$` 里才是公式。金额也用 `$`(「$1,508亿×10=$1.51万亿」),remark-math 会从第一个
+ * `$` 配到下一个,一段里出现第三个 `$` 时金额就被拆碎。这里只保留真正的公式,
+ * 其余 `$` 转义成普通文字。
+ * 公式:带 LaTeX 命令(`\ge`、`\%`、`\beta`),或单独一个变量名(`$r$`、`$ROIC$`)。
+ */
+const FORMULA_RE = /(?<!\$)\$(?!\$)((?:\\[\s\S]|[^$\n])+?)\$(?!\$)/g
+
+function isFormula(inner: string): boolean {
+  if (inner.includes('\\')) return true
+  return /^[A-Za-z][A-Za-z0-9]*$/.test(inner)
+}
+
+/** 跳过行内代码,只改代码外面的文字。没有闭合反引号时整段仍当正文。 */
+function replaceOutsideInlineCode(line: string, fn: (segment: string) => string): string {
+  let out = ''
+  let i = 0
+  while (i < line.length) {
+    if (line[i] !== '`') {
+      const next = line.indexOf('`', i)
+      const end = next === -1 ? line.length : next
+      out += fn(line.slice(i, end))
+      i = end
+      continue
+    }
+    let ticks = 0
+    while (line[i + ticks] === '`') ticks++
+    const marker = '`'.repeat(ticks)
+    const closer = line.indexOf(marker, i + ticks)
+    if (closer === -1) {
+      out += fn(line.slice(i))
+      break
+    }
+    out += line.slice(i, closer + ticks)
+    i = closer + ticks
+  }
+  return out
+}
+
+function protectMathDollars(segment: string): string {
+  const kept: string[] = []
+  const held = segment.replace(FORMULA_RE, (full, inner: string) => {
+    if (!isFormula(inner)) return full
+    kept.push(full)
+    return `\uE000${kept.length - 1}\uE001`
+  })
+  return held.replaceAll('$', '\\$').replace(/\uE000(\d+)\uE001/g, (_, id: string) => kept[Number(id)])
+}
+
+/** 围栏代码块里的 `$r$` 是代码,不是公式。规则与目录跳过代码块的方式一致。 */
+function protectMath(markdown: string): string {
+  const track = fenceTracker()
+  return markdown.split('\n').map(line => (
+    track(line).inCode ? line : replaceOutsideInlineCode(line, protectMathDollars)
+  )).join('\n')
+}
 
 export default function ReportMarkdown({ markdown }: { markdown: string }) {
   return (
-    <Markdown remarkPlugins={remarkPlugins} rehypePlugins={[rehypeSlug]} components={components}>
-      {markdown}
+    <Markdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
+      {protectMath(markdown)}
     </Markdown>
   )
 }
