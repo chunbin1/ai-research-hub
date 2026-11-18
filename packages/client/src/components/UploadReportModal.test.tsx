@@ -44,6 +44,7 @@ test('拖入 .md → 显示文件名 → 点「上传」调用 uploadDocument �
   fireEvent.drop(zone, dt([f]))
   expect(screen.getByText('已选择:新研报.md')).toBeTruthy()
   await waitFor(() => expect(ok.disabled).toBe(false))
+  expect(screen.getByText('新研报')).toBeTruthy()
   expect(mockCheckSimilar).toHaveBeenCalledWith(f)
 
   fireEvent.click(ok)
@@ -88,6 +89,8 @@ test('库里有疑似旧版本:列出来并给出依据,不选就不让传', asy
   fireEvent.drop(zone, dt([md('腾讯Q4.md')]))
 
   expect(await screen.findByText('库里可能已有这篇的旧版本')).toBeTruthy()
+  // 文件名是 slug、正文标题是「新研报」,界面用查重返回的标题(和入库同一条)
+  expect(screen.getByText('腾讯(Q4 更新)')).toBeTruthy()
   expect(screen.getByText('作为「腾讯生态产业链投资研究报告」的新版本 v3')).toBeTruthy()
   expect(screen.getByText('标题相近 · 正文重合 41% · 目前 v2,2026/9/25 更新')).toBeTruthy()
   expect(ok.disabled).toBe(true)
@@ -150,6 +153,7 @@ test('查重失败:提示一句,仍能新建上传', async () => {
   fireEvent.drop(zone, dt([md()]))
 
   expect(await screen.findByText('没能查重,上传会新建一篇。')).toBeTruthy()
+  expect(await screen.findByText('新研报')).toBeTruthy()
   expect(ok.disabled).toBe(false)
   fireEvent.click(ok)
   await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
@@ -253,6 +257,23 @@ test('选「作为新版本」:类型继承原文档,选择器收起', async () 
   await kindRadio('行业研报')
   fireEvent.click(await screen.findByRole('radio', { name: /作为「腾讯生态产业链投资研究报告」的新版本/ }))
   expect(screen.queryByRole('radio', { name: '公司研报' })).toBeNull()
+})
+
+test('没有一级标题:显示出去掉扩展名的文件名', async () => {
+  mockCheckSimilar.mockRejectedValue(new Error('查重失败'))
+  const { zone } = renderModal()
+  const f = new File(['正文里没有标题。\n'], 'Nautilus-research-20261102.md', { type: 'text/markdown' })
+  fireEvent.drop(zone, dt([f]))
+  expect(await screen.findByText('Nautilus-research-20261102')).toBeTruthy()
+})
+
+test('查重成功且没有一级标题:显示服务端返回的标题', async () => {
+  mockCheckSimilar.mockResolvedValue({ title: 'Nautilus-research-20261102', suggestedKind: 'company', candidates: [] })
+  const { zone } = renderModal()
+  const f = new File(['正文里没有标题。\n'], 'Nautilus-research-20261102.md', { type: 'text/markdown' })
+  fireEvent.drop(zone, dt([f]))
+  expect(await screen.findByText('Nautilus-research-20261102')).toBeTruthy()
+  await waitFor(() => expect(mockCheckSimilar).toHaveBeenCalledWith(f))
 })
 
 test('查重失败:类型选择器照样给,默认行业研报', async () => {

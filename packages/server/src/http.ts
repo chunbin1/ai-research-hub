@@ -12,6 +12,7 @@ import { siteSettingsRoutes } from './routes/siteSettings.js'
 import { signalRoutes } from './routes/signals.js'
 import { etfMonitorRoutes } from './routes/etfMonitor.js'
 import { holdingsRoutes } from './routes/holdings.js'
+import { whaleRoutes } from './routes/whales.js'
 import { mcpRoutes } from './routes/mcp.js'
 import { seoRoutes } from './routes/seo.js'
 
@@ -28,6 +29,7 @@ export async function registerHttpRoutes(app: FastifyInstance): Promise<void> {
   await app.register(signalRoutes, { prefix: '/api' })
   await app.register(etfMonitorRoutes, { prefix: '/api' })
   await app.register(holdingsRoutes, { prefix: '/api' })
+  await app.register(whaleRoutes, { prefix: '/api' })
   await app.register(mcpRoutes, { prefix: '/api' })
   await app.register(seoRoutes, { prefix: '/api' })
 

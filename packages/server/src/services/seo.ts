@@ -18,6 +18,7 @@ const DESCRIPTION_MAX = 150
 export type PageMeta =
   | { kind: 'home' }
   | { kind: 'signals' }
+  | { kind: 'whales'; slug: string | null }
   | { kind: 'report'; id: string }
   | { kind: 'noindex' }
 
@@ -30,6 +31,12 @@ export function classifyPath(path: string): PageMeta {
   const p = path.replace(/^\/+/, '').replace(/[?#].*$/, '').replace(/\/+$/, '')
   if (p === '') return { kind: 'home' }
   if (p === 'signals') return { kind: 'signals' }
+  if (p === 'whales') return { kind: 'whales', slug: null }
+  const whale = /^whales\/([^/]+)$/.exec(p)
+  const whaleSlug = whale && safeDecode(whale[1])
+  if (whaleSlug && !/[/\\]/.test(whaleSlug) && whaleSlug !== '.' && whaleSlug !== '..') {
+    return { kind: 'whales', slug: whaleSlug }
+  }
   const m = /^reports\/([^/]+)$/.exec(p)
   // 解码后再校验一遍:%2F..%2F 这种解出来带路径分隔符的不是研报 id。
   // 别收窄成 ASCII —— import:raw 的 id 取自文件名,可能带中文或 .,
@@ -254,13 +261,18 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-export function sitemapXml(siteUrl: string, docs: Pick<Document, 'id' | 'updated_at'>[]): string {
+export function sitemapXml(
+  siteUrl: string,
+  docs: Pick<Document, 'id' | 'updated_at'>[],
+  extraPaths: string[] = [],
+): string {
   const url = (loc: string, lastmod?: string) =>
     `  <url><loc>${escapeXml(loc)}</loc>${lastmod ? `<lastmod>${escapeXml(lastmod)}</lastmod>` : ''}</url>`
   // docs 已按更新时间倒序,第一篇就是全站最近一次更新
   const entries = [
     url(`${siteUrl}/`, docs[0]?.updated_at),
     url(`${siteUrl}/signals`),
+    ...extraPaths.map(path => url(`${siteUrl}${path}`)),
     ...docs.map(d => url(`${siteUrl}/reports/${encodeURIComponent(d.id)}`, d.updated_at)),
   ]
   return [

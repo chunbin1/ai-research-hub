@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Input, Alert } from 'antd'
+import { AntdProvider } from '../antd/AntdProvider'
 import { ReportDropZone } from './ReportDropZone'
 import { UploadDialog } from './UploadDialog'
 import { api } from '../api'
@@ -46,6 +47,7 @@ export function UploadVersionModal({ doc, onClose, onUploaded }: {
   const next = (doc?.latest_version ?? 1) + 1
 
   return (
+    <AntdProvider>
     <UploadDialog
       open={doc !== null}
       title={`上传新版本 v${next}`}
@@ -84,5 +86,6 @@ export function UploadVersionModal({ doc, onClose, onUploaded }: {
 
       {error && <Alert type="error" showIcon className="mt-4" title={error} />}
     </UploadDialog>
+    </AntdProvider>
   )
 }

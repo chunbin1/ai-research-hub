@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Drawer, Modal } from 'antd'
 import { DeleteOutlined, EllipsisOutlined, RightOutlined, SwapOutlined, UploadOutlined } from '@ant-design/icons'
 import { api } from '../api'
 import { useAuth } from '../hooks/useAuth'
 import { REPORT_UPLOADED_EVENT } from '../components/SiteHeader'
-import { UploadVersionModal } from '../components/UploadVersionModal'
 import { readCache, writeCache } from '../lib/storage'
 import { docKind, type Document, type ReportKind } from '../types'
+
+const UploadVersionModal = lazy(() => import('../components/UploadVersionModal').then(m => ({ default: m.UploadVersionModal })))
+const HomeRowMenu = lazy(() => import('../components/HomeRowMenu').then(m => ({ default: m.HomeRowMenu })))
+const ConfirmDelete = lazy(() => import('../components/ConfirmDelete').then(m => ({ default: m.ConfirmDelete })))
 
 /**
  * 首页 —— 按「研报站首页 v2」「研报站首页 移动端 v2」两份设计稿:
@@ -130,6 +132,8 @@ export default function HomePage() {
   const [versionTarget, setVersionTarget] = useState<Document | null>(null)
   /** 移动端「⋯」菜单打开在哪篇上;null = 关着 */
   const [menuTarget, setMenuTarget] = useState<Document | null>(null)
+  /** 删除确认打开在哪篇上;null = 关着。确认框按需加载,不进首屏包 */
+  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null)
   const { user } = useAuth()
   const isAdmin = user?.isAdmin === true
 
@@ -164,16 +168,7 @@ export default function HomePage() {
   }, [])
 
   function onDelete(doc: Document) {
-    Modal.confirm({
-      title: '删除这篇报告?',
-      content: doc.filename,
-      okText: '删除',
-      // 两个汉字的按钮 antd 默认会插空格(「删 除」),和站内其他按钮不一致
-      okButtonProps: { danger: true, autoInsertSpace: false },
-      cancelButtonProps: { autoInsertSpace: false },
-      cancelText: '取消',
-      onOk: async () => { await api.deleteDocument(doc.id); await refresh() },
-    })
+    setDeleteTarget(doc)
   }
 
   /** 改成另一类。可逆,不用确认 */
@@ -196,6 +191,19 @@ export default function HomePage() {
             共 {showSkeleton ? '—' : rows.length} 篇
           </span>
         </div>
+
+        {/* 加载中先占住筛选条的高度。公司研报是后到的,筛选条若等数据才插入,
+            下面整张表会下移一截(桌面 CLS 大约 0.07)。没有公司研报时这条在数据到达后收起。 */}
+        {showSkeleton && (
+          <div className="flex gap-5 border-b border-rule text-[14px] md:gap-6" aria-hidden>
+            {KIND_TABS.map(tab => (
+              <span key={tab.label} className="-mb-px border-b-2 border-transparent px-0.5 py-2.5 text-ink-mute">
+                {tab.label}
+                <span className="ml-1 font-numeral text-[12px] text-ink-faint">—</span>
+              </span>
+            ))}
+          </div>
+        )}
 
         {showTabs && (
           <nav aria-label="研报类型" className="flex gap-5 border-b border-rule text-[14px] md:gap-6">
@@ -327,62 +335,47 @@ export default function HomePage() {
         </div>
       </main>
 
-      {/* 移动端行操作菜单 */}
-      <Drawer
-        placement="bottom"
-        open={menuTarget !== null}
-        onClose={() => setMenuTarget(null)}
-        size="auto"
-        closable={false}
-        rootClassName="home-row-menu"
-        styles={{ body: { padding: 0 }, section: { borderRadius: '14px 14px 0 0' } }}
-      >
-        <div className="flex flex-col pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2 font-sans-sc">
-          <div className="flex justify-center pb-2" aria-hidden>
-            <div className="h-1 w-9 rounded-full bg-edge" />
-          </div>
-          <span className="border-b border-row-rule px-5 pb-3.5 pt-1.5 font-serif-sc text-[15px] font-semibold leading-[1.5] text-ink">
-            {menuTarget?.filename}
-          </span>
-          <button
-            type="button"
-            onClick={() => { setVersionTarget(menuTarget); setMenuTarget(null) }}
-            className="flex h-[52px] items-center gap-3 border-b border-row-rule px-5 text-left text-[15px] text-navy"
-          >
-            <UploadOutlined aria-hidden className="text-[18px]" />
-            上传新版本
-          </button>
-          <button
-            type="button"
-            onClick={() => { const d = menuTarget; setMenuTarget(null); if (d) void onToggleKind(d) }}
-            className="flex h-[52px] items-center gap-3 border-b border-row-rule px-5 text-left text-[15px] text-navy"
-          >
-            <SwapOutlined aria-hidden className="text-[18px]" />
-            {menuTarget && docKind(menuTarget) === 'company' ? '改为行业研报' : '改为公司研报'}
-          </button>
-          <button
-            type="button"
-            onClick={() => { const d = menuTarget; setMenuTarget(null); if (d) onDelete(d) }}
-            className="flex h-[52px] items-center gap-3 px-5 text-left text-[15px] text-brick"
-          >
-            <DeleteOutlined aria-hidden className="text-[18px]" />
-            删除
-          </button>
-          <button
-            type="button"
-            onClick={() => setMenuTarget(null)}
-            className="mx-3.5 mt-2 flex h-[46px] items-center justify-center rounded-full bg-aside text-[15px] text-ink-soft"
-          >
-            取消
-          </button>
-        </div>
-      </Drawer>
+      {menuTarget && (
+        <Suspense fallback={null}>
+          <HomeRowMenu
+            doc={menuTarget}
+            onClose={() => setMenuTarget(null)}
+            onUpload={() => { setVersionTarget(menuTarget); setMenuTarget(null) }}
+            onToggleKind={() => { const d = menuTarget; setMenuTarget(null); void onToggleKind(d) }}
+            onDelete={() => { const d = menuTarget; setMenuTarget(null); onDelete(d) }}
+          />
+        </Suspense>
+      )}
 
-      <UploadVersionModal
-        doc={versionTarget}
-        onClose={() => setVersionTarget(null)}
-        onUploaded={() => { setVersionTarget(null); setError(''); void refresh() }}
-      />
+      {versionTarget && (
+        <Suspense fallback={null}>
+          <UploadVersionModal
+            doc={versionTarget}
+            onClose={() => setVersionTarget(null)}
+            onUploaded={() => { setVersionTarget(null); setError(''); void refresh() }}
+          />
+        </Suspense>
+      )}
+
+      {deleteTarget && (
+        <Suspense fallback={null}>
+          <ConfirmDelete
+            doc={deleteTarget}
+            onCancel={() => setDeleteTarget(null)}
+            onOk={async () => {
+              try {
+                await api.deleteDocument(deleteTarget.id)
+              } catch (e) {
+                setError(e instanceof Error ? e.message : '删除失败')
+                throw e
+              }
+              setError('')
+              setDeleteTarget(null)
+              await refresh()
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

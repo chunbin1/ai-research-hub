@@ -10,7 +10,7 @@ import { hybridRetrieve } from '../services/retrieval.js'
 import { getIndexState, planRetrieval } from '../services/indexState.js'
 import { RAG } from '../services/ragConfig.js'
 import { getDb } from '../services/db.js'
-import { getDocument } from '../services/documentStore.js'
+import { getDocument, readVersionMarkdown } from '../services/documentStore.js'
 import { getVersion, latestVersion } from '../services/versionStore.js'
 import { runInTrace, withSpan, spanInput, spanOutput, spanMeta, markDegraded } from '../services/tracing.js'
 import { requireUser } from './auth.js'
@@ -18,6 +18,7 @@ import { tryReserveMessage, refundMessage, MESSAGE_LIMIT } from '../services/use
 import { tryReserveGlobal, refundGlobal, GLOBAL_LIMIT } from '../services/usageStore.js'
 import { appendMessage, getMessages } from '../services/chatStore.js'
 import { buildSystemPrompt } from '../services/ragPrompt.js'
+import { marketAppendixForMarkdown } from '../services/marketContext.js'
 import { analyzeCitations } from '../services/citationMetrics.js'
 import type { LLMMessage, DocumentChunk } from '../types.js'
 
@@ -162,8 +163,10 @@ export const chatRoutes: FastifyPluginAsync = async (app) => {
 
       // 2) 组装 prompt
       const system = await withSpan('prompt_assembly', async () => {
-        const finalSystem = buildSystemPrompt(chunks)
+        const market = marketAppendixForMarkdown(readVersionMarkdown(docId, version) ?? '')
+        const finalSystem = buildSystemPrompt(chunks, market)
         spanMeta('chunkCount', chunks.length)
+        spanMeta('marketChars', market.length)
         spanMeta('finalTokens', estimateTokens(finalSystem))
         return finalSystem
       })

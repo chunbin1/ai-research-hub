@@ -74,7 +74,8 @@ test('管理员:移动端「⋯」打开行操作菜单', async () => {
   renderHome()
   const more = await screen.findByRole('button', { name: '「腾讯生态产业链投资研究报告」的更多操作' })
   more.click()
-  await waitFor(() => expect(document.querySelector('.home-row-menu.ant-drawer-open')).toBeTruthy())
+  // 菜单是按需加载的 antd Drawer,第一次 import 要过 vitest 的转换
+  await waitFor(() => expect(document.querySelector('.home-row-menu.ant-drawer-open')).toBeTruthy(), { timeout: 15000 })
   expect(screen.getByRole('button', { name: '上传新版本' })).toBeTruthy()
 })
 
@@ -188,7 +189,7 @@ test('管理员:点「上传研报」打开弹窗,拖入 .md 点「上传」→ 
   renderHome()
 
   fireEvent.click(await screen.findByRole('button', { name: '上传研报' }))
-  const dialog = await screen.findByRole('dialog')
+  const dialog = await screen.findByRole('dialog', {}, { timeout: 15000 })
   const zone = within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ })
   const f = new File(['# 新研报\n'], '新研报.md', { type: 'text/markdown' })
   fireEvent.drop(zone, { dataTransfer: { files: [f], types: ['Files'] } })
@@ -206,11 +207,57 @@ test('管理员:点「上传研报」打开弹窗,拖入 .md 点「上传」→ 
   await waitFor(() => expect(document.querySelector('.ant-modal')?.className).toContain('ant-zoom-leave'))
 })
 
+test('管理员:删除失败时弹窗留着并提示,连点只请求一次', async () => {
+  let deletes = 0
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (url.startsWith('/api/documents/') && init?.method === 'DELETE') {
+      deletes += 1
+      return { ok: false, json: async () => ({}) } as Response
+    }
+    if (url.startsWith('/api/documents')) return { ok: true, json: async () => ({ documents: DOCS }) } as Response
+    throw new Error(`未桩的请求: ${url}`)
+  }))
+  renderHome()
+  fireEvent.click(await screen.findByRole('button', { name: '删除「腾讯生态产业链投资研究报告」' }))
+  const dialog = await screen.findByRole('dialog', { name: '删除这篇报告?' }, { timeout: 15000 })
+  const ok = within(dialog).getByRole('button', { name: '删除' })
+  fireEvent.click(ok)
+  fireEvent.click(ok)
+  expect((await within(dialog).findByRole('alert')).textContent).toContain('删除失败')
+  expect(deletes).toBe(1)
+  expect(screen.getByRole('dialog', { name: '删除这篇报告?' })).toBeTruthy()
+  // 页面横幅在遮罩后面,但失败也要写上,关掉弹窗后还看得见
+  expect(screen.getByText('删除失败', { selector: 'p' })).toBeTruthy()
+})
+
+test('管理员:确认删除后关掉弹窗,列表不再有这篇', async () => {
+  let deleted = false
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.startsWith('/api/auth/me')) return { ok: true, json: async () => ADMIN } as Response
+    if (url.startsWith('/api/documents/') && init?.method === 'DELETE') {
+      deleted = true
+      return { ok: true, json: async () => ({}) } as Response
+    }
+    if (url.startsWith('/api/documents')) {
+      return { ok: true, json: async () => ({ documents: deleted ? DOCS.slice(1) : DOCS }) } as Response
+    }
+    throw new Error(`未桩的请求: ${url}`)
+  }))
+  renderHome()
+  fireEvent.click(await screen.findByRole('button', { name: '删除「腾讯生态产业链投资研究报告」' }))
+  const dialog = await screen.findByRole('dialog', { name: '删除这篇报告?' }, { timeout: 15000 })
+  fireEvent.click(within(dialog).getByRole('button', { name: '删除' }))
+  await waitFor(() => expect(screen.queryByText('腾讯生态产业链投资研究报告')).toBeNull())
+  expect(screen.queryByRole('dialog', { name: '删除这篇报告?' })).toBeNull()
+  expect(screen.getByText('港股互联网:估值重估走到哪一步了')).toBeTruthy()
+})
+
 test('管理员:研报行上的「上传新版本」打开带大拖拽区的弹窗', async () => {
   stubFetch({ user: ADMIN })
   renderHome()
   fireEvent.click(await screen.findByRole('button', { name: '给「腾讯生态产业链投资研究报告」上传新版本' }))
-  const dialog = await screen.findByRole('dialog')
+  const dialog = await screen.findByRole('dialog', {}, { timeout: 15000 })
   expect(within(dialog).getByText('上传新版本 v2')).toBeTruthy()
   expect(within(dialog).getByRole('button', { name: /拖拽文件到此处，或点击选择文件/ })).toBeTruthy()
 })

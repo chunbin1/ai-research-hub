@@ -4,7 +4,11 @@ import Markdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkCjkFriendly from 'remark-cjk-friendly'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import rehypeSlug from 'rehype-slug'
+import 'katex/dist/katex.min.css'
+import { fenceTracker } from '../lib/codeFence'
 
 /**
  * 移动端表格改排卡片的列数门槛。2–3 列的表在 390px 宽的屏上还放得下,
@@ -122,13 +126,112 @@ const components: Components = { table: Table }
 /**
  * remark-cjk-friendly:CommonMark 的定界规则对中文不友好 ——「**智谱(Z.ai)**在」这种
  * 收尾 ** 前是全角标点、后面紧跟汉字的写法不算闭合,会原样露出星号。这个插件放宽了这条规则。
+ *
+ * 公式先于 slug:rehype-slug 读的是还没被 KaTeX 展开的源文本。展开之后 MathML 会把
+ * 同一个符号再写一遍,标题 id 就和目录对不上。
  */
-const remarkPlugins = [remarkGfm, remarkCjkFriendly]
+const remarkPlugins = [remarkGfm, remarkCjkFriendly, remarkMath]
+const rehypePlugins = [rehypeSlug, rehypeKatex]
+
+/**
+ * `$...$` 是行内公式,`$$...$$` 是块级公式。金额也用 `$`
+ * (`$114.53`、`$1,508亿×10=$1.51万亿`)。remark-math 从左往右配 `$`,
+ * 金额的 `$` 若先被收成一对,后面的公式就只剩一个 `$`,整行都会被转义。
+ * 配不成公式的 `$` 才转义;已经写成 `\$` 的不再加反斜杠,`$$` 整段保留。
+ * 公式:带 LaTeX 命令(`\ge`、`\%`),变量名(`$r$`、`$r_f$`、`$ROIC$`),
+ * 或带运算符的短算式(`$r - g$`、`$P / E$`)。
+ */
+function isFormula(inner: string): boolean {
+  if (inner.includes('\\')) return true
+  if (/^[A-Za-z][A-Za-z0-9_]*$/.test(inner)) return true
+  if (inner.length > 40 || !/[A-Za-z]/.test(inner)) return false
+  if (!/[+\-−±*/=<>^]/.test(inner)) return false
+  return /^[A-Za-z0-9_+\-−±*/=<>^.,()[\]{}|%\s]+$/.test(inner)
+}
+
+/** 跳过行内代码,只改代码外面的文字。没有闭合反引号时整段仍当正文。 */
+function replaceOutsideInlineCode(line: string, fn: (segment: string) => string): string {
+  let out = ''
+  let i = 0
+  while (i < line.length) {
+    if (line[i] !== '`') {
+      const next = line.indexOf('`', i)
+      const end = next === -1 ? line.length : next
+      out += fn(line.slice(i, end))
+      i = end
+      continue
+    }
+    let ticks = 0
+    while (line[i + ticks] === '`') ticks++
+    const marker = '`'.repeat(ticks)
+    const closer = line.indexOf(marker, i + ticks)
+    if (closer === -1) {
+      out += fn(line.slice(i))
+      break
+    }
+    out += line.slice(i, closer + ticks)
+    i = closer + ticks
+  }
+  return out
+}
+
+/** 下一个不成对的 `$`。碰到 `$$` 说明这一对跨进了块级公式,不配。 */
+function findClosingDollar(segment: string, from: number): number {
+  for (let i = from; i < segment.length; i++) {
+    if (segment[i] === '\\') { i++; continue }
+    if (segment[i] !== '$') continue
+    if (segment.startsWith('$$', i)) return -1
+    return i
+  }
+  return -1
+}
+
+function protectMathDollars(segment: string): string {
+  let out = ''
+  for (let i = 0; i < segment.length; i++) {
+    if (segment[i] === '\\' && segment[i + 1] === '$') {
+      out += '\\$'
+      i++
+      continue
+    }
+    if (segment.startsWith('$$', i)) {
+      const close = segment.indexOf('$$', i + 2)
+      if (close === -1) {
+        out += '$$'
+        i++
+        continue
+      }
+      out += segment.slice(i, close + 2)
+      i = close + 1
+      continue
+    }
+    if (segment[i] !== '$') {
+      out += segment[i]
+      continue
+    }
+    const close = findClosingDollar(segment, i + 1)
+    if (close !== -1 && isFormula(segment.slice(i + 1, close))) {
+      out += segment.slice(i, close + 1)
+      i = close
+      continue
+    }
+    out += '\\$'
+  }
+  return out
+}
+
+/** 围栏代码块里的 `$r$` 是代码,不是公式。规则与目录跳过代码块的方式一致。 */
+function protectMath(markdown: string): string {
+  const track = fenceTracker()
+  return markdown.split('\n').map(line => (
+    track(line).inCode ? line : replaceOutsideInlineCode(line, protectMathDollars)
+  )).join('\n')
+}
 
 export default function ReportMarkdown({ markdown }: { markdown: string }) {
   return (
-    <Markdown remarkPlugins={remarkPlugins} rehypePlugins={[rehypeSlug]} components={components}>
-      {markdown}
+    <Markdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
+      {protectMath(markdown)}
     </Markdown>
   )
 }

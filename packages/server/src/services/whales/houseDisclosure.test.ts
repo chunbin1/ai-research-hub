@@ -1,0 +1,153 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import Database from 'better-sqlite3'
+import { parseHouseAnnualIndex, parseHouseHoldings } from './houseDisclosure.ts'
+import { initWhaleTables, replaceFiling } from './store.ts'
+import { getWhaleDetail } from './view.ts'
+import { syncWhales } from './sync.ts'
+
+const FIXTURE = readFileSync(new URL('./fixtures/pelosi-2025.txt', import.meta.url), 'utf8')
+
+const INDEX = [
+  'Prefix\tLast\tFirst\tSuffix\tFilingType\tStateDst\tYear\tFilingDate\tDocID',
+  'Hon.\tPelosi\tNancy\t\tP\tCA11\t2025\t1/17/2025\t20026590',
+  'Hon.\tPelosi\tNancy\t\tO\tCA11\t2025\t5/15/2026\t10075701',
+].join('\n')
+
+test('年度披露只留下有市值的上市证券，期权单独成行', () => {
+  const rows = parseHouseHoldings(FIXTURE)
+  const apple = rows.find(row => row.cusip === 'AAPL' && row.putCall === '')
+  const calls = rows.find(row => row.cusip === 'GOOGL' && row.putCall === 'Call')
+  assert.equal(apple?.issuerName, 'Apple Inc. (AAPL)')
+  assert.equal(rows.find(row => row.cusip === 'NVDA' && row.putCall === '')?.issuerName, 'NVIDIA Corporation - Common Stock (NVDA)')
+  assert.equal(apple?.valueLabel, '5,000,001–25,000,000')
+  assert.equal(apple?.shares, 0)
+  assert.equal(calls?.valueLabel, '1,000,001–5,000,000')
+  assert.equal(calls?.shares, 70)
+  const amznCalls = rows.find(row => row.cusip === 'AMZN' && row.putCall === 'Call')
+  assert.equal(amznCalls?.shares, 70)
+  assert.equal(rows.some(row => row.cusip === 'PYPL'), false)
+  assert.equal(rows.some(row => row.cusip === 'DIS'), false)
+  assert.equal(rows.some(row => row.issuerName.includes('Zinfandel')), false)
+  assert.ok(rows.length >= 20)
+})
+
+test('同一段说明里的多笔 call 与 put 合约数分别加总', () => {
+  const calls = parseHouseHoldings(
+    'Alphabet Inc. (GOOGL) [OP] SP $1,000,001 - $5,000,000 None D: 50 call options and 20 call options.',
+  )
+  assert.equal(calls[0]?.putCall, 'Call')
+  assert.equal(calls[0]?.shares, 70)
+
+  const puts = parseHouseHoldings(
+    'Widget Inc. (WDGT) [OP] SP $100,001 - $250,000 None D: 1,000 put options and 5 put options.',
+  )
+  assert.equal(puts[0]?.putCall, 'Put')
+  assert.equal(puts[0]?.shares, 1005)
+
+  const both = parseHouseHoldings(
+    'Mixed Inc. (MIXD) [OP] SP $15,001 - $50,000 None D: 3 call options and 4 put options.',
+  )
+  assert.equal(both[0]?.shares, 7)
+})
+
+test('索引只认年度报告，定期交易报告不算持仓快照', () => {
+  const rows = parseHouseAnnualIndex(INDEX, { last: 'Pelosi', first: 'Nancy' })
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0]?.docId, '10075701')
+  assert.equal(rows[0]?.filedAt, '2026-05-15')
+  assert.equal(rows[0]?.reportPeriod, '2025-12-31')
+  assert.equal(rows[0]?.pdfUrl, 'https://disclosures-clerk.house.gov/public_disc/financial-pdfs/2025/10075701.pdf')
+})
+
+test('同步把佩洛西写成区间持仓，相同文档不重复下载', async () => {
+  initWhaleTables(new Database(':memory:'))
+  const downloads: string[] = []
+  const transport = {
+    async getText(url: string) {
+      if (url.endsWith('2025FD.txt')) return INDEX
+      if (url.endsWith('FD.txt')) throw new Error('下载失败 404 ' + url)
+      if (url.includes('company_tickers.json')) return '{}'
+      if (url.includes('/submissions/')) return JSON.stringify({ filings: { recent: {} } })
+      throw new Error(`意外的 URL ${url}`)
+    },
+    async getBytes(url: string) {
+      downloads.push(url)
+      return new Uint8Array([1])
+    },
+  }
+  const now = () => new Date('2026-10-27T00:00:00.000Z')
+  const first = await syncWhales({
+    transport,
+    userAgent: 'test-agent',
+    now,
+    extractPdfText: async () => FIXTURE,
+  })
+  assert.equal(first.failed, 0)
+  assert.deepEqual(downloads, [
+    'https://disclosures-clerk.house.gov/public_disc/financial-pdfs/2025/10075701.pdf',
+  ])
+  const detail = getWhaleDetail('pelosi')
+  assert.equal(detail?.institution.source, 'house-fd')
+  assert.equal(detail?.period?.form, '年度披露')
+  assert.equal(detail?.period?.reportPeriod, '2025-12-31')
+  assert.ok(detail?.valueNote.includes('申报区间'))
+  assert.ok(detail?.valueNote.includes('区间中点'))
+  assert.equal(detail?.positions.find(row => row.cusip === 'AAPL' && row.putCall === '')?.valueLabel, '5,000,001–25,000,000')
+  assert.equal(detail?.previousPeriod, null)
+  const currentApple = detail?.positions.find(row => row.cusip === 'AAPL' && row.putCall === '')
+  const currentGoogl = detail?.positions.find(row => row.cusip === 'GOOGL' && row.putCall === '')
+  assert.ok(currentApple && currentGoogl)
+  replaceFiling({
+    slug: 'pelosi',
+    accession: '10000000',
+    form: '年度披露',
+    reportPeriod: '2024-12-31',
+    filedAt: '2025-05-15',
+    sourceUrl: 'https://disclosures-clerk.house.gov/public_disc/financial-pdfs/2024/10000000.pdf',
+    valueUnit: 'dollars',
+    fetchedAt: '2026-10-27T00:00:00.000Z',
+    positions: [
+      {
+        cusip: 'AAPL', putCall: '', shareType: '', issuerName: 'Apple Inc. (AAPL)', titleOfClass: 'COM',
+        shares: 0, valueReported: currentApple.valueUsd - 1_000_000, valueUsd: currentApple.valueUsd - 1_000_000,
+        valueLabel: '1,000,001–5,000,000',
+      },
+      {
+        cusip: 'GOOGL', putCall: '', shareType: '', issuerName: currentGoogl.issuerName, titleOfClass: 'COM',
+        shares: 0, valueReported: currentGoogl.valueUsd, valueUsd: currentGoogl.valueUsd,
+        valueLabel: currentGoogl.valueLabel,
+      },
+      {
+        cusip: 'DIS', putCall: '', shareType: '', issuerName: 'Walt Disney Company (DIS)', titleOfClass: 'COM',
+        shares: 0, valueReported: 750_000, valueUsd: 750_000,
+        valueLabel: '500,001–1,000,000',
+      },
+    ],
+  })
+  const compared = getWhaleDetail('pelosi')
+  assert.equal(compared?.previousPeriod?.reportPeriod, '2024-12-31')
+  const apple = compared?.positions.find(row => row.cusip === 'AAPL' && row.putCall === '')
+  const googl = compared?.positions.find(row => row.cusip === 'GOOGL' && row.putCall === '')
+  assert.equal(apple?.change, 'increased')
+  assert.equal(apple?.shares, 0)
+  assert.equal(apple?.shareDelta, 0)
+  assert.ok((apple?.valueDeltaUsd ?? 0) > 0)
+  assert.equal(googl?.change, 'unchanged')
+  const disney = compared?.closed.find(row => row.cusip === 'DIS')
+  assert.equal(disney?.change, 'closed')
+  assert.equal(disney?.shares, 0)
+  assert.equal(disney?.valueUsd, 0)
+  assert.equal(disney?.valueLabel, '500,001–1,000,000')
+
+  downloads.length = 0
+  const second = await syncWhales({
+    transport,
+    userAgent: 'test-agent',
+    now: () => new Date('2026-10-27T02:00:00.000Z'),
+    extractPdfText: async () => FIXTURE,
+  })
+  assert.equal(second.failed, 0)
+  assert.deepEqual(downloads, [])
+})

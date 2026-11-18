@@ -10,6 +10,8 @@ describe('askElsewhere', () => {
     const p = askPrompt({ docId: 'doc_1', title: '锂电产业链', version: 2, isLatest: true })
     expect(p).toContain('《锂电产业链》(id: doc_1)')
     expect(p).toContain('get_report_outline')
+    expect(p).toContain('get_signals')
+    expect(p).toContain('get_whale_holdings')
     expect(p).not.toContain('v2')
     expect(p.endsWith('我的问题:')).toBe(true)
   })

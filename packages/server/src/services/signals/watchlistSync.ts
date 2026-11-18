@@ -12,7 +12,7 @@ const HEADING_RE = /^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/gm
 const FENCE_RE = /^(```|~~~).*$[\s\S]*?^\1.*$/gm
 
 /**
- * 抽出全部标题(含文档标题),按出现顺序去重。
+ * 抽出全部标题(含文档标题),按出现顺序去重。围栏代码块里的 `#` 不当标题。
  *
  * **直接扫原文,不走 parseMarkdown 的 chunks。** 曾经走过,是个真 bug:
  * chunks 只为**有正文内容**的小节产出,而研报里主标的所在的那个标题
@@ -21,7 +21,7 @@ const FENCE_RE = /^(```|~~~).*$[\s\S]*?^\1.*$/gm
  * 走 chunks 抽到 8 只,直接扫标题抽到 13 只,漏掉的全是各篇的主标的
  * (0700.HK 腾讯、0883.HK 中海油、1088.HK 中国神华)。
  */
-function titlesOf(markdown: string): string[] {
+export function titlesInMarkdown(markdown: string): string[] {
   // 先把围栏代码块整段挖掉。研报里普遍有围栏(七篇线上研报全都有),
   // 里面一旦出现 `# NYSE: FOO` 这样的注释行就会被误当成标题。
   const stripped = markdown.replace(FENCE_RE, '')
@@ -39,7 +39,7 @@ function titlesOf(markdown: string): string[] {
 
 /** 返回该文档标题里识别出的全部 symbol(含此前已存在的) */
 export function syncWatchlistFromMarkdown(docId: string, markdown: string): string[] {
-  const tickers = extractTickersFromTitles(titlesOf(markdown))
+  const tickers = extractTickersFromTitles(titlesInMarkdown(markdown))
   for (const t of tickers) {
     addWatchlistEntry({
       symbol: t.symbol, market: t.market, sourceDoc: docId, sourceText: t.sourceText,
