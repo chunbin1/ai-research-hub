@@ -1,4 +1,115 @@
-import type { Document, DocumentVersion, ReportKind, SimilarReport } from './types'
+import type {
+  Document,
+  DocumentVersion,
+  EtfBoardResponse,
+  EtfDailyMetric,
+  EtfDailySummary,
+  EtfMonitorParams,
+  EtfTier,
+  EtfUniverseEntry,
+  ReportKind,
+  SimilarReport,
+} from './types'
+
+export class EtfMonitorDisabledError extends Error {
+  readonly disabled = true as const
+
+  constructor(message = 'ETF 托底监控未启用') {
+    super(message)
+    this.name = 'EtfMonitorDisabledError'
+  }
+}
+
+export function isEtfDisabledError(err: unknown): err is EtfMonitorDisabledError {
+  return err instanceof Error && (err as { disabled?: unknown }).disabled === true
+}
+
+async function parseEtfResponse<T>(r: Response, fallbackMsg: string): Promise<T> {
+  const body = await r.json().catch(() => ({})) as { error?: string; message?: string }
+  if (r.status === 404 && body.error === 'etf_monitor_disabled') {
+    throw new EtfMonitorDisabledError()
+  }
+  if (!r.ok) {
+    throw new Error(body.message ?? body.error ?? fallbackMsg)
+  }
+  return body as T
+}
+
+export async function fetchEtfBoard(date?: string): Promise<EtfBoardResponse> {
+  const q = date ? `?date=${encodeURIComponent(date)}` : ''
+  const r = await fetch(`/api/etf/board${q}`)
+  return parseEtfResponse<EtfBoardResponse>(r, 'ETF 托底看板加载失败')
+}
+
+export async function fetchEtfTimeline(days = 90): Promise<EtfDailySummary[]> {
+  const r = await fetch(`/api/etf/timeline?days=${days}`)
+  const body = await parseEtfResponse<{ days: EtfDailySummary[] }>(r, '时间轴加载失败')
+  return body.days
+}
+
+export async function fetchEtfCodeHistory(
+  code: string,
+  days = 60,
+): Promise<{ code: string; entry: EtfUniverseEntry; history: EtfDailyMetric[] }> {
+  const r = await fetch(`/api/etf/${encodeURIComponent(code)}/history?days=${days}`)
+  return parseEtfResponse<{ code: string; entry: EtfUniverseEntry; history: EtfDailyMetric[] }>(
+    r,
+    '单只 ETF 历史加载失败',
+  )
+}
+
+export async function triggerEtfScan(
+  backfillDays?: number,
+): Promise<{ total: number; ok: number; failed: number; latestDate: string | null }> {
+  const init: RequestInit = { method: 'POST' }
+  if (backfillDays !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' }
+    init.body = JSON.stringify({ backfillDays })
+  }
+  const r = await fetch('/api/etf/scan', init)
+  const body = await parseEtfResponse<{
+    summary: { total: number; ok: number; failed: number; latestDate: string | null }
+  }>(r, 'ETF 扫描失败')
+  return body.summary
+}
+
+export async function addEtfUniverse(code: string, tier: EtfTier): Promise<EtfUniverseEntry> {
+  const r = await fetch('/api/etf/universe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, tier }),
+  })
+  const body = await parseEtfResponse<{ entry: EtfUniverseEntry }>(r, '添加 ETF 失败')
+  return body.entry
+}
+
+export async function updateEtfUniverse(
+  code: string,
+  patch: { enabled?: boolean; tier?: EtfTier },
+): Promise<EtfUniverseEntry> {
+  const r = await fetch(`/api/etf/universe/${encodeURIComponent(code)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  const body = await parseEtfResponse<{ entry: EtfUniverseEntry }>(r, '更新 ETF 失败')
+  return body.entry
+}
+
+export async function deleteEtfUniverse(code: string): Promise<void> {
+  const r = await fetch(`/api/etf/universe/${encodeURIComponent(code)}`, { method: 'DELETE' })
+  await parseEtfResponse<{ ok: boolean }>(r, '删除 ETF 失败')
+}
+
+export async function updateEtfParams(patch: Partial<EtfMonitorParams>): Promise<EtfMonitorParams> {
+  const r = await fetch('/api/etf/params', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  const body = await parseEtfResponse<{ params: EtfMonitorParams }>(r, '更新阈值参数失败')
+  return body.params
+}
 
 export const api = {
   async listDocuments(): Promise<Document[]> {
@@ -130,4 +241,12 @@ export const api = {
       holdings: body.holdings,
     }
   },
+  fetchEtfBoard,
+  fetchEtfTimeline,
+  fetchEtfCodeHistory,
+  triggerEtfScan,
+  addEtfUniverse,
+  updateEtfUniverse,
+  deleteEtfUniverse,
+  updateEtfParams,
 }
