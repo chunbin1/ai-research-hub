@@ -318,4 +318,68 @@ describe('EtfMonitorPage', () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('ETF 托底监控未启用')).toBeTruthy())
   })
+
+  test('table volume threshold uses board.params.volRatioThreshold and expanded history refreshes after saving params', async () => {
+    let currentThreshold = 3.0
+    let currentLevel: 'normal' | 'strong_support' = 'normal'
+    let historyCalls = 0
+
+    const timeline = makeTimeline()
+    const buildBoard = () => {
+      const board = makeBoard({
+        params: { volRatioThreshold: currentThreshold, premiumThreshold: 0.05, inflowThresholdYi: 5.0 },
+      })
+      board.rows = board.rows.map(r => r.code === '510310'
+        ? { ...r, metric: makeMetric('510310', '2026-11-18', { vol_ratio_20: 2.85, signal_level: currentLevel }) }
+        : r)
+      return board
+    }
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('/auth/me')) {
+        return {
+          ok: true,
+          json: async () => ({ id: 'u1', username: 'admin', avatarUrl: null, messageCount: 0, limit: 100, unlimited: false, isAdmin: true, remaining: 100 }),
+        } as Response
+      }
+      if (url.includes('/api/etf/timeline')) return { ok: true, json: async () => ({ days: timeline }) } as Response
+      if (url.includes('/api/etf/510310/history')) {
+        historyCalls++
+        return {
+          ok: true,
+          json: async () => ({
+            code: '510310',
+            entry: buildBoard().rows.find(r => r.code === '510310') as EtfUniverseEntry,
+            history: [makeMetric('510310', '2026-11-18', { vol_ratio_20: 2.85, signal_level: currentLevel })],
+          }),
+        } as Response
+      }
+      if (url.includes('/api/etf/params') && init?.method === 'PATCH') {
+        currentThreshold = 2.0
+        currentLevel = 'strong_support'
+        return { ok: true, json: async () => ({ params: { volRatioThreshold: 2.0, premiumThreshold: 0.05, inflowThresholdYi: 5.0 } }) } as Response
+      }
+      if (url.includes('/api/etf/board')) return { ok: true, json: async () => buildBoard() } as Response
+      return { ok: false, json: async () => null } as Response
+    }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('2.85x')).toBeTruthy())
+    // 阈值 3.0 时，2.85x 不应标红为 text-long
+    expect(screen.getByText('2.85x').className).not.toContain('text-long')
+
+    // 展开 510310
+    await userEvent.click(screen.getByRole('button', { name: /展开 510310/ }))
+    await waitFor(() => expect(historyCalls).toBe(1))
+
+    // 修改阈值为 2.0 并保存：2.85x 应转为 text-long，且已展开明细应自动重拉历史
+    await userEvent.click(screen.getByRole('button', { name: /参数设置/ }))
+    const volInput = await screen.findByLabelText(/20 日放量倍数阈值/)
+    await userEvent.clear(volInput)
+    await userEvent.type(volInput, '2')
+    await userEvent.click(screen.getByRole('button', { name: '保存并重算' }))
+
+    await waitFor(() => expect(screen.getAllByText('2.85x')[0].className).toContain('text-long'))
+    await waitFor(() => expect(historyCalls).toBe(2))
+  })
 })

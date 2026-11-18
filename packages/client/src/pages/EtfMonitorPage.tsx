@@ -265,12 +265,13 @@ interface TableProps {
   loading: boolean
   empty: string
   groupByTier: boolean
+  volRatioThreshold: number
   expanded: string | null
   onToggle: (code: string) => void
   renderDetail: (row: EtfBoardRow) => ReactNode
 }
 
-function EtfTable({ rows, loading, empty, groupByTier, expanded, onToggle, renderDetail }: TableProps) {
+function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expanded, onToggle, renderDetail }: TableProps) {
   let prevTier: EtfTier | null = null
   return (
     <div className="border-t border-ink">
@@ -347,13 +348,13 @@ function EtfTable({ rows, loading, empty, groupByTier, expanded, onToggle, rende
                   <>
                     <div className="flex items-baseline justify-between gap-2 font-numeral text-[13px]">
                       <span className="text-ink-soft">{formatAmountYuanToYi(m.amount)}</span>
-                      <span className={`font-semibold ${m.vol_ratio_20 != null && m.vol_ratio_20 >= 1.8 ? 'text-long' : 'text-ink'}`}>
+                      <span className={`font-semibold ${m.vol_ratio_20 != null && m.vol_ratio_20 >= volRatioThreshold ? 'text-long' : 'text-ink'}`}>
                         {formatRatio(m.vol_ratio_20)}
                       </span>
                     </div>
                     <span className="block h-[3px] w-full bg-rule" aria-hidden>
                       <span
-                        className={`block h-full ${m.vol_ratio_20 != null && m.vol_ratio_20 >= 1.8 ? 'bg-brick' : 'bg-ink-faint'}`}
+                        className={`block h-full ${m.vol_ratio_20 != null && m.vol_ratio_20 >= volRatioThreshold ? 'bg-brick' : 'bg-ink-faint'}`}
                         style={{ width: volBarWidth(m.vol_ratio_20) }}
                       />
                     </span>
@@ -406,7 +407,7 @@ function EtfTable({ rows, loading, empty, groupByTier, expanded, onToggle, rende
   )
 }
 
-function EtfCards({ rows, loading, empty, expanded, onToggle, renderDetail }: Omit<TableProps, 'groupByTier'>) {
+function EtfCards({ rows, loading, empty, expanded, onToggle, renderDetail }: Omit<TableProps, 'groupByTier' | 'volRatioThreshold'>) {
   return (
     <div className="border-t border-ink">
       {loading && Array.from({ length: 4 }, (_, i) => (
@@ -783,10 +784,18 @@ export default function EtfMonitorPage() {
     setExpanded(cur => (cur === code ? null : code))
   }
 
+  const detailRefreshToken = [
+    board?.lastScanAt ?? '',
+    board?.summary?.updated_at ?? '',
+    board?.params.volRatioThreshold ?? '',
+    board?.params.premiumThreshold ?? '',
+    board?.params.inflowThresholdYi ?? '',
+  ].join('|')
+
   const renderDetail = (r: EtfBoardRow) => (
     <EtfRowDetail
       row={r}
-      refreshToken={board?.lastScanAt ?? null}
+      refreshToken={detailRefreshToken}
       isAdmin={isAdmin}
       onUpdateTier={(code, tier) => updateEtf(code, { tier })}
       onDisable={code => updateEtf(code, { enabled: false })}
@@ -1073,6 +1082,7 @@ export default function EtfMonitorPage() {
             loading={loading}
             empty={empty}
             groupByTier={sortKey === 'default'}
+            volRatioThreshold={board?.params.volRatioThreshold ?? 1.8}
             expanded={expanded}
             onToggle={toggleExpand}
             renderDetail={renderDetail}

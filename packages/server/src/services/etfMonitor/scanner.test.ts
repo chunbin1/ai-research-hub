@@ -5,7 +5,8 @@ import { initSiteSettingsTable } from '../siteSettingsStore.js'
 import {
   initEtfMonitorTables, getExistingMetricsForCode, getBoardByDate, updateUniverseEntry,
 } from '../etfMonitorStore.js'
-import { scanEtfMonitor, setEtfParams, recomputeAllEtfSummaries } from './scanner.js'
+import { scanEtfMonitor, getEtfParams, setEtfParams, recomputeAllEtfSummaries } from './scanner.js'
+import { DEFAULT_ETF_PARAMS } from './metrics.js'
 import type { EtfKlineBar } from '../market/etfClient.js'
 
 function build22Bars(endDate: string, lastAmount = 10e8): EtfKlineBar[] {
@@ -116,4 +117,66 @@ test('调整阈值与停用标的后重算全库历史状态与汇总', async ()
   recomputeAllEtfSummaries('2026-11-18T00:00:00Z')
   const board = getBoardByDate('2026-11-17')
   assert.equal(board.summary?.active_count, 17)
+})
+
+test('空库未保存设置时 getEtfParams 返回默认阈值而非 0；显式保存 0 时保留 0', () => {
+  setupDb()
+  assert.deepEqual(getEtfParams(), DEFAULT_ETF_PARAMS)
+
+  setEtfParams({ premiumThreshold: 0, inflowThresholdYi: 0 })
+  assert.deepEqual(getEtfParams(), {
+    volRatioThreshold: DEFAULT_ETF_PARAMS.volRatioThreshold,
+    premiumThreshold: 0,
+    inflowThresholdYi: 0,
+  })
+})
+
+test('增量扫描若新窗口首根 bar 的 pctChange 为 null，保留库里已有的 pct_change', async () => {
+  setupDb()
+  const initialBars = build22Bars('2026-11-17', 20e8).map(b =>
+    b.tradeDate === '2026-11-16' ? { ...b, pctChange: 1.55 } : b,
+  )
+  await scanEtfMonitor({ codes: ['510300'] }, {
+    now: () => new Date('2026-11-17T12:00:00Z'),
+    fetchKlines: async () => ({ name: '300ETF', bars: initialBars }),
+    fetchNavs: async () => ({}),
+    fetchRealtimeBatch: async () => ({}),
+    fetchSseShares: async () => ({}),
+    fetchSzseShares: async () => null,
+  })
+
+  // 增量扫描仅拉到以 2026-11-16 为首根（pctChange = null）的两天数据
+  const incrementalBars: EtfKlineBar[] = [
+    { tradeDate: '2026-11-16', open: 1.4, close: 1.4, high: 1.43, low: 1.38, volume: 1e9, amount: 10e8, pctChange: null },
+    { tradeDate: '2026-11-17', open: 1.4, close: 1.42, high: 1.43, low: 1.38, volume: 1e9, amount: 20e8, pctChange: 1.43 },
+  ]
+  await scanEtfMonitor({ codes: ['510300'] }, {
+    now: () => new Date('2026-11-17T12:05:00Z'),
+    fetchKlines: async () => ({ name: '300ETF', bars: incrementalBars }),
+    fetchNavs: async () => ({}),
+    fetchRealtimeBatch: async () => ({}),
+    fetchSseShares: async () => ({}),
+    fetchSzseShares: async () => null,
+  })
+
+  const d16 = getExistingMetricsForCode('510300').find(x => x.trade_date === '2026-11-16')!
+  assert.equal(d16.pct_change, 1.55)
+})
+
+test('深交所接口明确返回 snapshotDate <= T 时，早盘不可再用东财 f38 兜底误写到 T 日', async () => {
+  setupDb()
+  await scanEtfMonitor({ codes: ['159952'] }, {
+    now: () => new Date('2026-11-18T00:15:00Z'), // 北京时间 08:15（盘前，尚未结算更新）
+    fetchKlines: async () => ({ name: '创业板广发', bars: build22Bars('2026-11-17', 20e8) }),
+    fetchNavs: async () => ({ '2026-11-17': 1.4015 }),
+    fetchRealtimeBatch: async () => ({
+      '159952': { code: '159952', name: '创业板广发', price: 1.41, amount: 20e8, totalShares: 140e8, iopv: 1.41 },
+    }),
+    fetchSseShares: async () => ({}),
+    fetchSzseShares: async () => ({ snapshotDate: '2026-11-17', totalShares: 140e8 }),
+  })
+
+  const d17 = getExistingMetricsForCode('159952').find(x => x.trade_date === '2026-11-17')!
+  assert.equal(d17.total_shares, null)
+  assert.equal(d17.share_source, null)
 })

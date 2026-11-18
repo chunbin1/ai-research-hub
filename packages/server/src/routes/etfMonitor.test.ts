@@ -15,6 +15,7 @@ const { etfMonitorRoutes } = await import('./etfMonitor.ts')
 async function freshApp(opts?: {
   scanCalls?: Array<{ backfillDays?: number; codes?: string[] }>
   probeResult?: { code: string; market: 'SH' | 'SZ'; name: string } | null
+  probeError?: Error
 }) {
   const db = new Database(':memory:')
   initSiteSettingsTable(db)
@@ -27,6 +28,7 @@ async function freshApp(opts?: {
       return { total: 1, ok: 1, failed: 0, latestDate: '2026-11-17' }
     }) as never,
     probe: (async (code: string) => {
+      if (opts?.probeError) throw opts.probeError
       if (opts && 'probeResult' in opts) return opts.probeResult ?? null
       return code === '510350' ? { code: '510350', market: 'SH', name: '沪深300ETF工银' } : null
     }) as never,
@@ -92,6 +94,9 @@ test('POST /etf/universe 校验合法性、去重并触发单标的回溯；PATC
   const bad = await app.inject({ method: 'POST', url: '/api/etf/universe', payload: { code: '600519', tier: 'mega' } })
   assert.equal(bad.statusCode, 400)
 
+  const nonString = await app.inject({ method: 'POST', url: '/api/etf/universe', payload: { code: 510350, tier: 'mega' } })
+  assert.equal(nonString.statusCode, 400)
+
   const dup = await app.inject({ method: 'POST', url: '/api/etf/universe', payload: { code: '510300', tier: 'mega' } })
   assert.equal(dup.statusCode, 409)
 
@@ -134,4 +139,10 @@ test('PATCH /etf/params 校验并立即重算历史信号与汇总', async () =>
   const board = (await app.inject({ method: 'GET', url: '/api/etf/board' })).json()
   // 510300(54.4亿) 与 510500(24.4亿) 均低于 60 亿且放量 2.1 < 3.0，回落为 normal
   assert.equal(board.rows.find((r: { code: string }) => r.code === '510300').metric.signal_level, 'normal')
+})
+
+test('POST /etf/universe 在上游探测异常时返回 502 而非 500', async () => {
+  const { app } = await freshApp({ probeError: new Error('upstream timeout') })
+  const res = await app.inject({ method: 'POST', url: '/api/etf/universe', payload: { code: '510350', tier: 'mega' } })
+  assert.equal(res.statusCode, 502)
 })

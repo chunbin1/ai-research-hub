@@ -105,17 +105,26 @@ export const etfMonitorRoutes: FastifyPluginAsync<EtfMonitorRoutesOptions> = asy
     return { summary: await scan({ backfillDays }) }
   })
 
-  app.post<{ Body?: { code?: string; tier?: EtfTier } }>('/etf/universe', async (request, reply) => {
+  app.post<{ Body?: { code?: unknown; tier?: EtfTier } }>('/etf/universe', async (request, reply) => {
     if (!requireAdmin(request, reply)) return
-    const code = (request.body?.code ?? '').trim()
+    const rawCode = request.body?.code
     const tier = request.body?.tier
-    if (!CODE_RE.test(code) || !tier || !VALID_TIERS.includes(tier)) {
+    if (typeof rawCode !== 'string' || !tier || !VALID_TIERS.includes(tier)) {
+      return reply.status(400).send({ error: 'invalid_input', message: '请提供 6 位 ETF 代码与合法梯队' })
+    }
+    const code = rawCode.trim()
+    if (!CODE_RE.test(code)) {
       return reply.status(400).send({ error: 'invalid_input', message: '请提供 6 位 ETF 代码与合法梯队' })
     }
     if (getUniverseEntry(code)) {
       return reply.status(409).send({ error: 'already_exists', message: `${code} 已在监控池中` })
     }
-    const info = await probe(code)
+    let info: Awaited<ReturnType<typeof probe>>
+    try {
+      info = await probe(code)
+    } catch {
+      return reply.status(502).send({ error: 'upstream_error', message: `查询 ETF 信息失败，请稍后重试: ${code}` })
+    }
     if (!info) {
       return reply.status(400).send({ error: 'invalid_input', message: `无法识别为有效的沪深场内 ETF: ${code}` })
     }

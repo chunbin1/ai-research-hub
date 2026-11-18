@@ -26,14 +26,17 @@ export function isEtfMonitorEnabled(): boolean {
   return process.env.ETF_MONITOR !== 'off'
 }
 
+function parseThreshold(raw: string | null, fallback: number, isValid: (n: number) => boolean): number {
+  if (raw === null || raw.trim() === '') return fallback
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && isValid(parsed) ? parsed : fallback
+}
+
 export function getEtfParams(): EtfMonitorParams {
-  const v = Number(getSetting(VOL_THRESHOLD_KEY))
-  const p = Number(getSetting(PREM_THRESHOLD_KEY))
-  const f = Number(getSetting(INFLOW_THRESHOLD_KEY))
   return {
-    volRatioThreshold: Number.isFinite(v) && v > 0 ? v : DEFAULT_ETF_PARAMS.volRatioThreshold,
-    premiumThreshold: Number.isFinite(p) ? p : DEFAULT_ETF_PARAMS.premiumThreshold,
-    inflowThresholdYi: Number.isFinite(f) && f >= 0 ? f : DEFAULT_ETF_PARAMS.inflowThresholdYi,
+    volRatioThreshold: parseThreshold(getSetting(VOL_THRESHOLD_KEY), DEFAULT_ETF_PARAMS.volRatioThreshold, n => n > 0),
+    premiumThreshold: parseThreshold(getSetting(PREM_THRESHOLD_KEY), DEFAULT_ETF_PARAMS.premiumThreshold, () => true),
+    inflowThresholdYi: parseThreshold(getSetting(INFLOW_THRESHOLD_KEY), DEFAULT_ETF_PARAMS.inflowThresholdYi, n => n >= 0),
   }
 }
 
@@ -334,9 +337,12 @@ async function runScan(opts: { backfillDays?: number; codes?: string[] }, deps: 
         }
       } else if (entry.market === 'SZ' && b.tradeDate === latestClosedDate) {
         // 深交所与东财 f38 仅在 T+1 日更新为 T 日结算后份额；T 日当天 15:10/20:00 不可归属到 T 日
-        if (szseSnap && szseSnap.snapshotDate > b.tradeDate) {
-          totalShares = szseSnap.totalShares
-          shareSource = 'snapshot'
+        // 若深交所接口已返回 snapshotDate <= b.tradeDate，说明尚未结算，不可再用东财 f38 兜底误归到 T 日
+        if (szseSnap) {
+          if (szseSnap.snapshotDate > b.tradeDate) {
+            totalShares = szseSnap.totalShares
+            shareSource = 'snapshot'
+          }
         } else if (todayCN > b.tradeDate && rt?.totalShares != null) {
           totalShares = rt.totalShares
           shareSource = 'snapshot'
@@ -347,7 +353,7 @@ async function runScan(opts: { backfillDays?: number; codes?: string[] }, deps: 
         tradeDate: b.tradeDate,
         open: b.open,
         close: b.close,
-        pctChange: b.pctChange,
+        pctChange: b.pctChange ?? prev?.pct_change ?? null,
         volume: b.volume,
         amount: b.amount,
         nav,
