@@ -27,6 +27,7 @@ interface NavItem {
 const NAV_ITEMS: readonly NavItem[] = [
   { label: '研报', to: '/', adminOnly: false },
   { label: '信号', to: '/signals', adminOnly: false },
+  { label: '托底', to: '/etf', adminOnly: false },
   { label: '持仓', to: '/holdings', adminOnly: false, whenHoldings: true },
   { label: '评估', to: '/eval', adminOnly: true },
   { label: '站点模型', to: '/admin', adminOnly: true },
