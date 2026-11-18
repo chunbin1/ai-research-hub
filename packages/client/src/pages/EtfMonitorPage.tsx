@@ -44,9 +44,9 @@ import type {
 } from '../types'
 
 const GUTTER = 'px-[18px] md:px-7 lg:px-10'
-const GRID = 'grid grid-cols-[24px_minmax(0,1.4fr)_118px_124px_90px_96px_92px] items-center gap-3'
-  + ' lg:grid-cols-[24px_minmax(0,1.5fr)_148px_150px_106px_112px_104px] lg:gap-4'
-  + ' xl:grid-cols-[24px_minmax(220px,1.7fr)_172px_176px_120px_126px_112px] xl:gap-5'
+const GRID = 'grid grid-cols-[20px_minmax(0,1fr)_68px_52px_52px_52px_102px_62px_66px_72px] items-center gap-1.5'
+  + ' lg:grid-cols-[24px_minmax(0,1.4fr)_82px_68px_68px_68px_132px_78px_82px_88px] lg:gap-2.5'
+  + ' xl:grid-cols-[24px_minmax(220px,1.6fr)_92px_78px_78px_78px_156px_88px_92px_96px] xl:gap-3.5'
 
 function resonanceClasses(level: EtfResonanceLevel): string {
   switch (level) {
@@ -280,29 +280,58 @@ interface TableProps {
   empty: string
   groupByTier: boolean
   volRatioThreshold: number
+  sortKey: EtfSortKey
+  onSort: (key: EtfSortKey) => void
   expanded: string | null
   onToggle: (code: string) => void
   renderDetail: (row: EtfBoardRow) => ReactNode
 }
 
-function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expanded, onToggle, renderDetail }: TableProps) {
+function SortHeaderButton({
+  label,
+  targetKey,
+  sortKey,
+  onSort,
+}: {
+  label: string
+  targetKey: EtfSortKey
+  sortKey: EtfSortKey
+  onSort: (key: EtfSortKey) => void
+}) {
+  const active = sortKey === targetKey
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(active ? 'default' : targetKey)}
+      className={`cursor-pointer text-right transition-colors hover:text-ink ${active ? 'font-semibold text-navy' : ''}`}
+      title={active ? '点击恢复按梯队排序' : `按${label}降序`}
+    >
+      {label}{active ? ' ↓' : ''}
+    </button>
+  )
+}
+
+function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, sortKey, onSort, expanded, onToggle, renderDetail }: TableProps) {
   let prevTier: EtfTier | null = null
   return (
     <div className="border-t border-ink">
       <div className={`${GRID} border-b border-rule py-3 text-[12px] tracking-[0.02em] text-ink-mute`}>
         <span aria-hidden />
         <span>ETF 标的 / 规模</span>
-        <span className="text-right">收盘 / 阶段涨跌</span>
-        <span>成交 / 换手 / 放量</span>
-        <span className="text-right">收盘溢价率</span>
-        <span className="text-right">净申购估算</span>
+        <span className="text-right">收盘</span>
+        <SortHeaderButton label="5日" targetKey="return_5d" sortKey={sortKey} onSort={onSort} />
+        <SortHeaderButton label="10日" targetKey="return_10d" sortKey={sortKey} onSort={onSort} />
+        <SortHeaderButton label="距今" targetKey="return_since" sortKey={sortKey} onSort={onSort} />
+        <SortHeaderButton label="成交 / 放量" targetKey="vol_ratio_20" sortKey={sortKey} onSort={onSort} />
+        <SortHeaderButton label="溢价率" targetKey="premium_rate" sortKey={sortKey} onSort={onSort} />
+        <SortHeaderButton label="净申购" targetKey="net_inflow_yi" sortKey={sortKey} onSort={onSort} />
         <span>当日状态</span>
       </div>
 
       {loading && Array.from({ length: 6 }, (_, i) => (
         <div key={i} className={`${GRID} border-b border-row-rule py-3.5`} aria-hidden>
           <span />
-          {Array.from({ length: 6 }, (_, c) => (
+          {Array.from({ length: 9 }, (_, c) => (
             <span key={c} className="h-[40px] animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
           ))}
         </div>
@@ -355,26 +384,30 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expand
               <div className="text-right">
                 {m ? (
                   <>
-                    <div className="flex items-baseline justify-end gap-1.5 font-numeral">
-                      <span className="text-[15px] font-semibold text-ink">{m.close.toFixed(3)}</span>
-                      <span className={`text-[12px] ${pctToneClass(m.pct_change)}`}>
-                        {formatPct(m.pct_change)}
-                      </span>
+                    <div className="font-numeral text-[15px] font-semibold text-ink">{m.close.toFixed(3)}</div>
+                    <div className={`font-numeral text-[12px] ${pctToneClass(m.pct_change)}`}>
+                      {formatPct(m.pct_change)}
                     </div>
-                    {(perf?.return_5d != null || perf?.return_10d != null) && (
-                      <div className="mt-0.5 font-numeral text-[10px] text-ink-mute">
-                        5日 <span className={pctToneClass(perf?.return_5d ?? null)}>{formatPct(perf?.return_5d ?? null)}</span>
-                        {' · '}
-                        10日 <span className={pctToneClass(perf?.return_10d ?? null)}>{formatPct(perf?.return_10d ?? null)}</span>
-                      </div>
-                    )}
-                    {perf?.return_since != null && (
-                      <div className="font-numeral text-[10px] font-medium text-ink-mute">
-                        距今 <span className={pctToneClass(perf.return_since)}>{formatPct(perf.return_since)}</span>
-                      </div>
-                    )}
                   </>
                 ) : <span className="text-[12px] text-ink-faint">—</span>}
+              </div>
+
+              <div className="text-right">
+                <span className={`font-numeral text-[13px] font-medium ${pctToneClass(perf?.return_5d ?? null)}`}>
+                  {formatPct(perf?.return_5d ?? null)}
+                </span>
+              </div>
+
+              <div className="text-right">
+                <span className={`font-numeral text-[13px] font-medium ${pctToneClass(perf?.return_10d ?? null)}`}>
+                  {formatPct(perf?.return_10d ?? null)}
+                </span>
+              </div>
+
+              <div className="text-right">
+                <span className={`font-numeral text-[13px] font-medium ${pctToneClass(perf?.return_since ?? null)}`}>
+                  {formatPct(perf?.return_since ?? null)}
+                </span>
               </div>
 
               <div className="flex flex-col gap-1">
@@ -419,7 +452,10 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expand
 
               <div className="text-right">
                 {m ? (
-                  <span className={`font-numeral text-[14px] font-semibold ${pctToneClass(m.net_inflow_yi)}`}>
+                  <span
+                    className={`font-numeral text-[14px] font-semibold ${pctToneClass(m.net_inflow_yi)}`}
+                    title={m.net_inflow_yi === null ? '缺前一日份额基准（如深市建立快照首日，次日 08:45 起将自动算出）' : undefined}
+                  >
                     {formatYi(m.net_inflow_yi, true)}
                   </span>
                 ) : <span className="text-[12px] text-ink-faint">—</span>}
@@ -444,7 +480,7 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expand
   )
 }
 
-function EtfCards({ rows, loading, empty, expanded, onToggle, renderDetail }: Omit<TableProps, 'groupByTier' | 'volRatioThreshold'>) {
+function EtfCards({ rows, loading, empty, expanded, onToggle, renderDetail }: Omit<TableProps, 'groupByTier' | 'volRatioThreshold' | 'sortKey' | 'onSort'>) {
   return (
     <div className="border-t border-ink">
       {loading && Array.from({ length: 4 }, (_, i) => (
@@ -1139,6 +1175,8 @@ export default function EtfMonitorPage() {
             empty={empty}
             groupByTier={sortKey === 'default'}
             volRatioThreshold={board?.params.volRatioThreshold ?? 1.8}
+            sortKey={sortKey}
+            onSort={setSortKey}
             expanded={expanded}
             onToggle={toggleExpand}
             renderDetail={renderDetail}
