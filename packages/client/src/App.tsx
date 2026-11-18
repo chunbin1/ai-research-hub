@@ -39,6 +39,7 @@ function lazyWithAntd(loader: () => Promise<{ default: ComponentType }>) {
 const ReaderPage = lazyWithAntd(() => import('./pages/ReaderPage'))
 const VersionDiffPage = lazyWithAntd(() => import('./pages/VersionDiffPage'))
 const SignalsPage = lazyWithAntd(() => import('./pages/SignalsPage'))
+const EtfMonitorPage = lazyWithAntd(() => import('./pages/EtfMonitorPage'))
 // 持仓页不引用 antd,单独懒加载,避免打开它时把 antd 拉下来。
 const HoldingsPage = lazy(() => import('./pages/HoldingsPage'))
 const WhalesPage = lazy(() => import('./pages/WhalesPage'))
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/reports/:id" element={<ReaderPage />} />
         <Route path="/reports/:id/diff" element={<VersionDiffPage />} />
         <Route path="/signals" element={<SignalsPage />} />
+        <Route path="/etf" element={<EtfMonitorPage />} />
         <Route path="/holdings" element={<HoldingsPage />} />
         <Route path="/whales" element={<WhalesPage />} />
         <Route path="/whales/:slug" element={<WhaleDetailPage />} />

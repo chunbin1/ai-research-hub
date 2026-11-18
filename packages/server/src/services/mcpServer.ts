@@ -12,6 +12,8 @@ import { listVersions, latestVersion } from './versionStore.js'
 import { outlineOf, INTRO_SLUG } from './markdownParser.js'
 import { signalBoard } from './signals/board.js'
 import { isSignalsEnabled } from './signals/scanner.js'
+import { getBoardByDate, getTimelineSummaries, listUniverse } from './etfMonitorStore.js'
+import { getEtfParams, isEtfMonitorEnabled } from './etfMonitor/scanner.js'
 import { normalizeSymbol } from './market/symbol.js'
 import { isWhalesEnabled } from './whales/enabled.js'
 import { holdingsForTickers } from './whales/bySymbol.js'
@@ -241,6 +243,42 @@ export function buildMcpServer(): McpServer {
         ...r,
         sourceDoc: r.sourceDoc ? { ...r.sourceDoc, url: reportUrl(r.sourceDoc.id) } : null,
       })))
+    })
+  }
+
+  if (isEtfMonitorEnabled()) {
+    server.registerTool('get_etf_stabilization', {
+      title: 'A股宽基ETF托底监控',
+      description:
+        '查询 A 股 18 只跨梯队宽基 ETF 的盘后托底监测结果：全市场托底共振等级（strong/watch/none）、' +
+        '触发异动的宽基列表、全量宽基放量倍数/收盘溢价率/净申购额，以及近期共振时间轴。',
+      inputSchema: {
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('交易日 YYYY-MM-DD；不传则取最新交易日'),
+        days: z.number().int().min(1).max(60).optional().describe('附带返回的近期时间轴天数，默认 10，最大 60'),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    }, async ({ date, days = 10 }) => {
+      const board = getBoardByDate(date)
+      const metricByCode = new Map(board.metrics.map(m => [m.code, m]))
+      const enabled = listUniverse({ enabledOnly: true })
+      const rows = enabled.map(u => {
+        const m = metricByCode.get(u.code) ?? null
+        return {
+          code: u.code,
+          name: u.name,
+          market: u.market,
+          tier: u.tier,
+          metric: m,
+        }
+      })
+      const triggered = rows.filter(r => r.metric && r.metric.signal_level !== 'normal')
+      return json({
+        summary: board.summary,
+        params: getEtfParams(),
+        triggered,
+        rows,
+        timeline: getTimelineSummaries(days),
+      })
     })
   }
 

@@ -14,6 +14,7 @@ process.env.AUTH_DISABLED = 'true'
 process.env.APP_URL = 'https://arh.example'
 delete process.env.SIGNALS
 delete process.env.WHALES
+delete process.env.ETF_MONITOR
 
 const { initDb } = await import('../services/db.ts')
 const { initDocumentTable } = await import('../services/documentStore.ts')
@@ -21,6 +22,8 @@ const { initChunkFtsTable } = await import('../services/chunkFts.ts')
 const { initIndexStateTable } = await import('../services/indexState.ts')
 const { initWatchlistTable } = await import('../services/watchlistStore.ts')
 const { initSignalTables } = await import('../services/signalStore.ts')
+const { initSiteSettingsTable } = await import('../services/siteSettingsStore.ts')
+const { initEtfMonitorTables } = await import('../services/etfMonitorStore.ts')
 const { initWhaleTables } = await import('../services/whales/store.ts')
 const { documentRoutes } = await import('./documents.ts')
 const { mcpRoutes } = await import('./mcp.ts')
@@ -32,6 +35,8 @@ initChunkFtsTable(db)
 initIndexStateTable(db)
 initWatchlistTable(db)
 initSignalTables(db)
+initSiteSettingsTable(db)
+initEtfMonitorTables(db)
 initWhaleTables(db)
 
 const app = fastify()
@@ -92,10 +97,10 @@ test('initialize 握手成功,无状态模式不发会话 id', async () => {
   assert.equal(res.headers['mcp-session-id'], undefined)
 })
 
-test('tools/list 列出五个只读工具', async () => {
+test('tools/list 列出六个只读工具', async () => {
   const { result } = await rpc('tools/list')
   const names = result.tools.map((t: { name: string }) => t.name).sort()
-  assert.deepEqual(names, ['get_report_outline', 'get_signals', 'get_whale_holdings', 'list_reports', 'read_report'])
+  assert.deepEqual(names, ['get_etf_stabilization', 'get_report_outline', 'get_signals', 'get_whale_holdings', 'list_reports', 'read_report'])
   assert.ok(result.tools.every((t: { annotations?: { readOnlyHint?: boolean } }) => t.annotations?.readOnlyHint))
 })
 
@@ -185,6 +190,29 @@ test('首个标题前的引言能单独读,链接指向篇首', async () => {
   assert.match(text, /单位亿元/)
   assert.doesNotMatch(text, /内容。/)
   assert.match(text, new RegExp(`链接:https://arh\\.example/reports/${id}\\n`))
+})
+
+test('get_etf_stabilization 返回指定日期共振汇总与近期时间轴', async () => {
+  const { upsertDailyMetrics, upsertDailySummaries } = await import('../services/etfMonitorStore.ts')
+  upsertDailyMetrics([{
+    code: '510300', trade_date: '2026-11-17', open: 4, close: 4.04, pct_change: -0.5,
+    volume: 2e9, amount: 81.15e8, vol_ratio_5: 1.57, vol_ratio_20: 2.1,
+    nav: 4.05, nav_source: 'official', premium_rate: 0.1,
+    total_shares: 483.43e8, share_source: 'sse_history', share_delta: 1.34e8, net_inflow_yi: 54.4,
+    signal_level: 'strong_support', updated_at: '2026-11-18T00:00:00Z',
+  }])
+  upsertDailySummaries([{
+    trade_date: '2026-11-17', resonance_level: 'strong', active_count: 18,
+    volume_spike_count: 1, support_etf_count: 1, support_tier_count: 1,
+    total_amount_yi: 81.15, aggregate_vol_ratio: 1.5, total_net_inflow_yi: 54.4,
+    data_stage: 'partial_shares', updated_at: '2026-11-18T00:00:00Z',
+  }])
+  const data = JSON.parse((await call('get_etf_stabilization', { date: '2026-11-17', days: 10 })).text)
+  assert.equal(data.summary.trade_date, '2026-11-17')
+  assert.equal(data.summary.resonance_level, 'strong')
+  assert.equal(data.triggered.length, 1)
+  assert.equal(data.triggered[0].code, '510300')
+  assert.equal(data.timeline.length, 1)
 })
 
 test('get_whale_holdings 按代码返回持仓和清仓,未知机构报错', async () => {

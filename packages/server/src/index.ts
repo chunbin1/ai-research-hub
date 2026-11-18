@@ -23,8 +23,10 @@ import { initEvalTables, markStaleRunsFailed } from './services/evalStore.js'
 import { initWatchlistTable } from './services/watchlistStore.js'
 import { initSignalTables } from './services/signalStore.js'
 import { initHoldingsTables } from './services/holdingsStore.js'
+import { initEtfMonitorTables } from './services/etfMonitorStore.js'
 import { initWhaleTables } from './services/whales/store.js'
 import { startDailyScan } from './jobs/dailyScan.js'
+import { startEtfDailyScan } from './jobs/etfDailyScan.js'
 import { startWhaleSync } from './jobs/whaleSync.js'
 import { registerHttpRoutes } from './http.js'
 
@@ -53,6 +55,7 @@ initEvalTables(db)
 initWatchlistTable(db)
 initSignalTables(db)
 initHoldingsTables(db)
+initEtfMonitorTables(db)
 initWhaleTables(db)
 
 // 一次性:把 import:raw 写错的上传时间校正回 id 里的时刻。放在版本补登记之前,
@@ -102,6 +105,10 @@ try {
 // 放在 try/catch 外面:那个 catch 会 process.exit(1)。listen 一旦成功,
 // 后台任务注册失败也不该把已经在监听的服务器带下去。
 startDailyScan({
+  info: (m) => app.log.info(m),
+  error: (m) => app.log.error(m),
+})
+startEtfDailyScan({
   info: (m) => app.log.info(m),
   error: (m) => app.log.error(m),
 })

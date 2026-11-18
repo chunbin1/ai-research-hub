@@ -288,3 +288,84 @@ export interface SymbolSearchHit {
   market: 'US' | 'HK'
   exchange: string | null
 }
+
+// ── A 股宽基 ETF 国家队托底监控 (/etf) ───────────────────────────────────────
+
+export type EtfTier = 'mega' | 'mid' | 'small' | 'growth'
+export type EtfNavSource = 'official' | 'iopv'
+export type EtfShareSource = 'sse_history' | 'snapshot'
+export type EtfSignalLevel = 'strong_support' | 'inflow_only' | 'volume_only' | 'normal'
+export type EtfResonanceLevel = 'strong' | 'watch' | 'none'
+export type EtfDataStage = 'preliminary' | 'nav_ready' | 'partial_shares' | 'complete'
+
+export interface EtfUniverseEntry {
+  code: string
+  market: 'SH' | 'SZ'
+  name: string
+  tier: EtfTier
+  enabled: boolean
+  sort_order: number
+  created_at: string
+}
+
+export interface EtfDailyMetric {
+  code: string
+  trade_date: string
+  open: number
+  close: number
+  pct_change: number | null
+  volume: number
+  amount: number
+  vol_ratio_5: number | null
+  vol_ratio_20: number | null
+  nav: number | null
+  nav_source: EtfNavSource | null
+  premium_rate: number | null
+  total_shares: number | null
+  share_source: EtfShareSource | null
+  share_delta: number | null
+  net_inflow_yi: number | null
+  signal_level: EtfSignalLevel
+  updated_at: string
+}
+
+export interface EtfCodePerformance {
+  return_5d: number | null
+  return_10d: number | null
+  return_since: number | null
+  cap_delta_yi?: number | null
+}
+
+export interface EtfBoardRow extends EtfUniverseEntry {
+  metric: EtfDailyMetric | null
+  perf?: EtfCodePerformance
+}
+
+export interface EtfDailySummary {
+  trade_date: string
+  resonance_level: EtfResonanceLevel
+  active_count: number
+  volume_spike_count: number
+  support_etf_count: number
+  support_tier_count: number
+  total_amount_yi: number
+  aggregate_vol_ratio: number | null
+  total_net_inflow_yi: number | null
+  data_stage: EtfDataStage
+  updated_at: string
+}
+
+export interface EtfMonitorParams {
+  volRatioThreshold: number
+  premiumThreshold: number
+  inflowThresholdYi: number
+}
+
+export interface EtfBoardResponse {
+  summary: EtfDailySummary | null
+  rows: EtfBoardRow[]
+  disabledUniverse: EtfUniverseEntry[]
+  params: EtfMonitorParams
+  lastScanAt: string | null
+  availableDates: string[]
+}
