@@ -47,7 +47,8 @@ test('盘中（< 15:00 北京时间）过滤未收盘当日 K 线，并把 T+1 �
       '159952': { code: '159952', name: '创业板广发', price: 1.41, amount: 3e8, totalShares: 141.66e8, iopv: 1.41 },
       '510300': { code: '510300', name: '300ETF', price: 4.05, amount: 3e8, totalShares: 483.43e8, iopv: 4.05 },
     }),
-    fetchSseShares: async (dt) => dt === '2026-11-17' ? { '510300': 483.43e8 } : dt === '2026-11-16' ? { '510300': 470.01e8 } : {},
+    fetchSseShares: async (dt): Promise<Record<string, number>> =>
+      dt === '2026-11-17' ? { '510300': 483.43e8 } : dt === '2026-11-16' ? { '510300': 470.01e8 } : {},
     fetchSzseShares: async () => ({ snapshotDate: '2026-11-18', totalShares: 141.66e8 }),
   })
 
