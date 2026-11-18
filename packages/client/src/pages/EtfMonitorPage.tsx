@@ -123,7 +123,7 @@ function EtfRowDetail({
     let cancelled = false
     setLoading(true)
     setErr(null)
-    void fetchEtfCodeHistory(row.code, 15)
+    void fetchEtfCodeHistory(row.code, 16)
       .then(res => {
         if (!cancelled) setHistory(res.history)
       })
@@ -214,7 +214,7 @@ function EtfRowDetail({
               <tr className="border-b border-rule text-ink-mute">
                 <th className="py-1.5 pr-3 font-normal">日期</th>
                 <th className="py-1.5 pr-3 text-right font-normal">收盘 / 涨跌</th>
-                <th className="py-1.5 pr-3 text-right font-normal">规模</th>
+                <th className="py-1.5 pr-3 text-right font-normal">市值 / 变化</th>
                 <th className="py-1.5 pr-3 text-right font-normal">成交额</th>
                 <th className="py-1.5 pr-3 text-right font-normal">换手率</th>
                 <th className="py-1.5 pr-3 text-right font-normal">20日放量</th>
@@ -224,9 +224,11 @@ function EtfRowDetail({
               </tr>
             </thead>
             <tbody>
-              {history.slice(0, 15).map(item => {
+              {history.slice(0, 15).map((item, idx) => {
                 const sig = SIGNAL_LEVEL_META[item.signal_level]
                 const capYi = computeMarketCapYi(item)
+                const prevCapYi = idx + 1 < history.length ? computeMarketCapYi(history[idx + 1]) : null
+                const capDeltaYi = capYi !== null && prevCapYi !== null ? capYi - prevCapYi : null
                 const turnover = computeTurnoverRate(item)
                 return (
                   <tr key={item.trade_date} className="border-b border-row-rule last:border-b-0">
@@ -235,8 +237,13 @@ function EtfRowDetail({
                       <span className="text-ink">{item.close.toFixed(3)}</span>{' '}
                       <span className={pctToneClass(item.pct_change)}>{formatPct(item.pct_change)}</span>
                     </td>
-                    <td className="py-1.5 pr-3 text-right font-numeral text-ink-soft">
-                      {formatYi(capYi)}
+                    <td className="py-1.5 pr-3 text-right font-numeral">
+                      <span className="text-ink-soft">{formatYi(capYi)}</span>
+                      {capDeltaYi !== null && (
+                        <span className={`ml-1 text-[11px] ${pctToneClass(capDeltaYi)}`}>
+                          {formatYi(capDeltaYi, true)}
+                        </span>
+                      )}
                     </td>
                     <td className="py-1.5 pr-3 text-right font-numeral text-ink-soft">
                       {formatAmountYuanToYi(item.amount)}
@@ -380,9 +387,14 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, sortKe
               </div>
 
               <div className="text-right">
-                <span className="font-numeral text-[13px] font-medium text-ink-soft">
+                <div className="font-numeral text-[14px] font-semibold text-ink">
                   {formatYi(capYi)}
-                </span>
+                </div>
+                {perf?.cap_delta_yi != null && (
+                  <div className={`font-numeral text-[11px] ${pctToneClass(perf.cap_delta_yi)}`}>
+                    {formatYi(perf.cap_delta_yi, true)}
+                  </div>
+                )}
               </div>
 
               <div className="text-right">
@@ -512,7 +524,16 @@ function EtfCards({ rows, loading, empty, expanded, onToggle, renderDetail }: Om
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint">
                     <span className="border border-edge bg-white px-1.5 py-px text-ink-mute">{TIER_LABEL[r.tier]}</span>
-                    {capYi !== null && <span className="font-numeral text-ink-soft">规模 {formatYi(capYi)}</span>}
+                    {capYi !== null && (
+                      <span className="font-numeral text-ink-soft">
+                        市值 {formatYi(capYi)}
+                        {perf?.cap_delta_yi != null && (
+                          <span className={`ml-1 ${pctToneClass(perf.cap_delta_yi)}`}>
+                            ({formatYi(perf.cap_delta_yi, true)})
+                          </span>
+                        )}
+                      </span>
+                    )}
                     {sig && (
                       <span className={`rounded-[3px] border px-1.5 py-px ${signalClasses(m!.signal_level)}`}>
                         {sig.label}
@@ -1151,6 +1172,7 @@ export default function EtfMonitorPage() {
             <option value="vol_ratio_20">按放量倍数</option>
             <option value="net_inflow_yi">按净申购</option>
             <option value="market_cap_yi">按市值(规模)</option>
+            <option value="cap_delta_yi">按市值变化</option>
             <option value="turnover_rate">按换手率</option>
             <option value="premium_rate">按溢价率</option>
             <option value="amount">按成交额</option>

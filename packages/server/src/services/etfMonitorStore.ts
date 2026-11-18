@@ -379,14 +379,22 @@ export interface EtfCodePerformance {
   return_5d: number | null
   return_10d: number | null
   return_since: number | null
+  cap_delta_yi: number | null
 }
 
 function roundPct2(val: number): number {
   return Math.round(val * 100) / 100
 }
 
+function barCapYi(bar: { close: number; nav: number | null; total_shares: number | null }): number | null {
+  if (bar.total_shares === null || bar.total_shares <= 0) return null
+  const priceRef = bar.nav !== null && bar.nav > 0 ? bar.nav : bar.close
+  if (priceRef <= 0) return null
+  return (bar.total_shares * priceRef) / 1e8
+}
+
 /**
- * 计算每只 ETF 截至 targetDate 的 5 日涨幅、10 日涨幅及从 targetDate 收盘至今（最新交易日）累计涨幅。
+ * 计算每只 ETF 截至 targetDate 的 5 日涨幅、10 日涨幅、距今累计涨幅以及较前一日市值变化（亿元）。
  */
 export function getCodePerformanceByDate(targetDate: string): Map<string, EtfCodePerformance> {
   const d = db()
@@ -402,18 +410,24 @@ export function getCodePerformanceByDate(targetDate: string): Map<string, EtfCod
   const latestByCode = new Map(latestRows.map(r => [r.code, r]))
 
   const trailingRows = d.prepare(`
-    SELECT code, trade_date, close
+    SELECT code, trade_date, close, nav, total_shares
     FROM (
-      SELECT code, trade_date, close,
+      SELECT code, trade_date, close, nav, total_shares,
              ROW_NUMBER() OVER (PARTITION BY code ORDER BY trade_date DESC) AS rn
       FROM etf_daily_metrics
       WHERE trade_date <= ?
     )
     WHERE rn <= 11
     ORDER BY code ASC, trade_date DESC
-  `).all(targetDate) as Array<{ code: string; trade_date: string; close: number }>
+  `).all(targetDate) as Array<{
+    code: string
+    trade_date: string
+    close: number
+    nav: number | null
+    total_shares: number | null
+  }>
 
-  const grouped = new Map<string, Array<{ trade_date: string; close: number }>>()
+  const grouped = new Map<string, typeof trailingRows>()
   for (const r of trailingRows) {
     const arr = grouped.get(r.code)
     if (arr) arr.push(r)
@@ -425,9 +439,12 @@ export function getCodePerformanceByDate(targetDate: string): Map<string, EtfCod
     const head = rowsDesc[0]
     if (!head || head.trade_date !== targetDate || head.close <= 0) continue
 
+    const prev = rowsDesc[1]
     const base5 = rowsDesc[5]
     const base10 = rowsDesc[10]
     const latest = latestByCode.get(code)
+    const headCap = barCapYi(head)
+    const prevCap = prev ? barCapYi(prev) : null
 
     out.set(code, {
       return_5d: base5 && base5.close > 0 ? roundPct2(((head.close - base5.close) / base5.close) * 100) : null,
@@ -435,6 +452,7 @@ export function getCodePerformanceByDate(targetDate: string): Map<string, EtfCod
       return_since: latest && latest.trade_date > targetDate && latest.close > 0
         ? roundPct2(((latest.close - head.close) / head.close) * 100)
         : null,
+      cap_delta_yi: headCap !== null && prevCap !== null ? roundPct2(headCap - prevCap) : null,
     })
   }
   return out

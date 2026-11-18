@@ -55,7 +55,7 @@ export const etfMonitorRoutes: FastifyPluginAsync<EtfMonitorRoutesOptions> = asy
       .map(u => ({
         ...u,
         metric: metricByCode.get(u.code) ?? null,
-        perf: perfByCode.get(u.code) ?? { return_5d: null, return_10d: null, return_since: null },
+        perf: perfByCode.get(u.code) ?? { return_5d: null, return_10d: null, return_since: null, cap_delta_yi: null },
       }))
     const disabledUniverse = allUniverse.filter(u => !u.enabled)
     return {

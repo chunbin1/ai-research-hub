@@ -333,6 +333,7 @@ export interface EtfCodePerformance {
   return_5d: number | null
   return_10d: number | null
   return_since: number | null
+  cap_delta_yi?: number | null
 }
 
 export interface EtfBoardRow extends EtfUniverseEntry {

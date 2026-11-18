@@ -189,13 +189,20 @@ test('GET /etf/board 返回每只 ETF 的 5日/10日涨幅，历史日期额外�
     updated_at: '2026-11-18T00:00:00Z',
   })))
 
-  // 最新日 2026-11-17 (idx=11, close=1.11): T-5 是 1.06 (+4.72%), T-10 是 1.01 (+9.90%), 距今为 null
+  // 最新日 2026-11-17 (idx=11, nav=1.11, shares=100亿 -> cap=111.0亿)
+  // 前一日 2026-11-16 (idx=10, nav=1.10, shares=100亿 -> cap=110.0亿) -> cap_delta_yi = +1.0亿
   const latestRes = await app.inject({ method: 'GET', url: '/api/etf/board' })
   const latestRow = latestRes.json().rows.find((r: { code: string }) => r.code === '510300')
   assert.ok(latestRow.perf, 'expected perf object on board row')
   assert.equal(latestRow.perf.return_5d, 4.72)
   assert.equal(latestRow.perf.return_10d, 9.9)
   assert.equal(latestRow.perf.return_since, null)
+  assert.equal(latestRow.perf.cap_delta_yi, 1)
+
+  // 首日 2026-11-02 没有前一日基准，cap_delta_yi 为 null
+  const firstRes = await app.inject({ method: 'GET', url: '/api/etf/board?date=2026-11-02' })
+  const firstRow = firstRes.json().rows.find((r: { code: string }) => r.code === '510300')
+  assert.equal(firstRow.perf.cap_delta_yi, null)
 
   // 历史日 2026-11-16 (idx=10, close=1.10): 距最新日 1.11 涨幅 (1.11-1.10)/1.10 = +0.91%
   const histRes = await app.inject({ method: 'GET', url: '/api/etf/board?date=2026-11-16' })

@@ -86,8 +86,8 @@ function makeRows(tradeDate = '2026-11-18'): EtfBoardRow[] {
       created_at: '2026-11-18T00:00:00Z',
       metric,
       perf: s.code === '510310'
-        ? { return_5d: 2.34, return_10d: -1.12, return_since: tradeDate === '2026-11-17' ? 3.45 : null }
-        : { return_5d: 0.5, return_10d: 1.0, return_since: null },
+        ? { return_5d: 2.34, return_10d: -1.12, return_since: tradeDate === '2026-11-17' ? 3.45 : null, cap_delta_yi: 12.6 }
+        : { return_5d: 0.5, return_10d: 1.0, return_since: null, cap_delta_yi: -3.2 },
     }
   })
 }
@@ -403,8 +403,10 @@ describe('EtfMonitorPage', () => {
     }))
 
     renderPage()
-    // 规模 = 100亿份 * 3.94 = 394.0亿，成交额 25亿 -> 换手率约 6.35%
+    // 规模 = 100亿份 * 3.94 = 394.0亿，市值变化 +12.6亿，成交额 25亿 -> 换手率约 6.35%
     await waitFor(() => expect(screen.getAllByText('394.0亿').length).toBeGreaterThan(0))
+    expect(screen.getByText('+12.6亿')).toBeTruthy()
+    expect(screen.getAllByText('-3.2亿').length).toBeGreaterThan(0)
     expect(screen.getAllByText(/换手 6\.35%/).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: '市值' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '5日' })).toBeTruthy()

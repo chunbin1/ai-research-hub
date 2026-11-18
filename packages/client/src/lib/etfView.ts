@@ -168,6 +168,7 @@ export type EtfSortKey =
   | 'net_inflow_yi'
   | 'amount'
   | 'market_cap_yi'
+  | 'cap_delta_yi'
   | 'turnover_rate'
   | 'return_5d'
   | 'return_10d'
@@ -182,6 +183,8 @@ function getSortValue(row: EtfBoardRow, sortKey: Exclude<EtfSortKey, 'default'>)
       return row.metric?.[sortKey] ?? null
     case 'market_cap_yi':
       return computeMarketCapYi(row.metric)
+    case 'cap_delta_yi':
+      return row.perf?.cap_delta_yi ?? null
     case 'turnover_rate':
       return computeTurnoverRate(row.metric)
     case 'return_5d':

@@ -244,20 +244,21 @@ describe('etfView sorting and filtering', () => {
     const rLarge = makeRow({
       code: '510300',
       metric: makeMetric({ total_shares: 500_0000_0000, nav: 4.0, amount: 20_0000_0000 }), // cap 2000亿, turnover 1%
-      perf: { return_5d: 1.5, return_10d: 4.0, return_since: 2.0 },
+      perf: { return_5d: 1.5, return_10d: 4.0, return_since: 2.0, cap_delta_yi: -12.3 },
     })
     const rHot = makeRow({
       code: '159952',
       metric: makeMetric({ total_shares: 100_0000_0000, nav: 2.0, amount: 50_0000_0000 }),   // cap 200亿, turnover 25%
-      perf: { return_5d: 5.2, return_10d: -1.5, return_since: 8.4 },
+      perf: { return_5d: 5.2, return_10d: -1.5, return_since: 8.4, cap_delta_yi: 24.5 },
     })
     const rEmpty = makeRow({
       code: '159915',
       metric: makeMetric({ total_shares: null, amount: 10_0000_0000 }),
-      perf: { return_5d: null, return_10d: null, return_since: null },
+      perf: { return_5d: null, return_10d: null, return_since: null, cap_delta_yi: null },
     })
 
     expect(sortEtfRows([rHot, rEmpty, rLarge], 'market_cap_yi').map(r => r.code)).toEqual(['510300', '159952', '159915'])
+    expect(sortEtfRows([rLarge, rEmpty, rHot], 'cap_delta_yi').map(r => r.code)).toEqual(['159952', '510300', '159915'])
     expect(sortEtfRows([rLarge, rEmpty, rHot], 'turnover_rate').map(r => r.code)).toEqual(['159952', '510300', '159915'])
     expect(sortEtfRows([rLarge, rEmpty, rHot], 'return_5d').map(r => r.code)).toEqual(['159952', '510300', '159915'])
     expect(sortEtfRows([rHot, rEmpty, rLarge], 'return_10d').map(r => r.code)).toEqual(['510300', '159952', '159915'])
