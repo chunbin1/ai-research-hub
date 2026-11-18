@@ -329,8 +329,15 @@ export interface EtfDailyMetric {
   updated_at: string
 }
 
+export interface EtfCodePerformance {
+  return_5d: number | null
+  return_10d: number | null
+  return_since: number | null
+}
+
 export interface EtfBoardRow extends EtfUniverseEntry {
   metric: EtfDailyMetric | null
+  perf?: EtfCodePerformance
 }
 
 export interface EtfDailySummary {

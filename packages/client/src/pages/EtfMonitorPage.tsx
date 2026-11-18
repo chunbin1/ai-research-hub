@@ -6,6 +6,7 @@ import {
   SettingOutlined, ThunderboltOutlined,
 } from '@ant-design/icons'
 import { fetchEtfCodeHistory } from '../api'
+import { TradeDatePicker } from '../components/TradeDatePicker'
 import { useAuth } from '../hooks/useAuth'
 import { useEtfMonitor } from '../hooks/useEtfMonitor'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -16,6 +17,9 @@ import {
   RESONANCE_META,
   SIGNAL_LEVEL_META,
   TIER_LABEL,
+  computeBoardTotalCapYi,
+  computeMarketCapYi,
+  computeTurnoverRate,
   filterEtfCounts,
   formatAmountYuanToYi,
   formatPct,
@@ -40,9 +44,9 @@ import type {
 } from '../types'
 
 const GUTTER = 'px-[18px] md:px-7 lg:px-10'
-const GRID = 'grid grid-cols-[24px_minmax(0,1.4fr)_86px_118px_98px_98px_96px] items-center gap-3'
-  + ' lg:grid-cols-[24px_minmax(0,1.6fr)_104px_148px_118px_118px_108px] lg:gap-4'
-  + ' xl:grid-cols-[24px_minmax(220px,1.8fr)_116px_176px_132px_132px_116px] xl:gap-5'
+const GRID = 'grid grid-cols-[24px_minmax(0,1.4fr)_118px_124px_90px_96px_92px] items-center gap-3'
+  + ' lg:grid-cols-[24px_minmax(0,1.5fr)_148px_150px_106px_112px_104px] lg:gap-4'
+  + ' xl:grid-cols-[24px_minmax(220px,1.7fr)_172px_176px_120px_126px_112px] xl:gap-5'
 
 function resonanceClasses(level: EtfResonanceLevel): string {
   switch (level) {
@@ -158,7 +162,7 @@ function EtfRowDetail({
                   await onUpdateTier(row.code, e.target.value as EtfTier)
                   setBusy(false)
                 }}
-                className="rounded-[4px] border border-edge bg-white px-2 py-1 text-[12px] text-ink"
+                className="cursor-pointer rounded-[4px] border border-edge bg-white px-2 py-1 text-[12px] text-ink disabled:cursor-not-allowed"
               >
                 {ETF_TIER_ORDER.map(t => (
                   <option key={t} value={t}>{TIER_LABEL[t]}</option>
@@ -173,7 +177,7 @@ function EtfRowDetail({
                 await onDisable(row.code)
                 setBusy(false)
               }}
-              className="rounded-[4px] border border-edge bg-white px-2.5 py-1 text-[12px] text-ink-soft hover:border-ink-faint disabled:opacity-50"
+              className="cursor-pointer rounded-[4px] border border-edge bg-white px-2.5 py-1 text-[12px] text-ink-soft hover:border-ink-faint disabled:cursor-not-allowed disabled:opacity-50"
             >
               停用
             </button>
@@ -190,7 +194,7 @@ function EtfRowDetail({
                 setBusy(false)
               }}
             >
-              <button type="button" disabled={busy} className="text-[12px] text-danger disabled:opacity-50">
+              <button type="button" disabled={busy} className="cursor-pointer text-[12px] text-danger disabled:cursor-not-allowed disabled:opacity-50">
                 删除
               </button>
             </Popconfirm>
@@ -210,7 +214,9 @@ function EtfRowDetail({
               <tr className="border-b border-rule text-ink-mute">
                 <th className="py-1.5 pr-3 font-normal">日期</th>
                 <th className="py-1.5 pr-3 text-right font-normal">收盘 / 涨跌</th>
+                <th className="py-1.5 pr-3 text-right font-normal">规模</th>
                 <th className="py-1.5 pr-3 text-right font-normal">成交额</th>
+                <th className="py-1.5 pr-3 text-right font-normal">换手率</th>
                 <th className="py-1.5 pr-3 text-right font-normal">20日放量</th>
                 <th className="py-1.5 pr-3 text-right font-normal">溢价率</th>
                 <th className="py-1.5 pr-3 text-right font-normal">净申购</th>
@@ -220,6 +226,8 @@ function EtfRowDetail({
             <tbody>
               {history.slice(0, 15).map(item => {
                 const sig = SIGNAL_LEVEL_META[item.signal_level]
+                const capYi = computeMarketCapYi(item)
+                const turnover = computeTurnoverRate(item)
                 return (
                   <tr key={item.trade_date} className="border-b border-row-rule last:border-b-0">
                     <td className="py-1.5 pr-3 font-numeral text-ink-soft">{item.trade_date}</td>
@@ -228,7 +236,13 @@ function EtfRowDetail({
                       <span className={pctToneClass(item.pct_change)}>{formatPct(item.pct_change)}</span>
                     </td>
                     <td className="py-1.5 pr-3 text-right font-numeral text-ink-soft">
+                      {formatYi(capYi)}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-numeral text-ink-soft">
                       {formatAmountYuanToYi(item.amount)}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-numeral text-ink-soft">
+                      {turnover !== null ? `${turnover.toFixed(2)}%` : '—'}
                     </td>
                     <td className="py-1.5 pr-3 text-right font-numeral text-ink">
                       {formatRatio(item.vol_ratio_20)}
@@ -277,9 +291,9 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expand
     <div className="border-t border-ink">
       <div className={`${GRID} border-b border-rule py-3 text-[12px] tracking-[0.02em] text-ink-mute`}>
         <span aria-hidden />
-        <span>ETF 标的</span>
-        <span className="text-right">收盘 / 涨跌</span>
-        <span>成交额与放量</span>
+        <span>ETF 标的 / 规模</span>
+        <span className="text-right">收盘 / 阶段涨跌</span>
+        <span>成交 / 换手 / 放量</span>
         <span className="text-right">收盘溢价率</span>
         <span className="text-right">净申购估算</span>
         <span>当日状态</span>
@@ -300,6 +314,9 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expand
         const open = expanded === r.code
         const m = r.metric
         const sig = m ? SIGNAL_LEVEL_META[m.signal_level] : null
+        const capYi = computeMarketCapYi(m)
+        const turnover = computeTurnoverRate(m)
+        const perf = r.perf
         return (
           <div key={r.code} className="border-b border-row-rule last:border-b-0">
             {showGroupHeader && (
@@ -316,7 +333,7 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expand
                 aria-expanded={open}
                 aria-label={`展开 ${r.code} 历史走势`}
                 onClick={e => { e.stopPropagation(); onToggle(r.code) }}
-                className="text-[13px] leading-none text-ink-faint"
+                className="cursor-pointer text-[13px] leading-none text-ink-faint"
               >
                 <RightOutlined className={`transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden />
               </button>
@@ -326,19 +343,36 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expand
                   <span className="font-numeral text-[15px] font-medium text-ink">{r.code}</span>
                   <span className="truncate text-[14px] text-ink">{r.name}</span>
                 </div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-faint">
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint">
                   <span className="border border-edge bg-white px-1.5 py-px text-ink-mute">{TIER_LABEL[r.tier]}</span>
                   <span>{r.market === 'SH' ? '沪市' : '深市'}</span>
+                  {capYi !== null && (
+                    <span className="font-numeral text-ink-soft">· 规模 {formatYi(capYi)}</span>
+                  )}
                 </div>
               </div>
 
               <div className="text-right">
                 {m ? (
                   <>
-                    <div className="font-numeral text-[15px] font-semibold text-ink">{m.close.toFixed(3)}</div>
-                    <div className={`font-numeral text-[12px] ${pctToneClass(m.pct_change)}`}>
-                      {formatPct(m.pct_change)}
+                    <div className="flex items-baseline justify-end gap-1.5 font-numeral">
+                      <span className="text-[15px] font-semibold text-ink">{m.close.toFixed(3)}</span>
+                      <span className={`text-[12px] ${pctToneClass(m.pct_change)}`}>
+                        {formatPct(m.pct_change)}
+                      </span>
                     </div>
+                    {(perf?.return_5d != null || perf?.return_10d != null) && (
+                      <div className="mt-0.5 font-numeral text-[10px] text-ink-mute">
+                        5日 <span className={pctToneClass(perf?.return_5d ?? null)}>{formatPct(perf?.return_5d ?? null)}</span>
+                        {' · '}
+                        10日 <span className={pctToneClass(perf?.return_10d ?? null)}>{formatPct(perf?.return_10d ?? null)}</span>
+                      </div>
+                    )}
+                    {perf?.return_since != null && (
+                      <div className="font-numeral text-[10px] font-medium text-ink-mute">
+                        距今 <span className={pctToneClass(perf.return_since)}>{formatPct(perf.return_since)}</span>
+                      </div>
+                    )}
                   </>
                 ) : <span className="text-[12px] text-ink-faint">—</span>}
               </div>
@@ -358,6 +392,9 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, expand
                         style={{ width: volBarWidth(m.vol_ratio_20) }}
                       />
                     </span>
+                    <div className="font-numeral text-[10px] text-ink-faint">
+                      {turnover !== null ? `换手 ${turnover.toFixed(2)}%` : '换手 —'}
+                    </div>
                   </>
                 ) : <span className="text-[12px] text-ink-faint">—</span>}
               </div>
@@ -421,17 +458,21 @@ function EtfCards({ rows, loading, empty, expanded, onToggle, renderDetail }: Om
         const m = r.metric
         const sig = m ? SIGNAL_LEVEL_META[m.signal_level] : null
         const open = expanded === r.code
+        const capYi = computeMarketCapYi(m)
+        const turnover = computeTurnoverRate(m)
+        const perf = r.perf
         return (
           <article key={r.code} className="border-b border-row-rule last:border-b-0">
-            <div className="flex flex-col gap-2.5 py-3.5" onClick={() => onToggle(r.code)}>
+            <div className="flex cursor-pointer flex-col gap-2.5 py-3.5" onClick={() => onToggle(r.code)}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-numeral text-[15px] font-medium text-ink">{r.code}</span>
                     <span className="truncate text-[14px] font-medium text-ink">{r.name}</span>
                   </div>
-                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-ink-faint">
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint">
                     <span className="border border-edge bg-white px-1.5 py-px text-ink-mute">{TIER_LABEL[r.tier]}</span>
+                    {capYi !== null && <span className="font-numeral text-ink-soft">规模 {formatYi(capYi)}</span>}
                     {sig && (
                       <span className={`rounded-[3px] border px-1.5 py-px ${signalClasses(m!.signal_level)}`}>
                         {sig.label}
@@ -454,19 +495,28 @@ function EtfCards({ rows, loading, empty, expanded, onToggle, renderDetail }: Om
               {m && (
                 <div className="grid grid-cols-3 gap-2 border border-rule bg-white px-2.5 py-2 text-[12px]">
                   <div>
-                    <div className="text-[10px] text-ink-faint">成交 / 放量</div>
+                    <div className="text-[10px] text-ink-faint">成交 / 放量 / 换手</div>
                     <div className="font-numeral font-semibold text-ink">
                       {formatAmountYuanToYi(m.amount)} · {formatRatio(m.vol_ratio_20)}
                     </div>
+                    {turnover !== null && (
+                      <div className="font-numeral text-[10px] text-ink-mute">换手 {turnover.toFixed(2)}%</div>
+                    )}
                   </div>
                   <div>
-                    <div className="text-[10px] text-ink-faint">溢价率</div>
+                    <div className="text-[10px] text-ink-faint">溢价率 / 阶段</div>
                     <div className={`font-numeral font-medium ${pctToneClass(m.premium_rate)}`}>
                       {formatPremium(m.premium_rate)}
                       {m.nav_source === 'iopv' && (
                         <span className="ml-1 border border-edge px-1 text-[9px] text-ink-mute">IOPV</span>
                       )}
                     </div>
+                    {(perf?.return_5d != null || perf?.return_since != null) && (
+                      <div className="font-numeral text-[10px] text-ink-mute">
+                        5日 {formatPct(perf?.return_5d ?? null)}
+                        {perf?.return_since != null ? ` · 距今 ${formatPct(perf.return_since)}` : ''}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] text-ink-faint">净申购</div>
@@ -483,7 +533,7 @@ function EtfCards({ rows, loading, empty, expanded, onToggle, renderDetail }: Om
                   aria-expanded={open}
                   aria-label={`展开 ${r.code} 历史走势`}
                   onClick={e => { e.stopPropagation(); onToggle(r.code) }}
-                  className="text-[11px] text-navy"
+                  className="cursor-pointer text-[11px] text-navy"
                 >
                   {open ? '收起 15 日走势' : '查看 15 日走势'}
                 </button>
@@ -657,7 +707,7 @@ function ManageUniverseModal({
               aria-label="选择梯队"
               value={tier}
               onChange={e => setTier(e.target.value as EtfTier)}
-              className="rounded-[4px] border border-edge bg-white px-2.5 py-1.5 text-ink"
+              className="cursor-pointer rounded-[4px] border border-edge bg-white px-2.5 py-1.5 text-ink"
             >
               {ETF_TIER_ORDER.map(t => (
                 <option key={t} value={t}>{TIER_LABEL[t]}</option>
@@ -667,7 +717,7 @@ function ManageUniverseModal({
               type="button"
               disabled={submitting}
               onClick={() => void submitAdd()}
-              className="rounded-[4px] bg-ink px-3 py-1.5 text-page disabled:opacity-50"
+              className="cursor-pointer rounded-[4px] bg-ink px-3 py-1.5 text-page disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? '添加中…' : '添加 ETF'}
             </button>
@@ -699,7 +749,7 @@ function ManageUniverseModal({
                       setSubmitting(false)
                       if (msg) setErr(msg)
                     }}
-                    className="rounded-[4px] border border-navy-edge bg-navy-wash px-2.5 py-1 text-[12px] text-navy hover:border-navy disabled:opacity-50"
+                    className="cursor-pointer rounded-[4px] border border-navy-edge bg-navy-wash px-2.5 py-1 text-[12px] text-navy hover:border-navy disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     恢复启用
                   </button>
@@ -757,6 +807,7 @@ export default function EtfMonitorPage() {
     () => visibleTimeline.reduce((max, d) => Math.max(max, d.total_amount_yi), 0),
     [visibleTimeline],
   )
+  const totalCapInfo = useMemo(() => computeBoardTotalCapYi(rows), [rows])
 
   const summary = board?.summary ?? null
   const activeDate = summary?.trade_date ?? selectedDate ?? null
@@ -821,7 +872,7 @@ export default function EtfMonitorPage() {
             <button
               type="button"
               onClick={() => setParamsOpen(true)}
-              className="flex h-10 items-center gap-1.5 rounded-[4px] border border-edge bg-white px-3 text-[13px] text-ink-soft hover:border-ink-faint"
+              className="flex h-10 cursor-pointer items-center gap-1.5 rounded-[4px] border border-edge bg-white px-3 text-[13px] text-ink-soft hover:border-ink-faint"
             >
               <SettingOutlined aria-hidden />
               <span>参数设置</span>
@@ -829,7 +880,7 @@ export default function EtfMonitorPage() {
             <button
               type="button"
               onClick={() => setManageOpen(true)}
-              className="flex h-10 items-center gap-1.5 rounded-[4px] border border-edge bg-white px-3 text-[13px] text-ink-soft hover:border-ink-faint"
+              className="flex h-10 cursor-pointer items-center gap-1.5 rounded-[4px] border border-edge bg-white px-3 text-[13px] text-ink-soft hover:border-ink-faint"
             >
               <PlusOutlined aria-hidden />
               <span>管理标的</span>
@@ -838,7 +889,7 @@ export default function EtfMonitorPage() {
               type="button"
               disabled={scanning}
               onClick={() => void scan()}
-              className="flex h-10 items-center gap-1.5 rounded-[4px] bg-ink px-4 text-[13px] font-medium text-page disabled:opacity-60"
+              className="flex h-10 cursor-pointer items-center gap-1.5 rounded-[4px] bg-ink px-4 text-[13px] font-medium text-page disabled:cursor-not-allowed disabled:opacity-60"
             >
               {scanning ? <LoadingOutlined aria-hidden /> : <ThunderboltOutlined aria-hidden />}
               <span>{scanning ? '扫描中…' : '立即扫描'}</span>
@@ -885,22 +936,18 @@ export default function EtfMonitorPage() {
                     <button
                       type="button"
                       onClick={() => selectDate(undefined)}
-                      className="text-navy hover:text-brick"
+                      className="cursor-pointer text-navy hover:text-brick"
                     >
                       回到最新
                     </button>
                   )}
                   {board && board.availableDates.length > 0 && (
-                    <select
-                      aria-label="选择历史交易日"
-                      value={activeDate ?? ''}
-                      onChange={e => selectDate(e.target.value || undefined)}
-                      className="rounded-[4px] border border-edge bg-white px-2 py-1 font-numeral text-[12px] text-ink"
-                    >
-                      {board.availableDates.map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
+                    <TradeDatePicker
+                      value={activeDate}
+                      availableDates={board.availableDates}
+                      timeline={timeline}
+                      onChange={d => selectDate(d)}
+                    />
                   )}
                 </div>
               </div>
@@ -930,7 +977,11 @@ export default function EtfMonitorPage() {
                       {formatRatio(summary.aggregate_vol_ratio)}
                     </span>
                   </div>
-                  <div className="text-[11px] text-ink-faint">相对近 20 日均额</div>
+                  <div className="font-numeral text-[11px] text-ink-faint">
+                    {totalCapInfo.totalCapYi !== null && totalCapInfo.totalCapYi > 0
+                      ? `参考规模 ${formatYi(totalCapInfo.totalCapYi)} · 换手 ${((summary.total_amount_yi / totalCapInfo.totalCapYi) * 100).toFixed(2)}%${totalCapInfo.coveredCount < rows.length ? ` (${totalCapInfo.coveredCount}/${rows.length}只)` : ''}`
+                      : '相对近 20 日均额'}
+                  </div>
                 </div>
                 <div>
                   <div className="text-[11px] text-ink-mute">合计净申购估算</div>
@@ -965,7 +1016,7 @@ export default function EtfMonitorPage() {
                   type="button"
                   aria-pressed={timelineDays === 60}
                   onClick={() => setTimelineDays(60)}
-                  className={`rounded-[3px] border px-2 py-0.5 ${timelineDays === 60 ? 'border-navy bg-navy text-page' : 'border-edge text-ink-soft'}`}
+                  className={`cursor-pointer rounded-[3px] border px-2 py-0.5 ${timelineDays === 60 ? 'border-navy bg-navy text-page' : 'border-edge text-ink-soft'}`}
                 >
                   近60日
                 </button>
@@ -973,7 +1024,7 @@ export default function EtfMonitorPage() {
                   type="button"
                   aria-pressed={timelineDays === 90}
                   onClick={() => setTimelineDays(90)}
-                  className={`rounded-[3px] border px-2 py-0.5 ${timelineDays === 90 ? 'border-navy bg-navy text-page' : 'border-edge text-ink-soft'}`}
+                  className={`cursor-pointer rounded-[3px] border px-2 py-0.5 ${timelineDays === 90 ? 'border-navy bg-navy text-page' : 'border-edge text-ink-soft'}`}
                 >
                   近90日
                 </button>
@@ -991,7 +1042,7 @@ export default function EtfMonitorPage() {
                     aria-label={tip}
                     title={tip}
                     onClick={() => selectDate(day.trade_date)}
-                    className={`min-w-[6px] flex-1 rounded-t-[2px] transition-opacity hover:opacity-80 ${timelineBarColor(day.resonance_level)} ${
+                    className={`min-w-[6px] flex-1 cursor-pointer rounded-t-[2px] transition-opacity hover:opacity-80 ${timelineBarColor(day.resonance_level)} ${
                       isSelected ? 'ring-2 ring-ink ring-offset-1' : ''
                     }`}
                     style={{ height: `${barHeightPx(day, maxTimelineAmount)}px` }}
@@ -1012,7 +1063,7 @@ export default function EtfMonitorPage() {
               type="button"
               aria-pressed={filter === f.key}
               onClick={() => setFilter(f.key)}
-              className={`tap-44 shrink-0 whitespace-nowrap rounded-full border px-[13px] py-1.5 text-[12px] ${
+              className={`tap-44 shrink-0 cursor-pointer whitespace-nowrap rounded-full border px-[13px] py-1.5 text-[12px] ${
                 filter === f.key
                   ? 'border-navy bg-navy text-page'
                   : 'border-edge bg-white text-ink-soft hover:border-ink-faint'
@@ -1043,7 +1094,7 @@ export default function EtfMonitorPage() {
                 type="button"
                 aria-label="清空搜索"
                 onClick={() => setQuery('')}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-[11px] leading-none text-ink-faint hover:text-ink-soft"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 cursor-pointer p-1.5 text-[11px] leading-none text-ink-faint hover:text-ink-soft"
               >
                 <CloseOutlined aria-hidden />
               </button>
@@ -1054,13 +1105,18 @@ export default function EtfMonitorPage() {
             aria-label="排序方式"
             value={sortKey}
             onChange={e => setSortKey(e.target.value as EtfSortKey)}
-            className="h-9 rounded-[4px] border border-edge bg-white px-2.5 text-[12px] text-ink-soft"
+            className="h-9 cursor-pointer rounded-[4px] border border-edge bg-white px-2.5 text-[12px] text-ink-soft"
           >
             <option value="default">按梯队分组</option>
             <option value="vol_ratio_20">按放量倍数</option>
-            <option value="premium_rate">按溢价率</option>
             <option value="net_inflow_yi">按净申购</option>
+            <option value="market_cap_yi">按市值(规模)</option>
+            <option value="turnover_rate">按换手率</option>
+            <option value="premium_rate">按溢价率</option>
             <option value="amount">按成交额</option>
+            <option value="return_5d">按5日涨幅</option>
+            <option value="return_10d">按10日涨幅</option>
+            <option value="return_since">按距今涨幅</option>
           </select>
         </div>
       </div>

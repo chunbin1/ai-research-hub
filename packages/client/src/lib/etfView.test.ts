@@ -6,6 +6,9 @@ import {
   RESONANCE_META,
   SIGNAL_LEVEL_META,
   TIER_LABEL,
+  computeBoardTotalCapYi,
+  computeMarketCapYi,
+  computeTurnoverRate,
   filterEtfCounts,
   formatAmountYuanToYi,
   formatPremium,
@@ -221,5 +224,44 @@ describe('etfView sorting and filtering', () => {
     expect(matchesEtfQuery(mega, '上证50')).toBe(true)
     expect(matchesEtfQuery(mega, '300')).toBe(false)
     expect(matchesEtfQuery(mega, '  ')).toBe(true)
+  })
+
+  test('computeMarketCapYi, computeTurnoverRate, computeBoardTotalCapYi and size/turnover sorts', () => {
+    // 100亿份 * 4.04元 = 404亿元；成交40.5亿 -> 换手率约 10.02%
+    const m = makeMetric({ total_shares: 100_0000_0000, nav: 4.04, close: 4.05, amount: 40_5000_0000 })
+    expect(computeMarketCapYi(m)).toBeCloseTo(404, 2)
+    expect(computeTurnoverRate(m)).toBeCloseTo((40.5 / 404) * 100, 2)
+
+    const fallbackClose = makeMetric({ total_shares: 50_0000_0000, nav: null, close: 2.0, amount: 5_0000_0000 })
+    expect(computeMarketCapYi(fallbackClose)).toBeCloseTo(100, 2)
+    expect(computeTurnoverRate(fallbackClose)).toBeCloseTo(5, 2)
+
+    const noShares = makeMetric({ total_shares: null })
+    expect(computeMarketCapYi(noShares)).toBeNull()
+    expect(computeTurnoverRate(noShares)).toBeNull()
+    expect(computeMarketCapYi(null)).toBeNull()
+
+    const rLarge = makeRow({
+      code: '510300',
+      metric: makeMetric({ total_shares: 500_0000_0000, nav: 4.0, amount: 20_0000_0000 }), // cap 2000亿, turnover 1%
+      perf: { return_5d: 1.5, return_10d: 4.0, return_since: 2.0 },
+    })
+    const rHot = makeRow({
+      code: '159952',
+      metric: makeMetric({ total_shares: 100_0000_0000, nav: 2.0, amount: 50_0000_0000 }),   // cap 200亿, turnover 25%
+      perf: { return_5d: 5.2, return_10d: -1.5, return_since: 8.4 },
+    })
+    const rEmpty = makeRow({
+      code: '159915',
+      metric: makeMetric({ total_shares: null, amount: 10_0000_0000 }),
+      perf: { return_5d: null, return_10d: null, return_since: null },
+    })
+
+    expect(sortEtfRows([rHot, rEmpty, rLarge], 'market_cap_yi').map(r => r.code)).toEqual(['510300', '159952', '159915'])
+    expect(sortEtfRows([rLarge, rEmpty, rHot], 'turnover_rate').map(r => r.code)).toEqual(['159952', '510300', '159915'])
+    expect(sortEtfRows([rLarge, rEmpty, rHot], 'return_5d').map(r => r.code)).toEqual(['159952', '510300', '159915'])
+    expect(sortEtfRows([rHot, rEmpty, rLarge], 'return_10d').map(r => r.code)).toEqual(['510300', '159952', '159915'])
+    expect(sortEtfRows([rLarge, rEmpty, rHot], 'return_since').map(r => r.code)).toEqual(['159952', '510300', '159915'])
+    expect(computeBoardTotalCapYi([rLarge, rHot, rEmpty])).toEqual({ totalCapYi: 2200, coveredCount: 2 })
   })
 })

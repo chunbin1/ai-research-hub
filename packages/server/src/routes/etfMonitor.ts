@@ -7,8 +7,8 @@ import { describeRoute } from '../openapi/doc.js'
 import { requireAdmin } from './auth.js'
 import {
   addUniverseEntry, deleteUniverseEntry, getBoardByDate, getCodeHistory,
-  getTimelineSummaries, getUniverseEntry, listUniverse, updateUniverseEntry,
-  type EtfTier,
+  getCodePerformanceByDate, getTimelineSummaries, getUniverseEntry, listUniverse,
+  updateUniverseEntry, type EtfTier,
 } from '../services/etfMonitorStore.js'
 import {
   ETF_LAST_SCAN_KEY, getEtfParams, isEtfMonitorEnabled,
@@ -46,6 +46,8 @@ export const etfMonitorRoutes: FastifyPluginAsync<EtfMonitorRoutesOptions> = asy
       return reply.status(400).send({ error: 'invalid_input', message: 'date 须为 YYYY-MM-DD' })
     }
     const board = getBoardByDate(date)
+    const targetDate = board.summary?.trade_date ?? board.metrics[0]?.trade_date ?? date
+    const perfByCode = targetDate ? getCodePerformanceByDate(targetDate) : new Map()
     const metricByCode = new Map(board.metrics.map(m => [m.code, m]))
     const allUniverse = listUniverse()
     const rows = allUniverse
@@ -53,6 +55,7 @@ export const etfMonitorRoutes: FastifyPluginAsync<EtfMonitorRoutesOptions> = asy
       .map(u => ({
         ...u,
         metric: metricByCode.get(u.code) ?? null,
+        perf: perfByCode.get(u.code) ?? { return_5d: null, return_10d: null, return_since: null },
       }))
     const disabledUniverse = allUniverse.filter(u => !u.enabled)
     return {

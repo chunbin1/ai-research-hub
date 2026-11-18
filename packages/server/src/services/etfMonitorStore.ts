@@ -374,3 +374,68 @@ export function getCodeHistory(code: string, days: number): EtfDailyMetricRow[] 
     'SELECT * FROM etf_daily_metrics WHERE code = ? ORDER BY trade_date DESC LIMIT ?',
   ).all(code, limit) as EtfDailyMetricRow[]
 }
+
+export interface EtfCodePerformance {
+  return_5d: number | null
+  return_10d: number | null
+  return_since: number | null
+}
+
+function roundPct2(val: number): number {
+  return Math.round(val * 100) / 100
+}
+
+/**
+ * 计算每只 ETF 截至 targetDate 的 5 日涨幅、10 日涨幅及从 targetDate 收盘至今（最新交易日）累计涨幅。
+ */
+export function getCodePerformanceByDate(targetDate: string): Map<string, EtfCodePerformance> {
+  const d = db()
+  const latestRows = d.prepare(`
+    SELECT m.code, m.trade_date, m.close
+    FROM etf_daily_metrics m
+    INNER JOIN (
+      SELECT code, MAX(trade_date) AS max_dt
+      FROM etf_daily_metrics
+      GROUP BY code
+    ) x ON m.code = x.code AND m.trade_date = x.max_dt
+  `).all() as Array<{ code: string; trade_date: string; close: number }>
+  const latestByCode = new Map(latestRows.map(r => [r.code, r]))
+
+  const trailingRows = d.prepare(`
+    SELECT code, trade_date, close
+    FROM (
+      SELECT code, trade_date, close,
+             ROW_NUMBER() OVER (PARTITION BY code ORDER BY trade_date DESC) AS rn
+      FROM etf_daily_metrics
+      WHERE trade_date <= ?
+    )
+    WHERE rn <= 11
+    ORDER BY code ASC, trade_date DESC
+  `).all(targetDate) as Array<{ code: string; trade_date: string; close: number }>
+
+  const grouped = new Map<string, Array<{ trade_date: string; close: number }>>()
+  for (const r of trailingRows) {
+    const arr = grouped.get(r.code)
+    if (arr) arr.push(r)
+    else grouped.set(r.code, [r])
+  }
+
+  const out = new Map<string, EtfCodePerformance>()
+  for (const [code, rowsDesc] of grouped.entries()) {
+    const head = rowsDesc[0]
+    if (!head || head.trade_date !== targetDate || head.close <= 0) continue
+
+    const base5 = rowsDesc[5]
+    const base10 = rowsDesc[10]
+    const latest = latestByCode.get(code)
+
+    out.set(code, {
+      return_5d: base5 && base5.close > 0 ? roundPct2(((head.close - base5.close) / base5.close) * 100) : null,
+      return_10d: base10 && base10.close > 0 ? roundPct2(((head.close - base10.close) / base10.close) * 100) : null,
+      return_since: latest && latest.trade_date > targetDate && latest.close > 0
+        ? roundPct2(((latest.close - head.close) / head.close) * 100)
+        : null,
+    })
+  }
+  return out
+}

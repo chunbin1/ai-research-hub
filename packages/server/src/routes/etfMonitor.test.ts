@@ -146,3 +146,59 @@ test('POST /etf/universe 在上游探测异常时返回 502 而非 500', async (
   const res = await app.inject({ method: 'POST', url: '/api/etf/universe', payload: { code: '510350', tier: 'mega' } })
   assert.equal(res.statusCode, 502)
 })
+
+test('GET /etf/board 返回每只 ETF 的 5日/10日涨幅，历史日期额外返回距今涨幅', async () => {
+  const { app } = await freshApp()
+  // 插入连续 12 个交易日（day 1..12），收盘价分别为 1.00 .. 1.11，便于验证 T-5 / T-10 / 距今涨幅
+  const dates = [
+    '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06',
+    '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13',
+    '2026-11-16', '2026-11-17',
+  ]
+  upsertDailyMetrics(dates.map((d, idx) => ({
+    code: '510300',
+    trade_date: d,
+    open: 1 + idx * 0.01,
+    close: Number((1 + idx * 0.01).toFixed(4)),
+    pct_change: 0.5,
+    volume: 1e8,
+    amount: 10e8,
+    vol_ratio_5: 1.0,
+    vol_ratio_20: null,
+    nav: Number((1 + idx * 0.01).toFixed(4)),
+    nav_source: 'official',
+    premium_rate: 0,
+    total_shares: 100e8,
+    share_source: 'sse_history',
+    share_delta: 0,
+    net_inflow_yi: 0,
+    signal_level: 'normal',
+    updated_at: '2026-11-18T00:00:00Z',
+  })))
+  upsertDailySummaries(dates.map(d => ({
+    trade_date: d,
+    resonance_level: 'none',
+    active_count: 18,
+    volume_spike_count: 0,
+    support_etf_count: 0,
+    support_tier_count: 0,
+    total_amount_yi: 10,
+    aggregate_vol_ratio: null,
+    total_net_inflow_yi: 0,
+    data_stage: 'partial_shares',
+    updated_at: '2026-11-18T00:00:00Z',
+  })))
+
+  // 最新日 2026-11-17 (idx=11, close=1.11): T-5 是 1.06 (+4.72%), T-10 是 1.01 (+9.90%), 距今为 null
+  const latestRes = await app.inject({ method: 'GET', url: '/api/etf/board' })
+  const latestRow = latestRes.json().rows.find((r: { code: string }) => r.code === '510300')
+  assert.ok(latestRow.perf, 'expected perf object on board row')
+  assert.equal(latestRow.perf.return_5d, 4.72)
+  assert.equal(latestRow.perf.return_10d, 9.9)
+  assert.equal(latestRow.perf.return_since, null)
+
+  // 历史日 2026-11-16 (idx=10, close=1.10): 距最新日 1.11 涨幅 (1.11-1.10)/1.10 = +0.91%
+  const histRes = await app.inject({ method: 'GET', url: '/api/etf/board?date=2026-11-16' })
+  const histRow = histRes.json().rows.find((r: { code: string }) => r.code === '510300')
+  assert.equal(histRow.perf.return_since, 0.91)
+})

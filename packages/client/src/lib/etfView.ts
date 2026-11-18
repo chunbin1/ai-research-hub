@@ -1,6 +1,7 @@
 import type {
   EtfBoardRow,
   EtfDataStage,
+  EtfDailyMetric,
   EtfResonanceLevel,
   EtfSignalLevel,
   EtfTier,
@@ -88,6 +89,39 @@ export function volBarWidth(volRatio: number | null): string {
   return `${pct.toFixed(1)}%`
 }
 
+/** 场内流通规模（市值，亿元）= 总份额 × 净值(缺净值时退回收盘价) / 1e8 */
+export function computeMarketCapYi(metric: EtfDailyMetric | null): number | null {
+  if (!metric || metric.total_shares === null || !Number.isFinite(metric.total_shares) || metric.total_shares <= 0) {
+    return null
+  }
+  const priceRef = metric.nav !== null && metric.nav > 0 ? metric.nav : metric.close
+  if (!Number.isFinite(priceRef) || priceRef <= 0) return null
+  return (metric.total_shares * priceRef) / 1e8
+}
+
+/** 日换手率（%）= 成交额(亿元) / 市值(亿元) × 100 */
+export function computeTurnoverRate(metric: EtfDailyMetric | null): number | null {
+  const capYi = computeMarketCapYi(metric)
+  if (capYi === null || capYi <= 0 || !metric || !Number.isFinite(metric.amount)) return null
+  return ((metric.amount / 1e8) / capYi) * 100
+}
+
+/** 统计当前看板已获取规模的 ETF 总市值（亿元）及覆盖只数 */
+export function computeBoardTotalCapYi(
+  rows: readonly EtfBoardRow[],
+): { totalCapYi: number | null; coveredCount: number } {
+  let sum = 0
+  let count = 0
+  for (const r of rows) {
+    const cap = computeMarketCapYi(r.metric)
+    if (cap !== null) {
+      sum += cap
+      count++
+    }
+  }
+  return { totalCapYi: count > 0 ? sum : null, coveredCount: count }
+}
+
 export type EtfFilterKey = 'all' | 'active' | EtfTier
 
 export const ETF_FILTERS: readonly { key: EtfFilterKey; label: string }[] = [
@@ -127,7 +161,35 @@ export function filterEtfCounts(rows: readonly EtfBoardRow[]): Record<EtfFilterK
   return counts
 }
 
-export type EtfSortKey = 'default' | 'vol_ratio_20' | 'premium_rate' | 'net_inflow_yi' | 'amount'
+export type EtfSortKey =
+  | 'default'
+  | 'vol_ratio_20'
+  | 'premium_rate'
+  | 'net_inflow_yi'
+  | 'amount'
+  | 'market_cap_yi'
+  | 'turnover_rate'
+  | 'return_5d'
+  | 'return_10d'
+  | 'return_since'
+
+function getSortValue(row: EtfBoardRow, sortKey: Exclude<EtfSortKey, 'default'>): number | null {
+  switch (sortKey) {
+    case 'vol_ratio_20':
+    case 'premium_rate':
+    case 'net_inflow_yi':
+    case 'amount':
+      return row.metric?.[sortKey] ?? null
+    case 'market_cap_yi':
+      return computeMarketCapYi(row.metric)
+    case 'turnover_rate':
+      return computeTurnoverRate(row.metric)
+    case 'return_5d':
+    case 'return_10d':
+    case 'return_since':
+      return row.perf?.[sortKey] ?? null
+  }
+}
 
 function compareDefaultOrder(a: EtfBoardRow, b: EtfBoardRow): number {
   const tierDiff = ETF_TIER_ORDER.indexOf(a.tier) - ETF_TIER_ORDER.indexOf(b.tier)
@@ -142,8 +204,8 @@ export function sortEtfRows(rows: readonly EtfBoardRow[], sortKey: EtfSortKey): 
     return copy.sort(compareDefaultOrder)
   }
   return copy.sort((a, b) => {
-    const va = a.metric?.[sortKey] ?? null
-    const vb = b.metric?.[sortKey] ?? null
+    const va = getSortValue(a, sortKey)
+    const vb = getSortValue(b, sortKey)
     if (va === null && vb === null) return compareDefaultOrder(a, b)
     if (va === null) return 1
     if (vb === null) return -1

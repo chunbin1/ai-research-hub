@@ -85,6 +85,9 @@ function makeRows(tradeDate = '2026-11-18'): EtfBoardRow[] {
       sort_order: (idx + 1) * 10,
       created_at: '2026-11-18T00:00:00Z',
       metric,
+      perf: s.code === '510310'
+        ? { return_5d: 2.34, return_10d: -1.12, return_since: tradeDate === '2026-11-17' ? 3.45 : null }
+        : { return_5d: 0.5, return_10d: 1.0, return_since: null },
     }
   })
 }
@@ -381,5 +384,35 @@ describe('EtfMonitorPage', () => {
 
     await waitFor(() => expect(screen.getAllByText('2.85x')[0].className).toContain('text-long'))
     await waitFor(() => expect(historyCalls).toBe(2))
+  })
+
+  test('displays market cap, turnover rate, multi-day returns and opens calendar popover to switch date', async () => {
+    const board18 = makeBoard({ summary: makeSummary({ trade_date: '2026-11-18' }) })
+    const board17 = makeBoard({
+      summary: makeSummary({ trade_date: '2026-11-17', total_net_inflow_yi: 222.5 }),
+      rows: makeRows('2026-11-17'),
+    })
+    const timeline = makeTimeline()
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/auth/me')) return { ok: false, json: async () => null } as Response
+      if (url.includes('/api/etf/timeline')) return { ok: true, json: async () => ({ days: timeline }) } as Response
+      if (url.includes('/api/etf/board?date=2026-11-17')) return { ok: true, json: async () => board17 } as Response
+      if (url.includes('/api/etf/board')) return { ok: true, json: async () => board18 } as Response
+      return { ok: false, json: async () => null } as Response
+    }))
+
+    renderPage()
+    // 规模 = 100亿份 * 3.94 = 394.0亿，成交额 25亿 -> 换手率约 6.35%
+    await waitFor(() => expect(screen.getAllByText(/规模 394\.0亿/).length).toBeGreaterThan(0))
+    expect(screen.getAllByText(/换手 6\.35%/).length).toBeGreaterThan(0)
+    expect(screen.getByText('+2.34%')).toBeTruthy()
+    expect(screen.getByText('-1.12%')).toBeTruthy()
+
+    // 打开日历选择器点击 2026-11-17 后应展示 距今 +3.45%
+    await userEvent.click(screen.getByRole('button', { name: '选择历史交易日' }))
+    expect(screen.getByRole('dialog', { name: '交易日历' })).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: '2026-11-17' }))
+    await waitFor(() => expect(screen.getByText('+3.45%')).toBeTruthy())
   })
 })
