@@ -263,6 +263,10 @@ describe('etfView sorting and filtering', () => {
     expect(sortEtfRows([rLarge, rEmpty, rHot], 'return_5d').map(r => r.code)).toEqual(['159952', '510300', '159915'])
     expect(sortEtfRows([rHot, rEmpty, rLarge], 'return_10d').map(r => r.code)).toEqual(['510300', '159952', '159915'])
     expect(sortEtfRows([rLarge, rEmpty, rHot], 'return_since').map(r => r.code)).toEqual(['159952', '510300', '159915'])
-    expect(computeBoardTotalCapYi([rLarge, rHot, rEmpty])).toEqual({ totalCapYi: 2200, coveredCount: 2 })
+    expect(computeBoardTotalCapYi([rLarge, rHot, rEmpty])).toEqual({
+      totalCapYi: 2200,
+      coveredAmountYi: 70,
+      coveredCount: 2,
+    })
   })
 })

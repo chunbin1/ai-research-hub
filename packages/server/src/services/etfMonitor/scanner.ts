@@ -99,6 +99,12 @@ function shiftCalendarYmd(ymd: string, deltaDays: number): string {
   return dt.toISOString().slice(0, 10)
 }
 
+function calendarDaysBetween(ymdFrom: string, ymdTo: string): number {
+  const [y1, m1, d1] = ymdFrom.split('-').map(Number)
+  const [y2, m2, d2] = ymdTo.split('-').map(Number)
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000)
+}
+
 function isClosedBar(tradeDate: string, todayCN: string, minutesOfDay: number): boolean {
   if (tradeDate < todayCN) return true
   if (tradeDate > todayCN) return false
@@ -204,32 +210,52 @@ async function runScan(opts: { backfillDays?: number; codes?: string[] }, deps: 
     realtimeMap = {}
   }
 
-  // 先判定每只是否需要长窗口初始回溯，以及确定上交所按日期查询清单
+  // 先判定每只是否需要初始/缺口回溯（停用久了再恢复时，须按最后入库日期至今的缺口拉全），以及确定上交所按日期查询清单
   const existingByCode = new Map(targets.map(t => [t.code, getExistingMetricsForCode(t.code)]))
+  const gapTradingDaysByCode = new Map<string, number | null>()
+  let maxShGapTradingDays = 0
+  for (const t of targets) {
+    const existing = existingByCode.get(t.code)!
+    const lastDate = existing.length > 0 ? existing[existing.length - 1].trade_date : null
+    if (!lastDate) {
+      gapTradingDaysByCode.set(t.code, null)
+      continue
+    }
+    const gapCalDays = Math.max(0, calendarDaysBetween(lastDate, todayCN))
+    const gapTradingDays = gapCalDays > 4 ? Math.min(Math.ceil(gapCalDays * 0.72) + 5, 250) : null
+    gapTradingDaysByCode.set(t.code, gapTradingDays)
+    if (t.market === 'SH' && gapTradingDays !== null) {
+      maxShGapTradingDays = Math.max(maxShGapTradingDays, gapTradingDays)
+    }
+  }
+
   const needsInitialBackfill = opts.backfillDays !== undefined
     || targets.some(t => existingByCode.get(t.code)!.length === 0)
 
   const backfillTradingDays = opts.backfillDays !== undefined
     ? Math.min(Math.max(Math.floor(opts.backfillDays), 1), 250)
-    : (needsInitialBackfill ? 90 : 5)
+    : Math.min(Math.max(needsInitialBackfill ? 90 : 5, maxShGapTradingDays), 250)
 
   // 拉取各标 K 线与净值
   const klinesByCode = new Map<string, EtfKlineBar[]>()
   const navsByCode = new Map<string, Record<string, number>>()
-  const szseByCode = new Map<string, { snapshotDate: string; totalShares: number } | null>()
+  const szseByCode = new Map<string, { snapshotDate: string; shareDate?: string; totalShares: number } | null>()
 
   const endYmdCompact = todayCN.replace(/-/g, '')
 
   await runPool(targets, concurrency, async (entry) => {
     try {
       const existing = existingByCode.get(entry.code) ?? []
+      const gapDays = gapTradingDaysByCode.get(entry.code) ?? null
       const isInitial = existing.length === 0 || opts.backfillDays !== undefined
       const tradingDaysForKline = opts.backfillDays !== undefined
         ? Math.min(Math.max(opts.backfillDays + 25, 45), 280)
-        : (isInitial ? 275 : 35)
+        : isInitial
+          ? 275
+          : (gapDays !== null ? Math.min(Math.max(gapDays + 25, 45), 280) : 35)
       const calLookback = Math.ceil(tradingDaysForKline * 1.55)
       const begYmdCompact = shiftCalendarYmd(todayCN, -calLookback).replace(/-/g, '')
-      const navPages = isInitial ? Math.ceil(tradingDaysForKline / 20) : 1
+      const navPages = isInitial || gapDays !== null ? Math.ceil(tradingDaysForKline / 20) : 1
 
       const [klineRes, navRes, szseRes] = await Promise.all([
         fetchKlines(entry.code, entry.market, begYmdCompact, endYmdCompact),
@@ -281,6 +307,22 @@ async function runScan(opts: { backfillDays?: number; codes?: string[] }, deps: 
     const navMap = navsByCode.get(entry.code) ?? {}
     const rt = realtimeMap[entry.code]
     const szseSnap = szseByCode.get(entry.code) ?? null
+    // 解析深市快照实际所属的已结算交易日：
+    // - 有 metadata.cols.dqgm 日期且 snapshotDate > shareDate 时，精确归属到 shareDate（漏掉 08:45 晨扫后晚间仍可补写昨日）
+    // - 仅在没有 shareDate 时，回退归属到 snapshotDate 之前最近一根已收盘 K 线
+    let szseTargetDate: string | null = null
+    if (szseSnap) {
+      if (szseSnap.shareDate) {
+        if (szseSnap.snapshotDate > szseSnap.shareDate) {
+          szseTargetDate = szseSnap.shareDate
+        }
+      } else {
+        const beforeSnap = freshBars.filter(x => x.tradeDate < szseSnap.snapshotDate)
+        if (beforeSnap.length > 0) {
+          szseTargetDate = beforeSnap[beforeSnap.length - 1].tradeDate
+        }
+      }
+    }
 
     const mergedByDate = new Map<string, MergedBarInput>()
     for (const old of existingRows) {
@@ -335,15 +377,13 @@ async function runScan(opts: { backfillDays?: number; codes?: string[] }, deps: 
           totalShares = rt.totalShares
           shareSource = 'snapshot'
         }
-      } else if (entry.market === 'SZ' && b.tradeDate === latestClosedDate) {
-        // 深交所与东财 f38 仅在 T+1 日更新为 T 日结算后份额；T 日当天 15:10/20:00 不可归属到 T 日
-        // 若深交所接口已返回 snapshotDate <= b.tradeDate，说明尚未结算，不可再用东财 f38 兜底误归到 T 日
+      } else if (entry.market === 'SZ') {
         if (szseSnap) {
-          if (szseSnap.snapshotDate > b.tradeDate) {
+          if (szseTargetDate !== null && b.tradeDate === szseTargetDate) {
             totalShares = szseSnap.totalShares
             shareSource = 'snapshot'
           }
-        } else if (todayCN > b.tradeDate && rt?.totalShares != null) {
+        } else if (b.tradeDate === latestClosedDate && todayCN > b.tradeDate && rt?.totalShares != null) {
           totalShares = rt.totalShares
           shareSource = 'snapshot'
         }

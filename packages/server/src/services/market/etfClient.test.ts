@@ -76,11 +76,14 @@ test('fetchSseDailyShares 把万份转为份 & fetchSzseLatestShares 解析 dqgm
   assert.equal(sse['510300'], 48343087700)
 
   const szseFetch = async () => new Response(JSON.stringify([{
-    metadata: { subname: '2026-11-18' },
+    metadata: {
+      subname: '2026-11-18',
+      cols: { dqgm: '当前规模<br>（万份）<br>（2026-11-17）' },
+    },
     data: [{ sys_key: '<a href="..."><u>159952</u></a>', dqgm: '1,416,558.49' }],
   }]))
   const szse = await fetchSzseLatestShares('159952', { fetch: szseFetch as never })
-  assert.deepEqual(szse, { snapshotDate: '2026-11-18', totalShares: 14165584900 })
+  assert.deepEqual(szse, { snapshotDate: '2026-11-18', shareDate: '2026-11-17', totalShares: 14165584900 })
 })
 
 test('probeEtfInfo 识别有效 ETF 并拒绝非法代码', async () => {

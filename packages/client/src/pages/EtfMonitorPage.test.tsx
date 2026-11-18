@@ -421,4 +421,31 @@ describe('EtfMonitorPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '2026-11-17' }))
     await waitFor(() => expect(screen.getByText('+3.45%')).toBeTruthy())
   })
+
+  test('overview turnover uses only the subset of ETFs with known market cap when partial shares are missing', async () => {
+    const baseBoard = makeBoard({
+      summary: makeSummary({ total_amount_yi: 20 }),
+    })
+    // 2 只 ETF 各成交 10 亿，其中仅 510300 有 100 亿规模（应显示 同口径换手 10.00%，而不是 20/100 = 20.00%）
+    const twoRows = [
+      {
+        ...baseBoard.rows[1], // 510300
+        metric: makeMetric('510300', '2026-11-18', { total_shares: 25_0000_0000, nav: 4.0, amount: 10_0000_0000 }),
+      },
+      {
+        ...baseBoard.rows[14], // 159952
+        metric: makeMetric('159952', '2026-11-18', { total_shares: null, nav: 1.4, amount: 10_0000_0000 }),
+      },
+    ]
+    const partialBoard: EtfBoardResponse = { ...baseBoard, rows: twoRows }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/auth/me')) return { ok: false, json: async () => null } as Response
+      if (url.includes('/api/etf/timeline')) return { ok: true, json: async () => ({ days: makeTimeline() }) } as Response
+      if (url.includes('/api/etf/board')) return { ok: true, json: async () => partialBoard } as Response
+      return { ok: false, json: async () => null } as Response
+    }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText(/已覆盖 1\/2 只规模 100\.0亿 · 同口径换手 10\.00%/)).toBeTruthy())
+  })
 })

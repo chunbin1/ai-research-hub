@@ -208,14 +208,20 @@ export async function fetchSseDailyShares(
 }
 
 interface SzseReportEntry {
-  metadata?: { subname?: string }
+  metadata?: { subname?: string; cols?: { dqgm?: string } }
   data?: Array<{ sys_key?: string; dqgm?: string }>
+}
+
+export interface SzseLatestShares {
+  snapshotDate: string
+  shareDate?: string
+  totalShares: number
 }
 
 export async function fetchSzseLatestShares(
   code: string,
   deps: EtfClientDeps = {},
-): Promise<{ snapshotDate: string; totalShares: number } | null> {
+): Promise<SzseLatestShares | null> {
   const url =
     `https://www.szse.cn/api/report/ShowReport/data?SHOWTYPE=JSON&CATALOGID=1945&TABKEY=tab1` +
     `&txtQueryKeyAndJC=${encodeURIComponent(code)}`
@@ -227,7 +233,14 @@ export async function fetchSzseLatestShares(
   const row = report?.data?.find(d => d.sys_key?.includes(needle) || d.sys_key?.includes(code))
   const wanShares = toFinite(row?.dqgm)
   if (wanShares === null || wanShares <= 0) return null
-  return { snapshotDate, totalShares: Math.round(wanShares * 10_000) }
+  const dqgmCol = report?.metadata?.cols?.dqgm
+  const shareDateMatch = typeof dqgmCol === 'string' ? dqgmCol.match(/(\d{4}-\d{2}-\d{2})/) : null
+  const shareDate = shareDateMatch?.[1]
+  return {
+    snapshotDate,
+    ...(shareDate ? { shareDate } : {}),
+    totalShares: Math.round(wanShares * 10_000),
+  }
 }
 
 interface EastmoneyStockInfoResp {

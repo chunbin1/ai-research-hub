@@ -869,6 +869,10 @@ export default function EtfMonitorPage() {
     [visibleTimeline],
   )
   const totalCapInfo = useMemo(() => computeBoardTotalCapYi(rows), [rows])
+  const matchedTurnoverPct =
+    totalCapInfo.totalCapYi !== null && totalCapInfo.totalCapYi > 0 && totalCapInfo.coveredAmountYi !== null
+      ? (totalCapInfo.coveredAmountYi / totalCapInfo.totalCapYi) * 100
+      : null
 
   const summary = board?.summary ?? null
   const activeDate = summary?.trade_date ?? selectedDate ?? null
@@ -1039,8 +1043,10 @@ export default function EtfMonitorPage() {
                     </span>
                   </div>
                   <div className="font-numeral text-[11px] text-ink-faint">
-                    {totalCapInfo.totalCapYi !== null && totalCapInfo.totalCapYi > 0
-                      ? `参考规模 ${formatYi(totalCapInfo.totalCapYi)} · 换手 ${((summary.total_amount_yi / totalCapInfo.totalCapYi) * 100).toFixed(2)}%${totalCapInfo.coveredCount < rows.length ? ` (${totalCapInfo.coveredCount}/${rows.length}只)` : ''}`
+                    {totalCapInfo.totalCapYi !== null && totalCapInfo.totalCapYi > 0 && matchedTurnoverPct !== null
+                      ? totalCapInfo.coveredCount === rows.length
+                        ? `总规模 ${formatYi(totalCapInfo.totalCapYi)} · 换手 ${matchedTurnoverPct.toFixed(2)}%`
+                        : `已覆盖 ${totalCapInfo.coveredCount}/${rows.length} 只规模 ${formatYi(totalCapInfo.totalCapYi)} · 同口径换手 ${matchedTurnoverPct.toFixed(2)}%`
                       : '相对近 20 日均额'}
                   </div>
                 </div>

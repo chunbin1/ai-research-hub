@@ -106,20 +106,26 @@ export function computeTurnoverRate(metric: EtfDailyMetric | null): number | nul
   return ((metric.amount / 1e8) / capYi) * 100
 }
 
-/** 统计当前看板已获取规模的 ETF 总市值（亿元）及覆盖只数 */
+/** 统计当前看板已获取规模的 ETF 总市值及同口径成交额（亿元）、覆盖只数 */
 export function computeBoardTotalCapYi(
   rows: readonly EtfBoardRow[],
-): { totalCapYi: number | null; coveredCount: number } {
-  let sum = 0
+): { totalCapYi: number | null; coveredAmountYi: number | null; coveredCount: number } {
+  let capSum = 0
+  let amtSum = 0
   let count = 0
   for (const r of rows) {
     const cap = computeMarketCapYi(r.metric)
-    if (cap !== null) {
-      sum += cap
+    if (cap !== null && r.metric) {
+      capSum += cap
+      amtSum += Number.isFinite(r.metric.amount) ? r.metric.amount / 1e8 : 0
       count++
     }
   }
-  return { totalCapYi: count > 0 ? sum : null, coveredCount: count }
+  return {
+    totalCapYi: count > 0 ? capSum : null,
+    coveredAmountYi: count > 0 ? amtSum : null,
+    coveredCount: count,
+  }
 }
 
 export type EtfFilterKey = 'all' | 'active' | EtfTier

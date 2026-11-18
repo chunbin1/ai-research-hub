@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { initSiteSettingsTable } from '../siteSettingsStore.js'
 import {
-  initEtfMonitorTables, getExistingMetricsForCode, getBoardByDate, updateUniverseEntry,
+  initEtfMonitorTables, getExistingMetricsForCode, getBoardByDate, updateUniverseEntry, upsertDailyMetrics,
 } from '../etfMonitorStore.js'
 import { scanEtfMonitor, getEtfParams, setEtfParams, recomputeAllEtfSummaries } from './scanner.js'
 import { DEFAULT_ETF_PARAMS } from './metrics.js'
@@ -179,4 +179,76 @@ test('深交所接口明确返回 snapshotDate <= T 时，早盘不可再用东�
   const d17 = getExistingMetricsForCode('159952').find(x => x.trade_date === '2026-11-17')!
   assert.equal(d17.total_shares, null)
   assert.equal(d17.share_source, null)
+})
+
+test('漏掉晨扫时，18日盘后扫描仍能按 dqgm 所属日期把仍有效的昨日(17日)深市份额补写入17日', async () => {
+  setupDb()
+  await scanEtfMonitor({ codes: ['159952'] }, {
+    now: () => new Date('2026-11-18T12:00:00Z'), // 18日 20:00 收盘后（18日已收盘，漏掉了 08:45 晨扫）
+    fetchKlines: async () => ({ name: '创业板广发', bars: build22Bars('2026-11-18', 25e8) }),
+    fetchNavs: async () => ({ '2026-11-17': 1.4015, '2026-11-18': 1.405 }),
+    fetchRealtimeBatch: async () => ({
+      '159952': { code: '159952', name: '创业板广发', price: 1.41, amount: 3e8, totalShares: 141.66e8, iopv: 1.41 },
+    }),
+    fetchSseShares: async () => ({}),
+    fetchSzseShares: async () => ({ snapshotDate: '2026-11-18', shareDate: '2026-11-17', totalShares: 141.66e8 }),
+  })
+
+  const rows = getExistingMetricsForCode('159952')
+  const d17 = rows.find(x => x.trade_date === '2026-11-17')!
+  const d18 = rows.find(x => x.trade_date === '2026-11-18')!
+  assert.equal(d17.total_shares, 141.66e8)
+  assert.equal(d17.share_source, 'snapshot')
+  assert.equal(d18.total_shares, null)
+})
+
+test('长期停用后恢复启用时按历史缺口自动扩大 K 线/净值/上交所份额回溯窗口', async () => {
+  setupDb()
+  // 模拟 510300 早在 2026-08-20 之后就停用，库里仅有 2026-08-20 这一条老数据
+  upsertDailyMetrics([{
+    code: '510300', trade_date: '2026-08-20', open: 4.0, close: 4.0, pct_change: 0,
+    volume: 1e9, amount: 10e8, vol_ratio_5: null, vol_ratio_20: null,
+    nav: 4.0, nav_source: 'official', premium_rate: 0,
+    total_shares: 400e8, share_source: 'sse_history', share_delta: null, net_inflow_yi: null,
+    signal_level: 'normal', updated_at: '2026-08-20T12:00:00Z',
+  }])
+
+  // 生成从 2026-08-21 到 2026-11-17 共约 60 个工作日的模拟 K 线
+  const gapDates: string[] = []
+  for (let d = new Date('2026-08-21T00:00:00Z'); d <= new Date('2026-11-17T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) {
+    const dow = d.getUTCDay()
+    if (dow !== 0 && dow !== 6) gapDates.push(d.toISOString().slice(0, 10))
+  }
+
+  let seenBegYmd = ''
+  let seenNavPages = 0
+  const seenSseDates: string[] = []
+
+  await scanEtfMonitor({ codes: ['510300'] }, {
+    now: () => new Date('2026-11-17T12:00:00Z'),
+    fetchKlines: async (_code, _mkt, begYmd) => {
+      seenBegYmd = begYmd
+      return {
+        name: '300ETF',
+        bars: gapDates.map(dt => ({
+          tradeDate: dt, open: 4.0, close: 4.05, high: 4.1, low: 3.95, volume: 1e9, amount: 12e8, pctChange: 0.2,
+        })),
+      }
+    },
+    fetchNavs: async (_code, pages) => {
+      seenNavPages = pages ?? 1
+      return {}
+    },
+    fetchRealtimeBatch: async () => ({}),
+    fetchSseShares: async (dt): Promise<Record<string, number>> => {
+      seenSseDates.push(dt)
+      return { '510300': 410e8 }
+    },
+    fetchSzseShares: async () => null,
+  })
+
+  // 缺口约 89 个自然日（> 60 个交易日），K 线起始日期须覆盖回 2026-08-20 之前，净值翻页 > 1，上交所份额回溯远超 5 天
+  assert.ok(seenBegYmd <= '20260820', `expected begYmd <= 20260820, got ${seenBegYmd}`)
+  assert.ok(seenNavPages >= 3, `expected navPages >= 3, got ${seenNavPages}`)
+  assert.ok(seenSseDates.length >= 50, `expected >= 50 SSE dates for ~60d gap, got ${seenSseDates.length}`)
 })
