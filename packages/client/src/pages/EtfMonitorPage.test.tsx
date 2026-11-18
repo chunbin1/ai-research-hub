@@ -404,8 +404,9 @@ describe('EtfMonitorPage', () => {
 
     renderPage()
     // 规模 = 100亿份 * 3.94 = 394.0亿，成交额 25亿 -> 换手率约 6.35%
-    await waitFor(() => expect(screen.getAllByText(/规模 394\.0亿/).length).toBeGreaterThan(0))
+    await waitFor(() => expect(screen.getAllByText('394.0亿').length).toBeGreaterThan(0))
     expect(screen.getAllByText(/换手 6\.35%/).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: '市值' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '5日' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '10日' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '距今' })).toBeTruthy()

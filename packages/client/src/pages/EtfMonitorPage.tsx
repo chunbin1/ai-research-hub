@@ -44,9 +44,9 @@ import type {
 } from '../types'
 
 const GUTTER = 'px-[18px] md:px-7 lg:px-10'
-const GRID = 'grid grid-cols-[20px_minmax(0,1fr)_68px_52px_52px_52px_102px_62px_66px_72px] items-center gap-1.5'
-  + ' lg:grid-cols-[24px_minmax(0,1.4fr)_82px_68px_68px_68px_132px_78px_82px_88px] lg:gap-2.5'
-  + ' xl:grid-cols-[24px_minmax(220px,1.6fr)_92px_78px_78px_78px_156px_88px_92px_96px] xl:gap-3.5'
+const GRID = 'grid grid-cols-[20px_minmax(120px,1fr)_58px_62px_46px_46px_46px_92px_54px_58px_66px] items-center gap-1'
+  + ' lg:grid-cols-[24px_minmax(150px,1.4fr)_80px_76px_60px_60px_60px_122px_72px_76px_82px] lg:gap-2'
+  + ' xl:grid-cols-[24px_minmax(210px,1.6fr)_92px_88px_72px_72px_72px_148px_84px_88px_92px] xl:gap-3'
 
 function resonanceClasses(level: EtfResonanceLevel): string {
   switch (level) {
@@ -317,7 +317,8 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, sortKe
     <div className="border-t border-ink">
       <div className={`${GRID} border-b border-rule py-3 text-[12px] tracking-[0.02em] text-ink-mute`}>
         <span aria-hidden />
-        <span>ETF 标的 / 规模</span>
+        <span>ETF 标的</span>
+        <SortHeaderButton label="市值" targetKey="market_cap_yi" sortKey={sortKey} onSort={onSort} />
         <span className="text-right">收盘</span>
         <SortHeaderButton label="5日" targetKey="return_5d" sortKey={sortKey} onSort={onSort} />
         <SortHeaderButton label="10日" targetKey="return_10d" sortKey={sortKey} onSort={onSort} />
@@ -331,7 +332,7 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, sortKe
       {loading && Array.from({ length: 6 }, (_, i) => (
         <div key={i} className={`${GRID} border-b border-row-rule py-3.5`} aria-hidden>
           <span />
-          {Array.from({ length: 9 }, (_, c) => (
+          {Array.from({ length: 10 }, (_, c) => (
             <span key={c} className="h-[40px] animate-skeleton rounded-sm bg-[#EDEAE4] motion-reduce:animate-none" />
           ))}
         </div>
@@ -375,10 +376,13 @@ function EtfTable({ rows, loading, empty, groupByTier, volRatioThreshold, sortKe
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint">
                   <span className="border border-edge bg-white px-1.5 py-px text-ink-mute">{TIER_LABEL[r.tier]}</span>
                   <span>{r.market === 'SH' ? '沪市' : '深市'}</span>
-                  {capYi !== null && (
-                    <span className="font-numeral text-ink-soft">· 规模 {formatYi(capYi)}</span>
-                  )}
                 </div>
+              </div>
+
+              <div className="text-right">
+                <span className="font-numeral text-[13px] font-medium text-ink-soft">
+                  {formatYi(capYi)}
+                </span>
               </div>
 
               <div className="text-right">
